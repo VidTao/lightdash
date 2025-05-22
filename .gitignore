@@ -75,3 +75,7 @@ lightdash
 # Prometheus
 prometheus.yml
 data/
+
+# Custom ignored files
+.env
+credentials/

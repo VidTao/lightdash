@@ -94,6 +94,8 @@ services:
             POSTGRES_DB: ${PGDATABASE:-postgres}
         volumes:
             - db-data:/var/lib/postgresql/data
+        ports:
+            - "5433:5432"
 
     headless-browser:
         image: ghcr.io/browserless/chromium:v2.24.3

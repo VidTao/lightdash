@@ -1,0 +1,863 @@
+"table_schema","table_name","column_name","ordinal_position","data_type","is_nullable","column_default"
+"graphile_worker","job_queues","queue_name",1,"text","NO",NULL
+"graphile_worker","job_queues","job_count",2,"integer","NO",NULL
+"graphile_worker","job_queues","locked_at",3,"timestamp with time zone","YES",NULL
+"graphile_worker","job_queues","locked_by",4,"text","YES",NULL
+"graphile_worker","jobs","id",1,"bigint","NO","nextval('graphile_worker.jobs_id_seq'::regclass)"
+"graphile_worker","jobs","queue_name",2,"text","YES",NULL
+"graphile_worker","jobs","task_identifier",3,"text","NO",NULL
+"graphile_worker","jobs","payload",4,"json","NO","'{}'::json"
+"graphile_worker","jobs","priority",5,"integer","NO","0"
+"graphile_worker","jobs","run_at",6,"timestamp with time zone","NO","now()"
+"graphile_worker","jobs","attempts",7,"integer","NO","0"
+"graphile_worker","jobs","max_attempts",8,"integer","NO","25"
+"graphile_worker","jobs","last_error",9,"text","YES",NULL
+"graphile_worker","jobs","created_at",10,"timestamp with time zone","NO","now()"
+"graphile_worker","jobs","updated_at",11,"timestamp with time zone","NO","now()"
+"graphile_worker","jobs","key",12,"text","YES",NULL
+"graphile_worker","jobs","locked_at",13,"timestamp with time zone","YES",NULL
+"graphile_worker","jobs","locked_by",14,"text","YES",NULL
+"graphile_worker","jobs","revision",15,"integer","NO","0"
+"graphile_worker","jobs","flags",16,"jsonb","YES",NULL
+"graphile_worker","known_crontabs","identifier",1,"text","NO",NULL
+"graphile_worker","known_crontabs","known_since",2,"timestamp with time zone","NO",NULL
+"graphile_worker","known_crontabs","last_execution",3,"timestamp with time zone","YES",NULL
+"graphile_worker","migrations","id",1,"integer","NO",NULL
+"graphile_worker","migrations","ts",2,"timestamp with time zone","NO","now()"
+"public","analytics_chart_views","user_uuid",1,"uuid","YES",NULL
+"public","analytics_chart_views","chart_uuid",2,"uuid","NO",NULL
+"public","analytics_chart_views","context",3,"jsonb","YES",NULL
+"public","analytics_chart_views","timestamp",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","analytics_dashboard_views","user_uuid",1,"uuid","YES",NULL
+"public","analytics_dashboard_views","dashboard_uuid",2,"uuid","NO",NULL
+"public","analytics_dashboard_views","context",3,"jsonb","YES",NULL
+"public","analytics_dashboard_views","timestamp",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","bratrax_advertising_connections","bratrax_connection_id",1,"integer","NO","nextval('bratrax_advertising_connections_bratrax_connection_id_seq'::regclass)"
+"public","bratrax_advertising_connections","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_advertising_connections","platform_type",3,"character varying","NO",NULL
+"public","bratrax_advertising_connections","account_id",4,"character varying","NO",NULL
+"public","bratrax_advertising_connections","account_name",5,"character varying","YES",NULL
+"public","bratrax_advertising_connections","currency",6,"character varying","YES",NULL
+"public","bratrax_advertising_connections","timezone",7,"character varying","YES",NULL
+"public","bratrax_advertising_connections","manager_id",8,"character varying","YES",NULL
+"public","bratrax_advertising_connections","business_id",9,"character varying","YES",NULL
+"public","bratrax_advertising_connections","is_active",10,"boolean","YES","true"
+"public","bratrax_advertising_connections","created_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_advertising_connections","updated_at",12,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_crm_connections","bratrax_connection_id",1,"integer","NO","nextval('bratrax_crm_connections_bratrax_connection_id_seq'::regclass)"
+"public","bratrax_crm_connections","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_crm_connections","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_crm_connections","platform_type",4,"character varying","NO",NULL
+"public","bratrax_crm_connections","store_url",5,"character varying","YES",NULL
+"public","bratrax_crm_connections","store_name",6,"character varying","YES",NULL
+"public","bratrax_crm_connections","currency",7,"character varying","YES",NULL
+"public","bratrax_crm_connections","timezone",8,"character varying","YES",NULL
+"public","bratrax_crm_connections","is_active",9,"boolean","YES","true"
+"public","bratrax_crm_connections","created_at",10,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_crm_connections","updated_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_default_traffic_rules","bratrax_def_rule_id",1,"integer","NO","nextval('bratrax_default_traffic_rules_bratrax_def_rule_id_seq'::regclass)"
+"public","bratrax_default_traffic_rules","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_default_traffic_rules","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_default_traffic_rules","rule_name",4,"character varying","NO",NULL
+"public","bratrax_default_traffic_rules","conditions",5,"jsonb","NO",NULL
+"public","bratrax_default_traffic_rules","action",6,"character varying","NO",NULL
+"public","bratrax_default_traffic_rules","channel",7,"character varying","YES",NULL
+"public","bratrax_default_traffic_rules","enabled",8,"boolean","YES","true"
+"public","bratrax_default_traffic_rules","created_at",9,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_default_traffic_rules","updated_at",10,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_event_properties","bratrax_event_property_id",1,"integer","NO","nextval('bratrax_event_properties_bratrax_event_property_id_seq'::regclass)"
+"public","bratrax_event_properties","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_event_properties","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_event_properties","bratrax_event_id",4,"integer","NO",NULL
+"public","bratrax_event_properties","bratrax_property_id",5,"integer","NO",NULL
+"public","bratrax_event_properties","created_at",6,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_events","bratrax_event_id",1,"integer","NO","nextval('bratrax_events_bratrax_event_id_seq'::regclass)"
+"public","bratrax_events","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_events","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_events","name",4,"character varying","NO",NULL
+"public","bratrax_events","description",5,"text","YES",NULL
+"public","bratrax_events","category",6,"character varying","YES",NULL
+"public","bratrax_events","platform",7,"character varying","NO",NULL
+"public","bratrax_events","is_active",8,"boolean","YES","true"
+"public","bratrax_events","is_custom",9,"boolean","YES","false"
+"public","bratrax_events","created_at",10,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_events","updated_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_expense_categories","bratrax_category_id",1,"integer","NO","nextval('bratrax_expense_categories_bratrax_category_id_seq'::regclass)"
+"public","bratrax_expense_categories","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_expense_categories","category_name",3,"character varying","NO",NULL
+"public","bratrax_expense_categories","created_at",4,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_expense_categories","updated_at",5,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_expense_categories","created_by_user_uuid",6,"uuid","YES",NULL
+"public","bratrax_fixed_expenses","bratrax_expense_id",1,"integer","NO","nextval('bratrax_fixed_expenses_bratrax_expense_id_seq'::regclass)"
+"public","bratrax_fixed_expenses","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_fixed_expenses","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_fixed_expenses","title",4,"character varying","NO",NULL
+"public","bratrax_fixed_expenses","amount",5,"numeric","NO",NULL
+"public","bratrax_fixed_expenses","bratrax_category_id",6,"integer","YES",NULL
+"public","bratrax_fixed_expenses","is_recurring",7,"boolean","YES","false"
+"public","bratrax_fixed_expenses","is_ad_spend",8,"boolean","YES","false"
+"public","bratrax_fixed_expenses","source",9,"character varying","YES",NULL
+"public","bratrax_fixed_expenses","campaign_name",10,"character varying","YES",NULL
+"public","bratrax_fixed_expenses","start_date",11,"date","NO",NULL
+"public","bratrax_fixed_expenses","end_date",12,"date","YES",NULL
+"public","bratrax_fixed_expenses","created_at",13,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_fixed_expenses","updated_at",14,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_fixed_expenses","created_by_user_uuid",15,"uuid","YES",NULL
+"public","bratrax_fixed_expenses","updated_by_user_uuid",16,"uuid","YES",NULL
+"public","bratrax_payment_gateway_settings","bratrax_gateway_id",1,"integer","NO","nextval('bratrax_payment_gateway_settings_bratrax_gateway_id_seq'::regclass)"
+"public","bratrax_payment_gateway_settings","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_payment_gateway_settings","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_payment_gateway_settings","gateway_name",4,"character varying","NO",NULL
+"public","bratrax_payment_gateway_settings","percentage_fee",5,"numeric","YES",NULL
+"public","bratrax_payment_gateway_settings","fixed_fee",6,"numeric","YES",NULL
+"public","bratrax_payment_gateway_settings","is_shopify_payments",7,"boolean","YES","false"
+"public","bratrax_payment_gateway_settings","created_at",8,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_payment_gateway_settings","updated_at",9,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_payment_gateway_settings","created_by_user_uuid",10,"uuid","YES",NULL
+"public","bratrax_payment_gateway_settings","updated_by_user_uuid",11,"uuid","YES",NULL
+"public","bratrax_periscope_event_destinations","bratrax_destination_id",1,"integer","NO","nextval('bratrax_periscope_event_destinations_bratrax_destination_id_seq'::regclass)"
+"public","bratrax_periscope_event_destinations","bratrax_periscope_event_id",2,"integer","NO",NULL
+"public","bratrax_periscope_event_destinations","bratrax_advertising_connection_id",3,"integer","NO",NULL
+"public","bratrax_periscope_event_destinations","is_active",4,"boolean","YES","true"
+"public","bratrax_periscope_event_destinations","last_sent_at",5,"timestamp with time zone","YES",NULL
+"public","bratrax_periscope_event_destinations","created_at",6,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_periscope_event_destinations","updated_at",7,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_periscope_events","bratrax_periscope_event_id",1,"integer","NO","nextval('bratrax_periscope_events_bratrax_periscope_event_id_seq'::regclass)"
+"public","bratrax_periscope_events","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_periscope_events","bratrax_advertising_connection_id",3,"integer","YES",NULL
+"public","bratrax_periscope_events","account_id",4,"character varying","NO",NULL
+"public","bratrax_periscope_events","bratrax_event_id",5,"integer","NO",NULL
+"public","bratrax_periscope_events","is_active",6,"boolean","YES","true"
+"public","bratrax_periscope_events","last_sent_at",7,"timestamp with time zone","YES",NULL
+"public","bratrax_periscope_events","created_at",8,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_periscope_events","updated_at",9,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_product_cogs_settings","bratrax_product_cost_id",1,"integer","NO","nextval('bratrax_product_cogs_settings_bratrax_product_cost_id_seq'::regclass)"
+"public","bratrax_product_cogs_settings","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_product_cogs_settings","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_product_cogs_settings","platform_product_id",4,"character varying","NO",NULL
+"public","bratrax_product_cogs_settings","sku",5,"character varying","YES",NULL
+"public","bratrax_product_cogs_settings","cogs_amount",6,"numeric","YES",NULL
+"public","bratrax_product_cogs_settings","handling_fee",7,"numeric","YES",NULL
+"public","bratrax_product_cogs_settings","marketplace",8,"character varying","YES",NULL
+"public","bratrax_product_cogs_settings","product_cost",9,"numeric","YES","0"
+"public","bratrax_product_cogs_settings","created_at",10,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_product_cogs_settings","updated_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_product_cogs_settings","created_by_user_uuid",12,"uuid","YES",NULL
+"public","bratrax_product_cogs_settings","updated_by_user_uuid",13,"uuid","YES",NULL
+"public","bratrax_products","bratrax_product_id",1,"integer","NO","nextval('bratrax_products_bratrax_product_id_seq'::regclass)"
+"public","bratrax_products","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_products","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_products","platform_type",4,"character varying","NO",NULL
+"public","bratrax_products","platform_product_id",5,"character varying","NO",NULL
+"public","bratrax_products","title",6,"character varying","NO",NULL
+"public","bratrax_products","sku",7,"character varying","YES",NULL
+"public","bratrax_products","price",8,"numeric","YES",NULL
+"public","bratrax_products","quantity",9,"integer","YES","0"
+"public","bratrax_products","marketplace",10,"character varying","YES",NULL
+"public","bratrax_products","image_url",11,"character varying","YES",NULL
+"public","bratrax_products","is_active",12,"boolean","YES","true"
+"public","bratrax_products","created_at",13,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_products","updated_at",14,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_properties","bratrax_property_id",1,"integer","NO","nextval('bratrax_properties_bratrax_property_id_seq'::regclass)"
+"public","bratrax_properties","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_properties","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_properties","name",4,"character varying","NO",NULL
+"public","bratrax_properties","description",5,"text","YES",NULL
+"public","bratrax_properties","platform",6,"character varying","NO",NULL
+"public","bratrax_properties","created_at",7,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_properties","updated_at",8,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_shipping_profiles","bratrax_profile_id",1,"integer","NO","nextval('bratrax_shipping_profiles_bratrax_profile_id_seq'::regclass)"
+"public","bratrax_shipping_profiles","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_shipping_profiles","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_shipping_profiles","profile_name",4,"character varying","NO",NULL
+"public","bratrax_shipping_profiles","is_worldwide",5,"boolean","YES","false"
+"public","bratrax_shipping_profiles","regions",6,"jsonb","YES",NULL
+"public","bratrax_shipping_profiles","rate_type",7,"character varying","YES",NULL
+"public","bratrax_shipping_profiles","shipping_rate",8,"numeric","YES",NULL
+"public","bratrax_shipping_profiles","weight_tiers",9,"jsonb","YES",NULL
+"public","bratrax_shipping_profiles","fulfillment_methods",10,"jsonb","YES",NULL
+"public","bratrax_shipping_profiles","created_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_shipping_profiles","updated_at",12,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_shipping_profiles","created_by_user_uuid",13,"uuid","YES",NULL
+"public","bratrax_shipping_profiles","updated_by_user_uuid",14,"uuid","YES",NULL
+"public","bratrax_store_cogs_settings","bratrax_settings_id",1,"integer","NO","nextval('bratrax_store_cogs_settings_bratrax_settings_id_seq'::regclass)"
+"public","bratrax_store_cogs_settings","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_store_cogs_settings","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_store_cogs_settings","enable_global_cogs",4,"boolean","YES","false"
+"public","bratrax_store_cogs_settings","enable_handling_fee",5,"boolean","YES","false"
+"public","bratrax_store_cogs_settings","global_handling_fee",6,"numeric","YES",NULL
+"public","bratrax_store_cogs_settings","bidirectional_cogs",7,"boolean","YES","false"
+"public","bratrax_store_cogs_settings","marketplace",8,"character varying","YES",NULL
+"public","bratrax_store_cogs_settings","created_at",9,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_store_cogs_settings","updated_at",10,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_store_cogs_settings","created_by_user_uuid",11,"uuid","YES",NULL
+"public","bratrax_store_cogs_settings","updated_by_user_uuid",12,"uuid","YES",NULL
+"public","bratrax_traffic_rules","bratrax_rule_id",1,"integer","NO","nextval('bratrax_traffic_rules_bratrax_rule_id_seq'::regclass)"
+"public","bratrax_traffic_rules","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_traffic_rules","bratrax_write_key_id",3,"integer","YES",NULL
+"public","bratrax_traffic_rules","rule_name",4,"character varying","NO",NULL
+"public","bratrax_traffic_rules","conditions",5,"jsonb","NO",NULL
+"public","bratrax_traffic_rules","action",6,"character varying","NO",NULL
+"public","bratrax_traffic_rules","channel",7,"character varying","YES",NULL
+"public","bratrax_traffic_rules","enabled",8,"boolean","YES","true"
+"public","bratrax_traffic_rules","is_default",9,"boolean","YES","false"
+"public","bratrax_traffic_rules","created_at",10,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_traffic_rules","updated_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_traffic_rules","created_by_user_uuid",12,"uuid","YES",NULL
+"public","bratrax_traffic_rules","updated_by_user_uuid",13,"uuid","YES",NULL
+"public","bratrax_user_platform_credentials","bratrax_credential_id",1,"integer","NO","nextval('bratrax_user_platform_credentials_bratrax_credential_id_seq'::regclass)"
+"public","bratrax_user_platform_credentials","user_uuid",2,"uuid","NO",NULL
+"public","bratrax_user_platform_credentials","organization_uuid",3,"uuid","NO",NULL
+"public","bratrax_user_platform_credentials","bratrax_write_key_id",4,"integer","YES",NULL
+"public","bratrax_user_platform_credentials","platform",5,"character varying","NO",NULL
+"public","bratrax_user_platform_credentials","access_token",6,"text","YES",NULL
+"public","bratrax_user_platform_credentials","refresh_token",7,"text","YES",NULL
+"public","bratrax_user_platform_credentials","token_expiry",8,"timestamp with time zone","YES",NULL
+"public","bratrax_user_platform_credentials","api_key",9,"text","YES",NULL
+"public","bratrax_user_platform_credentials","api_secret",10,"text","YES",NULL
+"public","bratrax_user_platform_credentials","shopify_store",11,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","long_lived_fb_token",12,"text","YES",NULL
+"public","bratrax_user_platform_credentials","cf2_workspace_id",13,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","cf2_workspace_url",14,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","ghl_account_id",15,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","ghl_client_id",16,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","ghl_client_secret",17,"text","YES",NULL
+"public","bratrax_user_platform_credentials","stripe_account_id",18,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","aws_access_key",19,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","aws_secret_key",20,"text","YES",NULL
+"public","bratrax_user_platform_credentials","role_arn",21,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","sp_api_client_id",22,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","sp_api_client_secret",23,"text","YES",NULL
+"public","bratrax_user_platform_credentials","marketplaces",24,"jsonb","YES",NULL
+"public","bratrax_user_platform_credentials","sales_data_granularity",25,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","amazon_ads_profile_id",26,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","amazon_ads_region",27,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","amazon_ads_endpoint",28,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","amazon_ads_client_id",29,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","amazon_ads_client_secret",30,"text","YES",NULL
+"public","bratrax_user_platform_credentials","amazon_ads_redirect_uri",31,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","klaviyo_client_id",32,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","klaviyo_client_secret",33,"text","YES",NULL
+"public","bratrax_user_platform_credentials","slack_workspace_id",34,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","slack_workspace_name",35,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","slack_channel_id",36,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","accounts_data",37,"jsonb","YES",NULL
+"public","bratrax_user_platform_credentials","token_type",38,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","source",39,"character varying","YES",NULL
+"public","bratrax_user_platform_credentials","start_date",40,"date","YES",NULL
+"public","bratrax_user_platform_credentials","created_at",41,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_user_platform_credentials","updated_at",42,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_user_platform_credentials","created_by_user_uuid",43,"uuid","YES",NULL
+"public","bratrax_variable_expenses","bratrax_expense_id",1,"integer","NO","nextval('bratrax_variable_expenses_bratrax_expense_id_seq'::regclass)"
+"public","bratrax_variable_expenses","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_variable_expenses","bratrax_write_key_id",3,"integer","NO",NULL
+"public","bratrax_variable_expenses","title",4,"character varying","NO",NULL
+"public","bratrax_variable_expenses","bratrax_category_id",5,"integer","YES",NULL
+"public","bratrax_variable_expenses","metric",6,"character varying","YES",NULL
+"public","bratrax_variable_expenses","percentage",7,"numeric","NO",NULL
+"public","bratrax_variable_expenses","source",8,"character varying","YES",NULL
+"public","bratrax_variable_expenses","campaign_name",9,"character varying","YES",NULL
+"public","bratrax_variable_expenses","is_ad_spend",10,"boolean","YES","false"
+"public","bratrax_variable_expenses","start_date",11,"date","NO",NULL
+"public","bratrax_variable_expenses","end_date",12,"date","YES",NULL
+"public","bratrax_variable_expenses","created_at",13,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_variable_expenses","updated_at",14,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_variable_expenses","created_by_user_uuid",15,"uuid","YES",NULL
+"public","bratrax_variable_expenses","updated_by_user_uuid",16,"uuid","YES",NULL
+"public","bratrax_write_keys","bratrax_write_key_id",1,"integer","NO","nextval('bratrax_write_keys_bratrax_write_key_id_seq'::regclass)"
+"public","bratrax_write_keys","organization_uuid",2,"uuid","NO",NULL
+"public","bratrax_write_keys","write_key",3,"character varying","NO",NULL
+"public","bratrax_write_keys","platform",4,"character varying","NO",NULL
+"public","bratrax_write_keys","store_name",5,"character varying","YES",NULL
+"public","bratrax_write_keys","store_url",6,"character varying","YES",NULL
+"public","bratrax_write_keys","default_currency",7,"character varying","YES",NULL
+"public","bratrax_write_keys","timezone",8,"character varying","YES",NULL
+"public","bratrax_write_keys","project_uuid",9,"uuid","YES",NULL
+"public","bratrax_write_keys","is_active",10,"boolean","YES","true"
+"public","bratrax_write_keys","created_at",11,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","bratrax_write_keys","updated_at",12,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","cached_explore","cached_explore_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","cached_explore","project_uuid",2,"uuid","NO",NULL
+"public","cached_explore","name",3,"character varying","NO",NULL
+"public","cached_explore","table_names",4,"ARRAY","NO",NULL
+"public","cached_explore","explore",5,"jsonb","NO",NULL
+"public","cached_explores","project_uuid",1,"uuid","NO",NULL
+"public","cached_explores","explores",2,"jsonb","NO",NULL
+"public","cached_warehouse","project_uuid",1,"uuid","NO",NULL
+"public","cached_warehouse","warehouse",2,"jsonb","NO",NULL
+"public","catalog_search","cached_explore_uuid",1,"uuid","NO",NULL
+"public","catalog_search","project_uuid",2,"uuid","NO",NULL
+"public","catalog_search","name",3,"text","NO",NULL
+"public","catalog_search","description",4,"text","YES",NULL
+"public","catalog_search","type",5,"character varying","NO",NULL
+"public","catalog_search","field_type",7,"text","YES",NULL
+"public","catalog_search","required_attributes",8,"jsonb","YES",NULL
+"public","catalog_search","chart_usage",9,"integer","YES","0"
+"public","catalog_search","catalog_search_uuid",10,"uuid","NO","uuid_generate_v4()"
+"public","catalog_search","icon",11,"jsonb","YES",NULL
+"public","catalog_search","table_name",12,"text","NO",NULL
+"public","catalog_search","label",13,"text","YES",NULL
+"public","catalog_search","search_vector",14,"tsvector","YES",NULL
+"public","catalog_search","spotlight_show",15,"boolean","NO","true"
+"public","catalog_search_tags","catalog_search_uuid",1,"uuid","NO",NULL
+"public","catalog_search_tags","tag_uuid",2,"uuid","NO",NULL
+"public","catalog_search_tags","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","catalog_search_tags","created_by_user_uuid",4,"uuid","YES",NULL
+"public","catalog_search_tags","is_from_yaml",5,"boolean","NO","false"
+"public","chart_types","chart_type",1,"text","NO",NULL
+"public","dashboard_tabs","name",1,"character varying","NO",NULL
+"public","dashboard_tabs","uuid",2,"uuid","NO","'30104360-eec1-4344-bfd8-d1fcc5713c40'::uuid"
+"public","dashboard_tabs","order",3,"integer","YES",NULL
+"public","dashboard_tabs","dashboard_id",4,"integer","NO",NULL
+"public","dashboard_tabs","dashboard_version_id",5,"integer","NO",NULL
+"public","dashboard_tabs","created_at",6,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","dashboard_tabs","updated_at",7,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","dashboard_tile_charts","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_tile_charts","dashboard_tile_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tile_charts","saved_chart_id",3,"integer","YES",NULL
+"public","dashboard_tile_charts","hide_title",4,"boolean","NO","false"
+"public","dashboard_tile_charts","title",5,"character varying","YES",NULL
+"public","dashboard_tile_comments","comment_id",1,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tile_comments","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","dashboard_tile_comments","text",3,"text","YES",NULL
+"public","dashboard_tile_comments","reply_to",4,"uuid","YES",NULL
+"public","dashboard_tile_comments","dashboard_tile_uuid",5,"uuid","YES",NULL
+"public","dashboard_tile_comments","user_uuid",6,"uuid","YES",NULL
+"public","dashboard_tile_comments","resolved",7,"boolean","YES","false"
+"public","dashboard_tile_comments","mentions",8,"ARRAY","NO","'{}'::uuid[]"
+"public","dashboard_tile_comments","saved_chart_uuid",9,"uuid","YES",NULL
+"public","dashboard_tile_comments","text_html",10,"text","YES",NULL
+"public","dashboard_tile_looms","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_tile_looms","dashboard_tile_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tile_looms","title",3,"text","NO",NULL
+"public","dashboard_tile_looms","url",4,"text","NO",NULL
+"public","dashboard_tile_looms","hide_title",5,"boolean","NO","false"
+"public","dashboard_tile_markdowns","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_tile_markdowns","dashboard_tile_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tile_markdowns","title",3,"text","YES",NULL
+"public","dashboard_tile_markdowns","content",4,"text","YES",NULL
+"public","dashboard_tile_semantic_viewer_charts","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_tile_semantic_viewer_charts","dashboard_tile_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tile_semantic_viewer_charts","saved_semantic_viewer_chart_uuid",3,"uuid","YES",NULL
+"public","dashboard_tile_semantic_viewer_charts","title",4,"text","YES",NULL
+"public","dashboard_tile_semantic_viewer_charts","hide_title",5,"boolean","YES","false"
+"public","dashboard_tile_sql_charts","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_tile_sql_charts","dashboard_tile_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tile_sql_charts","saved_sql_uuid",3,"uuid","YES",NULL
+"public","dashboard_tile_sql_charts","title",4,"text","YES",NULL
+"public","dashboard_tile_sql_charts","hide_title",5,"boolean","YES","false"
+"public","dashboard_tile_types","dashboard_tile_type",1,"text","NO",NULL
+"public","dashboard_tiles","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_tiles","dashboard_tile_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_tiles","type",3,"text","NO",NULL
+"public","dashboard_tiles","x_offset",4,"real","NO",NULL
+"public","dashboard_tiles","y_offset",5,"real","NO",NULL
+"public","dashboard_tiles","height",6,"real","NO",NULL
+"public","dashboard_tiles","width",7,"real","NO",NULL
+"public","dashboard_tiles","tab_uuid",8,"uuid","YES",NULL
+"public","dashboard_versions","dashboard_version_id",1,"integer","NO",NULL
+"public","dashboard_versions","dashboard_id",2,"integer","NO",NULL
+"public","dashboard_versions","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","dashboard_versions","updated_by_user_uuid",4,"uuid","YES",NULL
+"public","dashboard_versions","config",5,"jsonb","YES",NULL
+"public","dashboard_views","dashboard_view_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","dashboard_views","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","dashboard_views","name",3,"text","NO",NULL
+"public","dashboard_views","dashboard_version_id",4,"integer","NO",NULL
+"public","dashboard_views","filters",5,"jsonb","NO",NULL
+"public","dashboards","dashboard_id",1,"integer","NO",NULL
+"public","dashboards","space_id",2,"integer","NO",NULL
+"public","dashboards","name",3,"text","NO",NULL
+"public","dashboards","description",4,"text","YES",NULL
+"public","dashboards","created_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","dashboards","dashboard_uuid",6,"uuid","NO","uuid_generate_v4()"
+"public","dashboards","search_vector",7,"tsvector","YES",NULL
+"public","dashboards","slug",8,"text","NO",NULL
+"public","dashboards","views_count",9,"integer","NO","0"
+"public","dashboards","first_viewed_at",10,"timestamp with time zone","YES",NULL
+"public","dbt_cloud_integrations","project_id",1,"integer","NO",NULL
+"public","dbt_cloud_integrations","service_token",2,"bytea","NO",NULL
+"public","dbt_cloud_integrations","metrics_job_id",3,"text","NO",NULL
+"public","dbt_connection_types","dbt_connection_type",1,"character varying","NO",NULL
+"public","download_files","nanoid",1,"text","NO",NULL
+"public","download_files","path",2,"text","NO",NULL
+"public","download_files","type",3,"text","NO",NULL
+"public","download_files","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","email_one_time_passcodes","email_id",1,"integer","NO",NULL
+"public","email_one_time_passcodes","passcode",2,"character varying","NO",NULL
+"public","email_one_time_passcodes","created_at",3,"timestamp with time zone","NO","CURRENT_TIMESTAMP"
+"public","email_one_time_passcodes","number_of_attempts",4,"integer","NO","0"
+"public","emails","email_id",1,"integer","NO",NULL
+"public","emails","user_id",2,"integer","NO",NULL
+"public","emails","created_at",3,"timestamp without time zone","NO","now()"
+"public","emails","email",4,"USER-DEFINED","NO",NULL
+"public","emails","is_primary",5,"boolean","NO","false"
+"public","emails","is_verified",6,"boolean","NO","false"
+"public","field_types","field_type",1,"text","NO",NULL
+"public","github_app_installations","github_app_installation_uuid",1,"character varying","NO","uuid_generate_v4()"
+"public","github_app_installations","organization_uuid",2,"uuid","NO",NULL
+"public","github_app_installations","encrypted_installation_id",3,"bytea","NO",NULL
+"public","github_app_installations","auth_token",4,"character varying","NO",NULL
+"public","github_app_installations","refresh_token",5,"character varying","NO",NULL
+"public","github_app_installations","created_at",6,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","github_app_installations","created_by_user_uuid",7,"uuid","YES",NULL
+"public","github_app_installations","updated_at",8,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","github_app_installations","updated_by_user_uuid",9,"uuid","YES",NULL
+"public","group_memberships","group_uuid",1,"uuid","NO",NULL
+"public","group_memberships","user_id",2,"integer","NO",NULL
+"public","group_memberships","organization_id",3,"integer","NO",NULL
+"public","group_memberships","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","group_user_attributes","group_uuid",1,"uuid","NO",NULL
+"public","group_user_attributes","user_attribute_uuid",2,"uuid","NO",NULL
+"public","group_user_attributes","value",3,"character varying","NO",NULL
+"public","groups","group_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","groups","name",2,"character varying","NO",NULL
+"public","groups","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","groups","organization_id",4,"integer","NO",NULL
+"public","groups","created_by_user_uuid",5,"uuid","YES",NULL
+"public","groups","updated_at",6,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","groups","updated_by_user_uuid",7,"uuid","YES",NULL
+"public","invite_links","invite_code_hash",1,"text","NO",NULL
+"public","invite_links","organization_id",2,"integer","NO",NULL
+"public","invite_links","created_at",3,"timestamp without time zone","NO","now()"
+"public","invite_links","expires_at",4,"timestamp without time zone","NO",NULL
+"public","invite_links","user_uuid",6,"uuid","NO",NULL
+"public","job_steps","step_id",1,"integer","NO",NULL
+"public","job_steps","job_uuid",2,"uuid","NO",NULL
+"public","job_steps","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","job_steps","updated_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","job_steps","step_status",5,"text","NO",NULL
+"public","job_steps","step_type",6,"text","NO",NULL
+"public","job_steps","step_error",7,"text","YES",NULL
+"public","job_steps","started_at",8,"timestamp without time zone","YES",NULL
+"public","job_steps","step_dbt_logs",9,"jsonb","YES",NULL
+"public","job_types","job_type",1,"character varying","NO",NULL
+"public","jobs","job_uuid",1,"uuid","NO",NULL
+"public","jobs","project_uuid",2,"uuid","YES",NULL
+"public","jobs","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","jobs","updated_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","jobs","job_status",5,"character varying","YES","'PENDING'::character varying"
+"public","jobs","job_type",6,"character varying","NO","'COMPILE_PROJECT'::character varying"
+"public","jobs","results",7,"jsonb","YES",NULL
+"public","jobs","user_uuid",8,"uuid","YES",NULL
+"public","knex_migrations","id",1,"integer","NO","nextval('knex_migrations_id_seq'::regclass)"
+"public","knex_migrations","name",2,"character varying","YES",NULL
+"public","knex_migrations","batch",3,"integer","YES",NULL
+"public","knex_migrations","migration_time",4,"timestamp with time zone","YES",NULL
+"public","knex_migrations_lock","index",1,"integer","NO","nextval('knex_migrations_lock_index_seq'::regclass)"
+"public","knex_migrations_lock","is_locked",2,"integer","YES",NULL
+"public","metrics_tree_edges","source_metric_catalog_search_uuid",1,"uuid","NO",NULL
+"public","metrics_tree_edges","target_metric_catalog_search_uuid",2,"uuid","NO",NULL
+"public","metrics_tree_edges","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","metrics_tree_edges","created_by_user_uuid",4,"uuid","YES",NULL
+"public","notifications","notification_id",1,"uuid","NO","uuid_generate_v4()"
+"public","notifications","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","notifications","user_uuid",3,"uuid","NO",NULL
+"public","notifications","resource_type",4,"character varying","NO",NULL
+"public","notifications","resource_uuid",5,"character varying","YES",NULL
+"public","notifications","viewed",6,"boolean","NO","false"
+"public","notifications","metadata",7,"jsonb","YES",NULL
+"public","notifications","message",8,"character varying","YES",NULL
+"public","notifications","url",9,"character varying","YES",NULL
+"public","onboarding","onboarding_id",1,"integer","NO",NULL
+"public","onboarding","organization_id",2,"integer","NO",NULL
+"public","onboarding","ranQuery_at",3,"timestamp without time zone","YES",NULL
+"public","onboarding","shownSuccess_at",4,"timestamp without time zone","YES",NULL
+"public","openid_identities","issuer",1,"text","NO",NULL
+"public","openid_identities","subject",2,"text","NO",NULL
+"public","openid_identities","user_id",3,"integer","NO",NULL
+"public","openid_identities","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","openid_identities","email",5,"character varying","NO",NULL
+"public","openid_identities","issuer_type",6,"character varying","NO",NULL
+"public","openid_identities","refresh_token",7,"text","YES",NULL
+"public","organization_allowed_email_domain_projects","uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","organization_allowed_email_domain_projects","allowed_email_domains_uuid",2,"uuid","NO",NULL
+"public","organization_allowed_email_domain_projects","project_uuid",3,"uuid","NO",NULL
+"public","organization_allowed_email_domain_projects","role",4,"text","NO","'viewer'::text"
+"public","organization_allowed_email_domains","allowed_email_domains_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","organization_allowed_email_domains","organization_uuid",2,"uuid","NO",NULL
+"public","organization_allowed_email_domains","email_domains",3,"ARRAY","NO",NULL
+"public","organization_allowed_email_domains","role",4,"text","NO","'member'::text"
+"public","organization_color_palettes","color_palette_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","organization_color_palettes","organization_uuid",2,"uuid","NO",NULL
+"public","organization_color_palettes","name",3,"text","NO",NULL
+"public","organization_color_palettes","colors",4,"ARRAY","NO",NULL
+"public","organization_color_palettes","created_at",5,"timestamp with time zone","NO","CURRENT_TIMESTAMP"
+"public","organization_member_user_attributes","user_id",1,"integer","NO",NULL
+"public","organization_member_user_attributes","organization_id",2,"integer","NO",NULL
+"public","organization_member_user_attributes","user_attribute_uuid",3,"uuid","NO",NULL
+"public","organization_member_user_attributes","value",4,"character varying","NO",NULL
+"public","organization_membership_roles","role",1,"text","NO",NULL
+"public","organization_memberships","organization_id",1,"integer","NO",NULL
+"public","organization_memberships","user_id",2,"integer","NO",NULL
+"public","organization_memberships","created_at",3,"timestamp without time zone","NO","now()"
+"public","organization_memberships","role",4,"text","NO","'admin'::text"
+"public","organizations","organization_id",1,"integer","NO",NULL
+"public","organizations","organization_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","organizations","organization_name",3,"text","NO",NULL
+"public","organizations","created_at",4,"timestamp without time zone","NO","now()"
+"public","organizations","chart_colors",6,"ARRAY","YES",NULL
+"public","organizations","default_project_uuid",7,"uuid","YES",NULL
+"public","organizations","color_palette_uuid",8,"uuid","YES",NULL
+"public","password_logins","user_id",1,"integer","NO",NULL
+"public","password_logins","password_hash",2,"text","NO",NULL
+"public","password_logins","created_at",3,"timestamp without time zone","NO","now()"
+"public","password_reset_links","code_hash",1,"text","NO",NULL
+"public","password_reset_links","email_id",2,"integer","NO",NULL
+"public","password_reset_links","created_at",3,"timestamp without time zone","NO","now()"
+"public","password_reset_links","expires_at",4,"timestamp without time zone","NO",NULL
+"public","personal_access_tokens","personal_access_token_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","personal_access_tokens","created_by_user_id",2,"integer","NO",NULL
+"public","personal_access_tokens","description",3,"text","NO",NULL
+"public","personal_access_tokens","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","personal_access_tokens","token_hash",5,"text","NO",NULL
+"public","personal_access_tokens","expires_at",6,"timestamp without time zone","YES",NULL
+"public","personal_access_tokens","rotated_at",7,"timestamp without time zone","YES",NULL
+"public","personal_access_tokens","last_used_at",8,"timestamp without time zone","YES",NULL
+"public","pinned_chart","pinned_item_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","pinned_chart","pinned_list_uuid",2,"uuid","NO",NULL
+"public","pinned_chart","saved_chart_uuid",3,"uuid","NO",NULL
+"public","pinned_chart","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","pinned_chart","order",5,"integer","NO","100"
+"public","pinned_dashboard","pinned_item_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","pinned_dashboard","pinned_list_uuid",2,"uuid","NO",NULL
+"public","pinned_dashboard","dashboard_uuid",3,"uuid","NO",NULL
+"public","pinned_dashboard","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","pinned_dashboard","order",5,"integer","NO","100"
+"public","pinned_list","pinned_list_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","pinned_list","project_uuid",2,"uuid","NO",NULL
+"public","pinned_list","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","pinned_space","pinned_item_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","pinned_space","pinned_list_uuid",2,"uuid","NO",NULL
+"public","pinned_space","space_uuid",3,"uuid","NO",NULL
+"public","pinned_space","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","pinned_space","order",5,"integer","NO","100"
+"public","preview_content","created_at",1,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","preview_content","project_uuid",2,"uuid","NO",NULL
+"public","preview_content","preview_project_uuid",3,"uuid","NO",NULL
+"public","preview_content","content_mapping",4,"jsonb","NO",NULL
+"public","project_group_access","project_uuid",1,"uuid","NO",NULL
+"public","project_group_access","group_uuid",2,"uuid","NO",NULL
+"public","project_group_access","role",3,"text","NO","'viewer'::text"
+"public","project_membership_roles","role",1,"text","NO",NULL
+"public","project_memberships","role",1,"text","NO","'viewer'::text"
+"public","project_memberships","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","project_memberships","user_id",3,"integer","NO",NULL
+"public","project_memberships","project_id",4,"integer","NO",NULL
+"public","project_type","project_type",1,"character varying","NO",NULL
+"public","project_user_warehouse_credentials_preference","user_uuid",1,"uuid","NO",NULL
+"public","project_user_warehouse_credentials_preference","project_uuid",2,"uuid","NO",NULL
+"public","project_user_warehouse_credentials_preference","user_warehouse_credentials_uuid",3,"uuid","NO",NULL
+"public","projects","project_id",1,"integer","NO",NULL
+"public","projects","project_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","projects","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","projects","name",4,"text","NO",NULL
+"public","projects","organization_id",5,"integer","NO",NULL
+"public","projects","dbt_connection_type",6,"character varying","YES",NULL
+"public","projects","dbt_connection",7,"bytea","YES",NULL
+"public","projects","table_selection_type",8,"character varying","NO","'ALL'::character varying"
+"public","projects","table_selection_value",9,"ARRAY","YES",NULL
+"public","projects","project_type",10,"character varying","NO","'DEFAULT'::character varying"
+"public","projects","copied_from_project_uuid",11,"uuid","YES",NULL
+"public","projects","dbt_version",12,"character varying","NO","'v1.4'::character varying"
+"public","projects","semantic_layer_connection",13,"bytea","YES",NULL
+"public","projects","scheduler_timezone",14,"character varying","NO","'UTC'::character varying"
+"public","projects","created_by_user_uuid",15,"uuid","YES",NULL
+"public","query_history","query_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","query_history","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","query_history","created_by_user_uuid",3,"uuid","YES",NULL
+"public","query_history","project_uuid",4,"uuid","YES",NULL
+"public","query_history","organization_uuid",5,"uuid","NO",NULL
+"public","query_history","warehouse_query_id",6,"character varying","YES",NULL
+"public","query_history","context",7,"character varying","NO",NULL
+"public","query_history","default_page_size",8,"integer","YES",NULL
+"public","query_history","compiled_sql",9,"text","NO",NULL
+"public","query_history","warehouse_execution_time_ms",10,"integer","YES",NULL
+"public","query_history","warehouse_query_metadata",11,"jsonb","YES",NULL
+"public","query_history","total_row_count",12,"integer","YES",NULL
+"public","query_history","metric_query",13,"jsonb","NO",NULL
+"public","query_history","fields",14,"jsonb","NO",NULL
+"public","query_history","request_parameters",15,"jsonb","NO",NULL
+"public","query_history","status",16,"character varying","NO","'ready'::character varying"
+"public","query_history","error",17,"text","YES",NULL
+"public","query_history","cache_key",18,"character varying","YES",NULL
+"public","query_history","pivot_configuration",19,"jsonb","YES",NULL
+"public","query_history","pivot_values_columns",20,"jsonb","YES",NULL
+"public","query_history","pivot_total_column_count",21,"integer","YES",NULL
+"public","results_cache","cache_key",1,"character varying","NO",NULL
+"public","results_cache","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","results_cache","project_uuid",3,"uuid","YES",NULL
+"public","results_cache","expires_at",4,"timestamp with time zone","NO",NULL
+"public","results_cache","total_row_count",5,"integer","YES",NULL
+"public","results_cache","updated_at",6,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","results_cache","status",7,"character varying","NO","'pending'::character varying"
+"public","saved_queries","saved_query_id",1,"integer","NO",NULL
+"public","saved_queries","saved_query_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","saved_queries","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","saved_queries","name",4,"text","NO",NULL
+"public","saved_queries","space_id",5,"integer","YES",NULL
+"public","saved_queries","description",6,"text","YES",NULL
+"public","saved_queries","last_version_chart_kind",7,"character varying","YES","'vertical_bar'::character varying"
+"public","saved_queries","last_version_updated_at",8,"timestamp without time zone","YES","CURRENT_TIMESTAMP"
+"public","saved_queries","last_version_updated_by_user_uuid",9,"uuid","YES",NULL
+"public","saved_queries","dashboard_uuid",10,"uuid","YES",NULL
+"public","saved_queries","search_vector",11,"tsvector","YES",NULL
+"public","saved_queries","slug",12,"text","NO",NULL
+"public","saved_queries","views_count",13,"integer","NO","0"
+"public","saved_queries","first_viewed_at",14,"timestamp with time zone","YES",NULL
+"public","saved_queries_version_additional_metrics","saved_queries_version_additional_metric_id",1,"integer","NO",NULL
+"public","saved_queries_version_additional_metrics","table",2,"text","NO",NULL
+"public","saved_queries_version_additional_metrics","name",3,"text","NO",NULL
+"public","saved_queries_version_additional_metrics","type",4,"text","NO",NULL
+"public","saved_queries_version_additional_metrics","label",5,"text","YES",NULL
+"public","saved_queries_version_additional_metrics","description",6,"text","YES",NULL
+"public","saved_queries_version_additional_metrics","sql",7,"text","YES",NULL
+"public","saved_queries_version_additional_metrics","hidden",8,"boolean","YES",NULL
+"public","saved_queries_version_additional_metrics","round",9,"integer","YES",NULL
+"public","saved_queries_version_additional_metrics","format",10,"character varying","YES",NULL
+"public","saved_queries_version_additional_metrics","saved_queries_version_id",11,"integer","NO",NULL
+"public","saved_queries_version_additional_metrics","compact",12,"character varying","YES",NULL
+"public","saved_queries_version_additional_metrics","filters",13,"jsonb","YES",NULL
+"public","saved_queries_version_additional_metrics","base_dimension_name",14,"character varying","YES",NULL
+"public","saved_queries_version_additional_metrics","uuid",15,"uuid","NO","uuid_generate_v4()"
+"public","saved_queries_version_additional_metrics","percentile",16,"integer","YES",NULL
+"public","saved_queries_version_additional_metrics","format_options",20,"jsonb","YES",NULL
+"public","saved_queries_version_custom_dimensions","saved_queries_version_custom_dimension_id",1,"integer","NO",NULL
+"public","saved_queries_version_custom_dimensions","id",2,"text","NO",NULL
+"public","saved_queries_version_custom_dimensions","name",3,"text","NO",NULL
+"public","saved_queries_version_custom_dimensions","dimension_id",4,"text","NO",NULL
+"public","saved_queries_version_custom_dimensions","table",5,"text","NO",NULL
+"public","saved_queries_version_custom_dimensions","order",6,"integer","NO",NULL
+"public","saved_queries_version_custom_dimensions","bin_type",7,"text","NO",NULL
+"public","saved_queries_version_custom_dimensions","bin_number",8,"integer","YES",NULL
+"public","saved_queries_version_custom_dimensions","saved_queries_version_id",9,"integer","NO",NULL
+"public","saved_queries_version_custom_dimensions","bin_width",10,"integer","YES",NULL
+"public","saved_queries_version_custom_dimensions","custom_range",11,"jsonb","YES",NULL
+"public","saved_queries_version_custom_sql_dimensions","saved_queries_version_id",1,"integer","NO",NULL
+"public","saved_queries_version_custom_sql_dimensions","id",2,"text","NO",NULL
+"public","saved_queries_version_custom_sql_dimensions","name",3,"text","NO",NULL
+"public","saved_queries_version_custom_sql_dimensions","table",4,"text","NO",NULL
+"public","saved_queries_version_custom_sql_dimensions","sql",5,"text","NO",NULL
+"public","saved_queries_version_custom_sql_dimensions","dimension_type",6,"text","NO",NULL
+"public","saved_queries_version_custom_sql_dimensions","order",7,"integer","NO",NULL
+"public","saved_queries_version_fields","saved_queries_version_field_id",1,"integer","NO",NULL
+"public","saved_queries_version_fields","name",2,"text","NO",NULL
+"public","saved_queries_version_fields","order",3,"integer","NO",NULL
+"public","saved_queries_version_fields","field_type",4,"text","NO",NULL
+"public","saved_queries_version_fields","saved_queries_version_id",5,"integer","NO",NULL
+"public","saved_queries_version_sorts","saved_queries_version_sort_id",1,"integer","NO",NULL
+"public","saved_queries_version_sorts","field_name",2,"text","NO",NULL
+"public","saved_queries_version_sorts","descending",3,"boolean","NO",NULL
+"public","saved_queries_version_sorts","order",4,"integer","NO",NULL
+"public","saved_queries_version_sorts","saved_queries_version_id",5,"integer","NO",NULL
+"public","saved_queries_version_table_calculations","saved_queries_version_table_calculation_id",1,"integer","NO",NULL
+"public","saved_queries_version_table_calculations","name",2,"text","NO",NULL
+"public","saved_queries_version_table_calculations","display_name",3,"text","NO",NULL
+"public","saved_queries_version_table_calculations","order",4,"integer","NO",NULL
+"public","saved_queries_version_table_calculations","calculation_raw_sql",5,"text","NO",NULL
+"public","saved_queries_version_table_calculations","saved_queries_version_id",6,"integer","NO",NULL
+"public","saved_queries_version_table_calculations","format",7,"jsonb","YES",NULL
+"public","saved_queries_version_table_calculations","type",8,"character varying","YES",NULL
+"public","saved_queries_versions","saved_queries_version_id",1,"integer","NO",NULL
+"public","saved_queries_versions","saved_queries_version_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","saved_queries_versions","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","saved_queries_versions","explore_name",6,"text","NO",NULL
+"public","saved_queries_versions","filters",7,"jsonb","NO",NULL
+"public","saved_queries_versions","row_limit",8,"integer","NO",NULL
+"public","saved_queries_versions","chart_type",9,"text","NO",NULL
+"public","saved_queries_versions","saved_query_id",10,"integer","NO",NULL
+"public","saved_queries_versions","chart_config",11,"jsonb","YES",NULL
+"public","saved_queries_versions","pivot_dimensions",12,"ARRAY","YES",NULL
+"public","saved_queries_versions","updated_by_user_uuid",13,"uuid","YES",NULL
+"public","saved_queries_versions","timezone",14,"character varying","YES",NULL
+"public","saved_queries_versions","metric_overrides",15,"jsonb","YES",NULL
+"public","saved_semantic_viewer_chart_versions","saved_semantic_viewer_chart_version_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","saved_semantic_viewer_chart_versions","saved_semantic_viewer_chart_uuid",2,"uuid","NO",NULL
+"public","saved_semantic_viewer_chart_versions","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","saved_semantic_viewer_chart_versions","semantic_layer_view",4,"character varying","YES",NULL
+"public","saved_semantic_viewer_chart_versions","semantic_layer_query",5,"jsonb","YES","'{}'::jsonb"
+"public","saved_semantic_viewer_chart_versions","config",6,"jsonb","YES","'{}'::jsonb"
+"public","saved_semantic_viewer_chart_versions","chart_kind",7,"character varying","YES","'vertical_bar'::character varying"
+"public","saved_semantic_viewer_chart_versions","created_by_user_uuid",8,"uuid","YES",NULL
+"public","saved_semantic_viewer_charts","saved_semantic_viewer_chart_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","saved_semantic_viewer_charts","project_uuid",2,"uuid","YES",NULL
+"public","saved_semantic_viewer_charts","space_uuid",3,"uuid","YES",NULL
+"public","saved_semantic_viewer_charts","dashboard_uuid",4,"uuid","YES",NULL
+"public","saved_semantic_viewer_charts","created_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","saved_semantic_viewer_charts","created_by_user_uuid",6,"uuid","YES",NULL
+"public","saved_semantic_viewer_charts","name",7,"text","NO",NULL
+"public","saved_semantic_viewer_charts","description",8,"text","YES",NULL
+"public","saved_semantic_viewer_charts","last_version_chart_kind",9,"character varying","YES","'vertical_bar'::character varying"
+"public","saved_semantic_viewer_charts","last_version_updated_at",10,"timestamp without time zone","YES","CURRENT_TIMESTAMP"
+"public","saved_semantic_viewer_charts","last_version_updated_by_user_uuid",11,"uuid","YES",NULL
+"public","saved_semantic_viewer_charts","slug",12,"text","YES",NULL
+"public","saved_semantic_viewer_charts","views_count",13,"integer","NO","0"
+"public","saved_semantic_viewer_charts","first_viewed_at",14,"timestamp with time zone","YES",NULL
+"public","saved_semantic_viewer_charts","last_viewed_at",15,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","saved_semantic_viewer_charts","search_vector",16,"tsvector","YES",NULL
+"public","saved_sql","saved_sql_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","saved_sql","project_uuid",2,"uuid","YES",NULL
+"public","saved_sql","space_uuid",3,"uuid","YES",NULL
+"public","saved_sql","dashboard_uuid",4,"uuid","YES",NULL
+"public","saved_sql","created_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","saved_sql","created_by_user_uuid",6,"uuid","YES",NULL
+"public","saved_sql","name",7,"text","NO",NULL
+"public","saved_sql","description",8,"text","YES",NULL
+"public","saved_sql","last_version_chart_kind",9,"character varying","YES","'vertical_bar'::character varying"
+"public","saved_sql","last_version_updated_at",10,"timestamp without time zone","YES","CURRENT_TIMESTAMP"
+"public","saved_sql","last_version_updated_by_user_uuid",11,"uuid","YES",NULL
+"public","saved_sql","slug",12,"text","YES",NULL
+"public","saved_sql","views_count",13,"integer","NO","0"
+"public","saved_sql","first_viewed_at",14,"timestamp with time zone","YES",NULL
+"public","saved_sql","search_vector",15,"tsvector","YES",NULL
+"public","saved_sql","limit",16,"integer","YES",NULL
+"public","saved_sql","last_viewed_at",17,"timestamp with time zone","YES","CURRENT_TIMESTAMP"
+"public","saved_sql_versions","saved_sql_version_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","saved_sql_versions","saved_sql_uuid",2,"uuid","NO",NULL
+"public","saved_sql_versions","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","saved_sql_versions","sql",4,"text","NO",NULL
+"public","saved_sql_versions","config",5,"jsonb","YES","'{}'::jsonb"
+"public","saved_sql_versions","chart_kind",6,"character varying","YES","'vertical_bar'::character varying"
+"public","saved_sql_versions","created_by_user_uuid",7,"uuid","YES",NULL
+"public","saved_sql_versions","limit",8,"integer","YES",NULL
+"public","scheduler","scheduler_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","scheduler","name",2,"character varying","NO",NULL
+"public","scheduler","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler","updated_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler","created_by",5,"uuid","NO",NULL
+"public","scheduler","cron",6,"character varying","NO",NULL
+"public","scheduler","saved_chart_uuid",7,"uuid","YES",NULL
+"public","scheduler","dashboard_uuid",8,"uuid","YES",NULL
+"public","scheduler","format",9,"character varying","NO","'image'::character varying"
+"public","scheduler","options",10,"jsonb","YES",NULL
+"public","scheduler","message",11,"text","YES",NULL
+"public","scheduler","filters",12,"jsonb","YES",NULL
+"public","scheduler","custom_viewport_width",13,"integer","YES",NULL
+"public","scheduler","thresholds",14,"jsonb","YES",NULL
+"public","scheduler","enabled",15,"boolean","YES","true"
+"public","scheduler","notification_frequency",16,"character varying","YES",NULL
+"public","scheduler","selected_tabs",17,"ARRAY","YES",NULL
+"public","scheduler","timezone",18,"character varying","YES",NULL
+"public","scheduler","include_links",19,"boolean","NO","true"
+"public","scheduler_email_target","scheduler_email_target_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","scheduler_email_target","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_email_target","updated_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_email_target","scheduler_uuid",4,"uuid","NO",NULL
+"public","scheduler_email_target","recipient",5,"character varying","NO",NULL
+"public","scheduler_log","job_id",1,"character varying","NO",NULL
+"public","scheduler_log","task",2,"character varying","NO",NULL
+"public","scheduler_log","job_group",3,"character varying","YES",NULL
+"public","scheduler_log","scheduler_uuid",4,"uuid","YES",NULL
+"public","scheduler_log","created_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_log","scheduled_time",6,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_log","status",7,"character varying","NO",NULL
+"public","scheduler_log","target",8,"text","YES",NULL
+"public","scheduler_log","target_type",9,"character varying","YES",NULL
+"public","scheduler_log","details",10,"jsonb","YES",NULL
+"public","scheduler_msteams_target","scheduler_msteams_target_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","scheduler_msteams_target","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_msteams_target","updated_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_msteams_target","scheduler_uuid",4,"uuid","NO",NULL
+"public","scheduler_msteams_target","webhook",5,"text","NO",NULL
+"public","scheduler_slack_target","scheduler_slack_target_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","scheduler_slack_target","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_slack_target","updated_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","scheduler_slack_target","scheduler_uuid",4,"uuid","NO",NULL
+"public","scheduler_slack_target","channel",5,"character varying","NO",NULL
+"public","sessions","sid",1,"character varying","NO",NULL
+"public","sessions","sess",2,"jsonb","NO",NULL
+"public","sessions","expired",3,"timestamp with time zone","NO",NULL
+"public","share","share_id",1,"integer","NO",NULL
+"public","share","nanoid",2,"text","NO",NULL
+"public","share","path",3,"text","NO",NULL
+"public","share","params",4,"text","NO",NULL
+"public","share","created_by_user_id",5,"integer","YES",NULL
+"public","share","organization_id",6,"integer","NO",NULL
+"public","share","created_at",7,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","slack_auth_tokens","slack_team_id",1,"character varying","NO",NULL
+"public","slack_auth_tokens","organization_id",2,"integer","NO",NULL
+"public","slack_auth_tokens","installation",3,"jsonb","YES",NULL
+"public","slack_auth_tokens","created_by_user_id",4,"integer","YES",NULL
+"public","slack_auth_tokens","notification_channel",5,"character varying","YES",NULL
+"public","slack_auth_tokens","app_profile_photo_url",6,"character varying","YES",NULL
+"public","space_group_access","group_uuid",1,"uuid","NO",NULL
+"public","space_group_access","space_uuid",2,"uuid","NO",NULL
+"public","space_group_access","space_role",3,"character varying","YES","'viewer'::character varying"
+"public","space_group_access","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","space_group_access","updated_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","space_user_access","user_uuid",1,"uuid","NO",NULL
+"public","space_user_access","space_uuid",2,"uuid","NO",NULL
+"public","space_user_access","space_role",3,"character varying","YES","'viewer'::character varying"
+"public","space_user_access","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","space_user_access","updated_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","spaces","space_id",1,"integer","NO",NULL
+"public","spaces","space_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","spaces","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","spaces","name",4,"text","NO",NULL
+"public","spaces","project_id",5,"integer","NO",NULL
+"public","spaces","is_private",6,"boolean","YES","false"
+"public","spaces","created_by_user_id",7,"integer","YES",NULL
+"public","spaces","search_vector",9,"tsvector","YES",NULL
+"public","spaces","slug",10,"text","NO",NULL
+"public","spaces","parent_space_uuid",11,"uuid","YES",NULL
+"public","spaces","path",12,"USER-DEFINED","NO","''::ltree"
+"public","spotlight_table_config","spotlight_table_config_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","spotlight_table_config","project_uuid",2,"uuid","NO",NULL
+"public","spotlight_table_config","column_config",3,"jsonb","YES",NULL
+"public","ssh_key_pairs","public_key",1,"text","NO",NULL
+"public","ssh_key_pairs","private_key",2,"bytea","NO",NULL
+"public","table_selection_type","table_selection_type",1,"character varying","NO",NULL
+"public","tags","tag_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","tags","project_uuid",2,"uuid","NO",NULL
+"public","tags","name",3,"text","NO",NULL
+"public","tags","color",4,"text","NO",NULL
+"public","tags","created_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","tags","created_by_user_uuid",6,"uuid","YES",NULL
+"public","tags","yaml_reference",7,"character varying","YES",NULL
+"public","user_attributes","user_attribute_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","user_attributes","name",2,"character varying","NO",NULL
+"public","user_attributes","description",3,"character varying","YES",NULL
+"public","user_attributes","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","user_attributes","organization_id",5,"integer","NO",NULL
+"public","user_attributes","attribute_default",6,"text","YES",NULL
+"public","user_warehouse_credentials","user_warehouse_credentials_uuid",1,"uuid","NO","uuid_generate_v4()"
+"public","user_warehouse_credentials","user_uuid",2,"uuid","NO",NULL
+"public","user_warehouse_credentials","name",3,"text","NO",NULL
+"public","user_warehouse_credentials","created_at",4,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","user_warehouse_credentials","updated_at",5,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","user_warehouse_credentials","warehouse_type",6,"character varying","NO",NULL
+"public","user_warehouse_credentials","encrypted_credentials",7,"bytea","NO",NULL
+"public","users","user_id",1,"integer","NO",NULL
+"public","users","user_uuid",2,"uuid","NO","uuid_generate_v4()"
+"public","users","first_name",3,"text","NO",NULL
+"public","users","last_name",4,"text","NO",NULL
+"public","users","created_at",5,"timestamp without time zone","NO","now()"
+"public","users","is_marketing_opted_in",6,"boolean","NO","false"
+"public","users","is_tracking_anonymized",7,"boolean","NO","false"
+"public","users","is_setup_complete",8,"boolean","NO","true"
+"public","users","is_active",9,"boolean","YES","true"
+"public","users","updated_at",10,"timestamp with time zone","NO","CURRENT_TIMESTAMP"
+"public","validations","validation_id",1,"integer","NO",NULL
+"public","validations","created_at",2,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","validations","saved_chart_uuid",3,"uuid","YES",NULL
+"public","validations","dashboard_uuid",4,"uuid","YES",NULL
+"public","validations","error",5,"character varying","NO",NULL
+"public","validations","project_uuid",6,"uuid","YES",NULL
+"public","validations","error_type",7,"character varying","NO",NULL
+"public","validations","chart_name",8,"character varying","YES",NULL
+"public","validations","field_name",9,"character varying","YES",NULL
+"public","validations","model_name",10,"character varying","YES",NULL
+"public","validations","job_id",12,"character varying","YES",NULL
+"public","validations","source",13,"character varying","YES",NULL
+"public","warehouse_credentials","warehouse_credentials_id",1,"integer","NO",NULL
+"public","warehouse_credentials","project_id",2,"integer","YES",NULL
+"public","warehouse_credentials","created_at",3,"timestamp without time zone","NO","CURRENT_TIMESTAMP"
+"public","warehouse_credentials","warehouse_type",4,"character varying","NO",NULL
+"public","warehouse_credentials","encrypted_credentials",5,"bytea","NO",NULL
+"public","warehouse_credentials_available_tables","database",1,"text","NO",NULL
+"public","warehouse_credentials_available_tables","schema",2,"text","NO",NULL
+"public","warehouse_credentials_available_tables","table",3,"text","NO",NULL
+"public","warehouse_credentials_available_tables","project_warehouse_credentials_id",4,"integer","YES",NULL
+"public","warehouse_credentials_available_tables","user_warehouse_credentials_uuid",5,"uuid","YES",NULL
+"public","warehouse_credentials_available_tables","partition_column",6,"jsonb","YES",NULL
+"public","warehouse_types","warehouse_type",1,"character varying","NO",NULL
