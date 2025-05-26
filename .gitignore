@@ -19,9 +19,7 @@
 /packages/cli/logs
 /packages/warehouses/logs
 
-# development
-lightdash_dev.yml
-docker/docker-compose.dev.yml
+
 
 
 # production
