@@ -106,8 +106,14 @@ export default defineConfig({
     server: {
         port: 3000,
         host: true,
+        watch: {
+            usePolling: true,
+            interval: 1000,
+        },
         hmr: {
             overlay: true,
+            clientPort: 3000,
+            host: '0.0.0.0',
         },
         allowedHosts: [
             'lightdash-dev', // for local development with docker
