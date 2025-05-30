@@ -778,11 +778,12 @@ export class ProjectService extends BaseService {
         method: RequestMethod,
     ): Promise<ApiCreateProjectResults> {
         if (!isUserWithOrg(user)) {
-            throw new ForbiddenError('User is not part of an organization');
+            throw new ForbiddenError(
+                'User is not part of an organization - createWithoutCompile',
+            );
         }
 
         await this.validateProjectCreationPermissions(user, data);
-
         const newProjectData = data;
         if (
             newProjectData.type === ProjectType.PREVIEW &&
@@ -794,7 +795,6 @@ export class ProjectService extends BaseService {
                     data.upstreamProjectUuid,
                 );
         }
-
         const createProject = await this._resolveWarehouseClientSshKeys(
             newProjectData,
         );
@@ -803,7 +803,6 @@ export class ProjectService extends BaseService {
             user.organizationUuid,
             createProject,
         );
-
         // Do not give this user admin permissions on this new project,
         // as it could be an interactive viewer creating a preview
         // and we don't want to allow users to acces sql runner or leak admin data
