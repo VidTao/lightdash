@@ -5,6 +5,9 @@ import {
     CreateColorPalette,
     CreateGroup,
     CreateOrganization,
+    CreateProject,
+    DbtProjectType,
+    DbtVersionOptionLatest,
     ForbiddenError,
     getOrganizationNameSchema,
     Group,
@@ -24,13 +27,17 @@ import {
     OrganizationMemberRole,
     OrganizationProject,
     ParameterError,
+    ProjectType,
+    RequestMethod,
     SessionUser,
     UpdateAllowedEmailDomains,
     UpdateColorPalette,
     UpdateOrganization,
     validateOrganizationEmailDomains,
     validateOrganizationNameOrThrow,
+    WarehouseTypes,
 } from '@lightdash/common';
+import fs from 'fs';
 import { groupBy } from 'lodash';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../../config/parseConfig';
@@ -43,6 +50,7 @@ import { OrganizationModel } from '../../models/OrganizationModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { UserModel } from '../../models/UserModel';
 import { BaseService } from '../BaseService';
+import { ServiceRepository } from '../ServiceRepository';
 
 type OrganizationServiceArguments = {
     lightdashConfig: LightdashConfig;
@@ -53,30 +61,22 @@ type OrganizationServiceArguments = {
     inviteLinkModel: InviteLinkModel;
     organizationMemberProfileModel: OrganizationMemberProfileModel;
     userModel: UserModel;
-
     groupsModel: GroupsModel;
     organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
+    services: ServiceRepository;
 };
 
 export class OrganizationService extends BaseService {
     private readonly lightdashConfig: LightdashConfig;
-
+    private readonly services: ServiceRepository;
     private readonly analytics: LightdashAnalytics;
-
     private readonly organizationModel: OrganizationModel;
-
     private readonly projectModel: ProjectModel;
-
     private readonly onboardingModel: OnboardingModel;
-
     private readonly inviteLinkModel: InviteLinkModel;
-
     private readonly organizationMemberProfileModel: OrganizationMemberProfileModel;
-
     private readonly userModel: UserModel;
-
     private readonly organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
-
     private readonly groupsModel: GroupsModel;
 
     constructor({
@@ -90,9 +90,11 @@ export class OrganizationService extends BaseService {
         userModel,
         groupsModel,
         organizationAllowedEmailDomainsModel,
+        services,
     }: OrganizationServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
+        this.services = services;
         this.analytics = analytics;
         this.organizationModel = organizationModel;
         this.projectModel = projectModel;
@@ -541,6 +543,7 @@ export class OrganizationService extends BaseService {
             OrganizationMemberRole.ADMIN,
             undefined,
         );
+        user = await this.userModel.findSessionUserByUUID(user.userUuid);
         await this.analytics.track({
             userId: user.userUuid,
             event: 'user.joined_organization',
@@ -550,6 +553,45 @@ export class OrganizationService extends BaseService {
                 projectIds: [],
             },
         });
+
+        // Automatically create first project
+        const projectService = this.services.getProjectService();
+        const projectData: CreateProject = {
+            name: 'My first project',
+            type: ProjectType.DEFAULT,
+            dbtConnection: {
+                type: DbtProjectType.DBT,
+                target: 'dev',
+                project_dir: '/usr/app/dbt/bratrax',
+                profiles_dir: '/usr/app/dbt/bratrax',
+            },
+            warehouseConnection: {
+                type: WarehouseTypes.BIGQUERY,
+                project: 'bratrax',
+                dataset: 'production_tables',
+                keyfileContents: JSON.parse(
+                    fs.readFileSync(
+                        '/usr/app/dbt/bratrax/bratrax-78c5b6786fc2.json',
+                        'utf8',
+                    ),
+                ),
+                priority: 'interactive',
+                timeoutSeconds: 50,
+                retries: 1,
+                location: 'US',
+                threads: 1,
+                maximumBytesBilled: 1000000000,
+            },
+            dbtVersion: DbtVersionOptionLatest.LATEST,
+        };
+        await projectService.createWithoutCompile(
+            {
+                ...user,
+                organizationUuid: org.organizationUuid,
+            },
+            projectData,
+            RequestMethod.WEB_APP,
+        );
     }
 
     async addGroupToOrganization(
