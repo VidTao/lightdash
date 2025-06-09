@@ -1,6 +1,7 @@
 import { Stack } from '@mantine/core';
 import { type FC } from 'react';
 import { Navigate, Outlet, useParams, type RouteObject } from 'react-router';
+import TrackingPlan from './bratrax-implementation/tracking-plan/TrackingPlan';
 import AppRoute from './components/AppRoute';
 import ForbiddenPanel from './components/ForbiddenPanel';
 import JobDetailsDrawer from './components/JobDetailsDrawer';
@@ -413,6 +414,17 @@ const APP_ROUTES: RouteObject[] = [
                                 <NavBar />
                                 <TrackPage name={PageName.HOME}>
                                     <Home />
+                                </TrackPage>
+                            </>
+                        ),
+                    },
+                    {
+                        path: '/projects/:projectUuid/onboarding',
+                        element: (
+                            <>
+                                <NavBar />
+                                <TrackPage name={PageName.HOME}>
+                                    <TrackingPlan />
                                 </TrackPage>
                             </>
                         ),

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
-import { useAuth } from '../context/AuthContext';
-import { useLoading } from '../context/LoadingContext';
 import { formatDate } from '../helpers/date';
 import { useAdConnections } from '../hooks/useAdConnections';
 import { usePlatformConnection } from '../hooks/usePlatformConnection';
@@ -12,10 +11,9 @@ import { AdPlatformAccountInfo } from '../models/interfaces';
 import { apiService } from '../services/api';
 
 const FacebookAdsConnector = () => {
-    const { fetchApplicationUser } = useAuth();
+    const { user, health } = useApp();
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(true);
-    const { setIsLoading: setIsLoadingState } = useLoading();
     const [accountsData, setAccountsData] = useState([]);
     const [isAccountsDataLoading, setIsAccountsDataLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,7 +35,6 @@ const FacebookAdsConnector = () => {
     useEffect(() => {
         if (selectedAccounts.length > 0) {
             const fetch = async () => {
-                setIsLoadingState(true);
                 try {
                     console.log(selectedAccounts);
                     await apiService.generateFBTokensDataAndSaveinBQ(
@@ -45,9 +42,8 @@ const FacebookAdsConnector = () => {
                         userInfo.email,
                         selectedAccounts,
                     );
-                    fetchApplicationUser();
+                    // fetchApplicationUser();
                     setIsLoading(false);
-                    setIsLoadingState(false);
                 } catch (error) {
                     console.error(error);
                 }

@@ -1,107 +1,149 @@
+import { Box, Group, Paper, Text, ThemeIcon } from '@mantine/core';
+import {
+    IconArrowRight,
+    IconCheck,
+    IconInfoCircle,
+    IconLoader,
+} from '@tabler/icons-react';
+
 interface PlatformCardProps {
-  handleLogin: () => void;
-  isLoading: boolean;
-  platformName: string;
-  logoPath: string;
-  description: string;
-  isConnected?: boolean;
-  handleNavigate?: () => void;
-  connectedOn?: string;
+    handleLogin: () => void;
+    isLoading: boolean;
+    platformName: string;
+    logoPath: string;
+    description: string;
+    isConnected?: boolean;
+    handleNavigate?: () => void;
+    connectedOn?: string;
 }
 
 const PlatformCard = ({
-  handleLogin,
-  isLoading,
-  platformName,
-  logoPath,
-  description,
-  isConnected,
-  handleNavigate,
-  connectedOn,
+    handleLogin,
+    isLoading,
+    platformName,
+    logoPath,
+    description,
+    isConnected,
+    handleNavigate,
+    connectedOn,
 }: PlatformCardProps) => {
+    return (
+        <Paper
+            onClick={isConnected ? handleNavigate : handleLogin}
+            shadow="sm"
+            p="xl"
+            radius="md"
+            sx={(theme) => ({
+                width: 280,
+                cursor: 'pointer',
+                position: 'relative',
+                transition: 'all 200ms ease',
+                border: `1px solid ${
+                    isConnected ? theme.colors.green[2] : theme.colors.gray[2]
+                }`,
+                opacity: isLoading ? 0.7 : 1,
 
-  return (
-    <div
-      onClick={isConnected ? handleNavigate : handleLogin}
-      className={`
-      relative overflow-hidden
-      w-64 p-6 rounded-xl
-      cursor-pointer
-      bg-white shadow-lg
-      hover:shadow-xl hover:-translate-y-1
-      transform transition-all duration-300
-      border ${isConnected ? 'border-green-200' : 'border-gray-100'}
-      ${isLoading ? "opacity-70" : ""}
-    `}
-    >
-      {/* Platform Icon */}
-      <div className="h-[35px] mb-4 flex items-center">
-        <img
-          className="h-full w-auto object-contain"
-          src={`/images/${logoPath}`}
-          alt={platformName}
-        />
-      </div>
+                '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: theme.shadows.md,
+                    backgroundColor: isConnected
+                        ? theme.fn.rgba(theme.colors.green[0], 0.5)
+                        : theme.fn.rgba(theme.colors.blue[0], 0.5),
+                },
+            })}
+        >
+            <Box mb="md" h={35}>
+                <img
+                    style={{
+                        height: '100%',
+                        width: 'auto',
+                        objectFit: 'contain',
+                    }}
+                    src={`/images/${logoPath}`}
+                    alt={platformName}
+                />
+            </Box>
 
-      {/* Platform Name */}
-      <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-lg font-semibold text-gray-800">
-          {platformName}
-        </h3>
-        {isConnected && (
-          <span className="text-green-500">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-          </span>
-        )}
-      </div>
+            <Group mb="xs" position="apart">
+                <Text weight={600} size="lg" color="gray.8">
+                    {platformName}
+                </Text>
+                {isConnected && (
+                    <ThemeIcon
+                        color="green"
+                        variant="light"
+                        size="md"
+                        radius="xl"
+                    >
+                        <IconCheck size={16} />
+                    </ThemeIcon>
+                )}
+            </Group>
 
-      {/* Description */}
-      <div className="text-sm text-gray-600 mb-4 flex flex-col gap-2">
-        {isConnected ? (
-          <>
-            <span className="mb-1">Connected on: <span className="font-semibold">{connectedOn}</span></span>
-            <div className="flex items-center gap-2">
-              <button className="px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors flex items-center gap-1">
-                See connection details
-                <svg className="w-4 h-4 text-green-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </button>
-            </div>
-          </>
-        ) : description}
-      </div>
+            <Box mb="md">
+                {isConnected ? (
+                    <Box>
+                        <Text size="sm" color="gray.6" mb={8}>
+                            Connected on:{' '}
+                            <Text span weight={600}>
+                                {connectedOn}
+                            </Text>
+                        </Text>
+                        <Group
+                            spacing="xs"
+                            sx={(theme) => ({
+                                backgroundColor: theme.colors.green[0],
+                                padding: '6px 12px',
+                                borderRadius: theme.radius.xl,
+                                display: 'inline-flex',
+                                cursor: 'pointer',
+                                '&:hover': {
+                                    backgroundColor: theme.colors.green[1],
+                                },
+                            })}
+                        >
+                            <Text size="sm" color="green.7">
+                                See connection details
+                            </Text>
+                            <IconInfoCircle size={16} color="green" />
+                        </Group>
+                    </Box>
+                ) : (
+                    <Text size="sm" color="gray.6">
+                        {description}
+                    </Text>
+                )}
+            </Box>
 
-      {/* Connect Button */}
-      <div className={`flex items-center font-medium ${isConnected ? 'text-green-500' : 'text-blue-500'}`}>
-        {isLoading ? "Connecting..." : (isConnected ? "Connected" : "Connect Account")}
-        {!isConnected && (
-          <svg
-            className={`ml-2 w-4 h-4 ${isLoading ? "animate-spin" : "animate-bounce"}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d={
-                isLoading
-                  ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  : "M13 7l5 5m0 0l-5 5m5-5H6"
-              }
-            />
-          </svg>
-        )}
-      </div>
-
-      {/* Hover Effect Overlay */}
-      <div className={`absolute inset-0 ${isConnected ? 'bg-green-50' : 'bg-blue-50'} opacity-0 hover:opacity-10 transition-opacity duration-300`} />
-    </div>
-  );
+            <Group
+                spacing="xs"
+                sx={(theme) => ({
+                    color: isConnected
+                        ? theme.colors.green[6]
+                        : theme.colors.blue[6],
+                    fontWeight: 500,
+                })}
+            >
+                <Text size="sm">
+                    {isLoading
+                        ? 'Connecting...'
+                        : isConnected
+                        ? 'Connected'
+                        : 'Connect Account'}
+                </Text>
+                {!isConnected &&
+                    (isLoading ? (
+                        <IconLoader size={16} className="animate-spin" />
+                    ) : (
+                        <IconArrowRight
+                            size={16}
+                            className="animate-bounce"
+                            style={{ animationDuration: '2s' }}
+                        />
+                    ))}
+            </Group>
+        </Paper>
+    );
 };
 
 export default PlatformCard;

@@ -1,169 +1,186 @@
-import React, { useState } from "react";
-import { Modal, Form, Input, Button, Typography, Divider, Alert } from "antd";
-import { UserOutlined, LockOutlined, LoginOutlined } from "@ant-design/icons";
-// import "./OutbrainLoginModal.css"; // We'll create this CSS file next
-
-const { Text, Title } = Typography;
+import {
+    Alert,
+    Button,
+    Divider,
+    Group,
+    Modal,
+    PasswordInput,
+    Stack,
+    Text,
+    TextInput,
+    Title,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { IconAlertCircle, IconLock, IconMail } from '@tabler/icons-react';
+import React, { useState } from 'react';
 
 interface OutbrainLoginModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (encodedAuth: string) => Promise<void>;
-  isLoading: boolean;
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (encodedAuth: string) => Promise<void>;
+    isLoading: boolean;
 }
 
-const OutbrainLoginModal: React.FC<OutbrainLoginModalProps> = ({ isOpen, onClose, onSubmit, isLoading }) => {
-  const [form] = Form.useForm();
-  const [authError, setAuthError] = useState<string | null>(null);
+interface FormValues {
+    username: string;
+    password: string;
+}
 
-  const handleSubmit = async () => {
-    try {
-      setAuthError(null);
-      const values = await form.validateFields();
-      const { username, password } = values;
+const OutbrainLoginModal: React.FC<OutbrainLoginModalProps> = ({
+    isOpen,
+    onClose,
+    onSubmit,
+    isLoading,
+}) => {
+    const [authError, setAuthError] = useState<string | null>(null);
 
-      // Create base64 encoded auth string
-      const authString = `${username}:${password}`;
-      const encodedAuth = btoa(authString);
+    const form = useForm<FormValues>({
+        initialValues: {
+            username: '',
+            password: '',
+        },
+        validate: {
+            username: (value) =>
+                /^\S+@\S+$/.test(value) ? null : 'Invalid email address',
+            password: (value) =>
+                value.length > 0 ? null : 'Password is required',
+        },
+    });
 
-      await onSubmit(encodedAuth);
+    const handleSubmit = async (values: FormValues) => {
+        try {
+            setAuthError(null);
+            const authString = `${values.username}:${values.password}`;
+            const encodedAuth = btoa(authString);
+            await onSubmit(encodedAuth);
+            form.reset();
+        } catch (error) {
+            console.error('Validation failed:', error);
+        }
+    };
 
-      // Reset form after successful submission
-      form.resetFields();
-    } catch (error) {
-      console.error("Validation failed:", error);
-    }
-  };
+    const handleCancel = () => {
+        setAuthError(null);
+        form.reset();
+        onClose();
+    };
 
-  const handleCancel = () => {
-    setAuthError(null);
-    form.resetFields();
-    onClose();
-  };
-
-  const modalTitleStyle = {
-    color: "white",
-    fontWeight: 600,
-    fontSize: "18px",
-  };
-
-  return (
-    <Modal
-      title="Connect to Outbrain"
-      open={isOpen}
-      onCancel={handleCancel}
-      width={480}
-      centered
-      footer={null}
-      maskClosable={false}
-      className="outbrain-login-modal"
-      modalRender={(node) => {
-        return <div className="custom-outbrain-modal">{node}</div>;
-      }}
-    >
-      <div className="logo-container">
-        <img src="/public/images/outbrain-logo.png" alt="Outbrain Logo" className="outbrain-logo" />
-      </div>
-
-      <Title level={4} style={{ textAlign: "center", marginBottom: 20 }}>
-        Sign in to your Outbrain account
-      </Title>
-
-      <Text style={{ display: "block", marginBottom: 24, textAlign: "center" }}>
-        Enter your Outbrain credentials to connect and access your campaign data
-      </Text>
-
-      {authError && (
-        <Alert
-          message="Authentication Error"
-          description={authError}
-          type="error"
-          showIcon
-          style={{ marginBottom: 20 }}
-          closable
-          onClose={() => setAuthError(null)}
-        />
-      )}
-
-      <Form
-        form={form}
-        layout="vertical"
-        name="outbrain_login"
-        initialValues={{ remember: true }}
-        requiredMark={false}
-        className="outbrain-form"
-      >
-        <Form.Item
-          name="username"
-          label="Email Address"
-          rules={[
-            { required: true, message: "Please enter your Outbrain email" },
-            { type: "email", message: "Please enter a valid email address" },
-          ]}
+    return (
+        <Modal
+            opened={isOpen}
+            onClose={handleCancel}
+            title="Connect to Outbrain"
+            size="lg"
+            centered
+            radius="md"
+            styles={(theme) => ({
+                title: {
+                    fontWeight: 600,
+                    fontSize: theme.fontSizes.xl,
+                },
+            })}
         >
-          <Input
-            prefix={<UserOutlined style={{ color: "#f26522" }} />}
-            placeholder="Enter your email"
-            size="large"
-            autoComplete="email"
-            className="outbrain-input"
-          />
-        </Form.Item>
+            <Stack spacing="lg">
+                <div style={{ textAlign: 'center' }}>
+                    <img
+                        src="/images/outbrain-logo.png"
+                        alt="Outbrain Logo"
+                        style={{ maxHeight: 40, marginBottom: 20 }}
+                    />
+                </div>
 
-        <Form.Item name="password" label="Password" rules={[{ required: true, message: "Please enter your password" }]}>
-          <Input.Password
-            prefix={<LockOutlined style={{ color: "#f26522" }} />}
-            placeholder="Enter your password"
-            size="large"
-            autoComplete="current-password"
-            className="outbrain-input"
-          />
-        </Form.Item>
+                <Title order={4} align="center">
+                    Sign in to your Outbrain account
+                </Title>
 
-        <Form.Item style={{ marginBottom: 12, marginTop: 24 }}>
-          <Button
-            type="primary"
-            block
-            size="large"
-            loading={isLoading}
-            onClick={handleSubmit}
-            icon={<LoginOutlined />}
-            className="outbrain-button outbrain-primary-button"
-          >
-            Connect to Outbrain
-          </Button>
-        </Form.Item>
+                <Text align="center" color="dimmed" size="sm">
+                    Enter your Outbrain credentials to connect and access your
+                    campaign data
+                </Text>
 
-        <Form.Item>
-          <Button block size="large" onClick={handleCancel} className="outbrain-button">
-            Cancel
-          </Button>
-        </Form.Item>
-      </Form>
+                {authError && (
+                    <Alert
+                        icon={<IconAlertCircle size={16} />}
+                        title="Authentication Error"
+                        color="red"
+                        variant="filled"
+                        onClose={() => setAuthError(null)}
+                        withCloseButton
+                    >
+                        {authError}
+                    </Alert>
+                )}
 
-      <Divider plain style={{ margin: "16px 0" }}>
-        <Text type="secondary">Secure Connection</Text>
-      </Divider>
+                <form onSubmit={form.onSubmit(handleSubmit)}>
+                    <Stack spacing="md">
+                        <TextInput
+                            label="Email Address"
+                            placeholder="Enter your email"
+                            icon={<IconMail size={16} />}
+                            required
+                            {...form.getInputProps('username')}
+                        />
 
-      <div style={{ padding: "0 12px" }}>
-        <Text type="secondary" style={{ fontSize: "12px", display: "block", textAlign: "center" }}>
-          Your credentials are securely used for authentication only and are not stored. This connection will allow
-          access to your Outbrain campaign data.
-        </Text>
-      </div>
+                        <PasswordInput
+                            label="Password"
+                            placeholder="Enter your password"
+                            icon={<IconLock size={16} />}
+                            required
+                            {...form.getInputProps('password')}
+                        />
 
-      <div style={{ marginTop: 16, textAlign: "center" }}>
-        <a
-          href="https://www.outbrain.com/help/advertisers/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ fontSize: "13px", color: "#f26522" }}
-        >
-          Need help with your Outbrain account?
-        </a>
-      </div>
-    </Modal>
-  );
+                        <Group spacing="sm" grow mt="xl">
+                            <Button
+                                variant="default"
+                                onClick={handleCancel}
+                                radius="sm"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                loading={isLoading}
+                                radius="sm"
+                                sx={(theme) => ({
+                                    backgroundColor: 'rgb(114, 98, 255)',
+                                    '&:hover': {
+                                        backgroundColor: 'rgb(103, 88, 230)',
+                                    },
+                                })}
+                            >
+                                Connect to Outbrain
+                            </Button>
+                        </Group>
+                    </Stack>
+                </form>
+
+                <Divider label="Secure Connection" labelPosition="center" />
+
+                <Text size="xs" color="dimmed" align="center">
+                    Your credentials are securely used for authentication only
+                    and are not stored. This connection will allow access to
+                    your Outbrain campaign data.
+                </Text>
+
+                <Text
+                    component="a"
+                    href="https://www.outbrain.com/help/advertisers/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="sm"
+                    align="center"
+                    sx={(theme) => ({
+                        color: 'rgb(114, 98, 255)',
+                        '&:hover': {
+                            textDecoration: 'underline',
+                        },
+                    })}
+                >
+                    Need help with your Outbrain account?
+                </Text>
+            </Stack>
+        </Modal>
+    );
 };
 
 export default OutbrainLoginModal;
