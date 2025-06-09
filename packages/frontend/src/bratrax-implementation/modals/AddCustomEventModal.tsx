@@ -1,9 +1,15 @@
-import { Modal, Form, Input, Select } from 'antd';
-import type { SelectProps } from 'antd';
-import { Property } from '../../pages/tracking-plan/types';
-
-const { TextArea } = Input;
-
+import {
+    Button,
+    Group,
+    Modal,
+    MultiSelect,
+    Stack,
+    TextInput,
+    Textarea,
+} from '@mantine/core';
+import { useForm, zodResolver } from '@mantine/form';
+import { z } from 'zod';
+import { Property } from '../tracking-plan/types';
 
 interface CustomEventFormData {
     name: string;
@@ -12,79 +18,90 @@ interface CustomEventFormData {
 }
 
 interface AddCustomEventModalProps {
-    properties: Property[]
+    properties: Property[];
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (values: CustomEventFormData) => void;
 }
 
-const AddCustomEventModal = ({ isOpen, onClose, onSubmit, properties }: AddCustomEventModalProps) => {
-    const [form] = Form.useForm();
-    const handleSubmit = async () => {
-        try {
-            const values = await form.validateFields();
-            onSubmit(values);
-            form.resetFields();
-            onClose();
-        } catch (error) {
-            console.error('Validation failed:', error);
-        }
+const schema = z.object({
+    name: z
+        .string()
+        .min(1, 'Event name is required')
+        .regex(
+            /^[a-zA-Z0-9_]+$/,
+            'Only alphanumeric characters and underscores are allowed',
+        ),
+    description: z.string().min(1, 'Description is required'),
+    properties: z
+        .array(z.string())
+        .min(1, 'Please select at least one property'),
+});
+
+const AddCustomEventModal = ({
+    isOpen,
+    onClose,
+    onSubmit,
+    properties,
+}: AddCustomEventModalProps) => {
+    const form = useForm({
+        initialValues: {
+            name: '',
+            description: '',
+            properties: [] as string[],
+        },
+        validate: zodResolver(schema),
+    });
+
+    const handleSubmit = (values: CustomEventFormData) => {
+        onSubmit(values);
+        form.reset();
+        onClose();
     };
-    const propertyOptions = properties.map(prop => ({
+
+    const propertyOptions = properties.map((prop) => ({
         label: prop.name,
-        value: prop.id, // Using property_id as the value
-        description: prop.description, // Optional: can be used for tooltips or custom rendering
+        value: prop.id,
+        description: prop.description,
     }));
 
     return (
         <Modal
+            opened={isOpen}
+            onClose={onClose}
             title="Add Custom Event"
-            open={isOpen}
-            onCancel={onClose}
-            onOk={handleSubmit}
-            okText="Create Event"
-            width={600}
+            size="lg"
         >
-            <Form
-                form={form}
-                layout="vertical"
-                className="mt-4"
-            >
-                <Form.Item
-                    name="name"
-                    label="Event Name"
-                    rules={[
-                        { required: true, message: 'Please enter event name' },
-                        { pattern: /^[a-zA-Z0-9_]+$/, message: 'Only alphanumeric characters and underscores are allowed' }
-                    ]}
-                >
-                    <Input placeholder="Enter event name" />
-                </Form.Item>
+            <form onSubmit={form.onSubmit(handleSubmit)}>
+                <Stack spacing="md">
+                    <TextInput
+                        label="Event Name"
+                        placeholder="Enter event name"
+                        {...form.getInputProps('name')}
+                    />
 
-                <Form.Item
-                    name="description"
-                    label="Description"
-                    rules={[{ required: true, message: 'Please enter event description' }]}
-                >
-                    <TextArea
-                        rows={4}
+                    <Textarea
+                        label="Description"
                         placeholder="Describe the purpose of this event"
+                        minRows={4}
+                        {...form.getInputProps('description')}
                     />
-                </Form.Item>
 
-                <Form.Item
-                    name="properties"
-                    label="Properties"
-                    rules={[{ required: true, message: 'Please select at least one property' }]}
-                >
-                    <Select
-                        mode="multiple"
+                    <MultiSelect
+                        label="Properties"
                         placeholder="Select properties"
-                        options={propertyOptions}
-                        className="w-full"
+                        data={propertyOptions}
+                        {...form.getInputProps('properties')}
                     />
-                </Form.Item>
-            </Form>
+
+                    <Group position="right" mt="md">
+                        <Button variant="subtle" onClick={onClose}>
+                            Cancel
+                        </Button>
+                        <Button type="submit">Create Event</Button>
+                    </Group>
+                </Stack>
+            </form>
         </Modal>
     );
 };

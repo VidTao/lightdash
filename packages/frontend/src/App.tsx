@@ -22,6 +22,7 @@ import Routes from './Routes';
 
 // Mantine v8 styles
 import '@mantine-8/core/styles.css';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 // const isMobile =
 //     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -29,7 +30,8 @@ import '@mantine-8/core/styles.css';
 //     ) || window.innerWidth < 768;
 
 const isMobile = window.innerWidth < 768;
-
+const googleClientId =
+    '452833261444-1amauhc3bsundipofc2qvf3sonikknpa.apps.googleusercontent.com'; //this needs to go to env file
 const isMinimalPage = window.location.pathname.startsWith('/minimal');
 
 // Sentry wrapper for createBrowserRouter
@@ -50,9 +52,13 @@ const router = sentryCreateBrowserRouter([
                             >
                                 <AbilityProvider>
                                     <ActiveJobProvider>
-                                        <ChartColorMappingContextProvider>
-                                            <Outlet />
-                                        </ChartColorMappingContextProvider>
+                                        <GoogleOAuthProvider
+                                            clientId={googleClientId}
+                                        >
+                                            <ChartColorMappingContextProvider>
+                                                <Outlet />
+                                            </ChartColorMappingContextProvider>
+                                        </GoogleOAuthProvider>
                                     </ActiveJobProvider>
                                 </AbilityProvider>
                             </TrackingProvider>
