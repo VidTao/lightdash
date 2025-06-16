@@ -1,10 +1,20 @@
+import {
+    Button,
+    Group,
+    Modal,
+    Select,
+    Stack,
+    Text,
+    TextInput,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { notifications } from '@mantine/notifications';
+import { IconMail, IconUser } from '@tabler/icons-react';
 import React, { useState } from 'react';
-import { Modal, Form, Input, Select, message, Button } from 'antd';
-import { UserOutlined, MailOutlined } from '@ant-design/icons';
-import { apiService } from '../../services/api';
+import { apiService } from '../services/api';
 
 interface InviteUserModalProps {
-    isOpen: boolean;
+    opened: boolean;
     onClose: () => void;
     onSubmit: (values: InviteUserData) => Promise<void>;
 }
@@ -16,139 +26,173 @@ interface InviteUserData {
 }
 
 const InviteUserModal: React.FC<InviteUserModalProps> = ({
-    isOpen,
+    opened,
     onClose,
     onSubmit,
 }) => {
-    const [form] = Form.useForm();
-    const [isEmailAvailable, setIsEmailAvailable] = useState<boolean | null>(null);
+    const [isEmailAvailable, setIsEmailAvailable] = useState<boolean | null>(
+        null,
+    );
     const [isCheckingEmail, setIsCheckingEmail] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
+    const form = useForm({
+        initialValues: {
+            email: '',
+            name: '',
+            role: 'user' as const,
+        },
+        validate: {
+            email: (value) =>
+                /^\S+@\S+$/.test(value) ? null : 'Please enter a valid email',
+            role: (value) => (value ? null : 'Please select a role'),
+        },
+    });
+
     const checkEmail = async () => {
+        const email = form.values.email;
+
+        if (!email) {
+            notifications.show({
+                color: 'red',
+                message: 'Please enter an email',
+            });
+            return;
+        }
+
         try {
-            const email = form.getFieldValue('email');
-
-            if (!email) {
-                message.error('Please enter an email');
-                return;
-            }
-
             setIsCheckingEmail(true);
             const response = await apiService.checkEmailAvailability(email);
-            console.log('Response:', response);
             setIsEmailAvailable(response.isAvailable);
 
             if (response.isAvailable) {
-                message.success('Email is available');
+                notifications.show({
+                    color: 'green',
+                    message: 'Email is available',
+                });
             } else {
-                message.error('Email is already in use');
+                notifications.show({
+                    color: 'red',
+                    message: 'Email is already in use',
+                });
             }
         } catch (error) {
-            message.error('Failed to check email availability');
+            notifications.show({
+                color: 'red',
+                message: 'Failed to check email availability',
+            });
             setIsEmailAvailable(false);
         } finally {
             setIsCheckingEmail(false);
         }
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (values: typeof form.values) => {
+        if (!isEmailAvailable) {
+            notifications.show({
+                color: 'red',
+                message: 'Please verify email availability first',
+            });
+            return;
+        }
+
         try {
-            if (!isEmailAvailable) {
-                message.error('Please verify email availability first');
-                return;
-            }
-            const values = await form.validateFields();
             setIsLoading(true);
             await onSubmit(values);
-            form.resetFields();
+            form.reset();
             setIsEmailAvailable(null);
             onClose();
         } catch (error) {
-            message.error('Please check your input and try again');
+            notifications.show({
+                color: 'red',
+                message: 'Please check your input and try again',
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
     return (
         <Modal
+            opened={opened}
+            onClose={onClose}
             title="Invite Team Member"
-            open={isOpen}
-            onCancel={onClose}
-            onOk={handleSubmit}
-            confirmLoading={isLoading}
-            okText="Invite"
-            okButtonProps={{ disabled: !isEmailAvailable }}
-            destroyOnClose
+            size="md"
         >
-            <Form
-                form={form}
-                layout="vertical"
-                initialValues={{ role: 'user' }}
-            >
-                <Form.Item
-                    name="email"
-                    label="Email"
-                    rules={[
-                        { required: true, message: 'Please input email' },
-                        { type: 'email', message: 'Please enter a valid email' }
-                    ]}
-                >
-                    <Input.Group compact>
-                        <Form.Item
-                            name="email"
-                            noStyle
-                        >
-                            <Input
-                                prefix={<MailOutlined />}
+            <form onSubmit={form.onSubmit(handleSubmit)}>
+                <Stack spacing="md">
+                    <Stack spacing={0}>
+                        <Group spacing="xs" grow>
+                            <TextInput
+                                required
+                                label="Email"
                                 placeholder="Enter email address"
-                                style={{ width: 'calc(100% - 120px)' }}
-                                onChange={() => setIsEmailAvailable(null)}
+                                icon={<IconMail size={16} />}
+                                {...form.getInputProps('email')}
+                                onChange={(event) => {
+                                    form.setFieldValue(
+                                        'email',
+                                        event.currentTarget.value,
+                                    );
+                                    setIsEmailAvailable(null);
+                                }}
+                                rightSection={
+                                    <Button
+                                        compact
+                                        variant="light"
+                                        onClick={checkEmail}
+                                        loading={isCheckingEmail}
+                                    >
+                                        Check
+                                    </Button>
+                                }
                             />
-                        </Form.Item>
-                        <Button
-                            type="primary"
-                            onClick={checkEmail}
-                            loading={isCheckingEmail}
-                            style={{ width: '120px' }}
-                        >
-                            Check Email
-                        </Button>
-                    </Input.Group>
-                </Form.Item>
+                        </Group>
+                        {isEmailAvailable !== null && (
+                            <Text
+                                size="sm"
+                                mt="xs"
+                                c={isEmailAvailable ? 'green' : 'red'}
+                            >
+                                {isEmailAvailable
+                                    ? '✓ Email is available'
+                                    : '✗ Email is not available'}
+                            </Text>
+                        )}
+                    </Stack>
 
-                {isEmailAvailable !== null && (
-                    <div style={{
-                        marginTop: -20,
-                        marginBottom: 16,
-                        color: isEmailAvailable ? '#52c41a' : '#ff4d4f'
-                    }}>
-                        {isEmailAvailable
-                            ? '✓ Email is available'
-                            : '✗ Email is not available'}
-                    </div>
-                )}
-
-                <Form.Item
-                    name="name"
-                    label="Name"
-                >
-                    <Input
-                        prefix={<UserOutlined />}
+                    <TextInput
+                        label="Name"
                         placeholder="Enter name (optional)"
+                        icon={<IconUser size={16} />}
+                        {...form.getInputProps('name')}
                     />
-                </Form.Item>
 
-                <Form.Item
-                    name="role"
-                    label="Role"
-                    rules={[{ required: true, message: 'Please select a role' }]}
-                >
-                    <Select>
-                        <Select.Option value="user">User</Select.Option>
-                        <Select.Option value="admin">Admin</Select.Option>
-                    </Select>
-                </Form.Item>
-            </Form>
+                    <Select
+                        label="Role"
+                        required
+                        placeholder="Select a role"
+                        data={[
+                            { value: 'user', label: 'User' },
+                            { value: 'admin', label: 'Admin' },
+                        ]}
+                        {...form.getInputProps('role')}
+                    />
+
+                    <Group position="right" mt="xl">
+                        <Button variant="light" onClick={onClose}>
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            loading={isLoading}
+                            disabled={!isEmailAvailable}
+                        >
+                            Invite
+                        </Button>
+                    </Group>
+                </Stack>
+            </form>
         </Modal>
     );
 };

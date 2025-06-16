@@ -64,11 +64,14 @@ const PlatformCard = ({
                 />
             </Box>
 
-            <Group mb="xs" position="apart">
+            <Group mb="xs">
                 <Text weight={600} size="lg" color="gray.8">
                     {platformName}
                 </Text>
-                {isConnected && (
+            </Group>
+
+            {isConnected && (
+                <Box sx={{ position: 'absolute', top: 16, right: 16 }}>
                     <ThemeIcon
                         color="green"
                         variant="light"
@@ -77,8 +80,8 @@ const PlatformCard = ({
                     >
                         <IconCheck size={16} />
                     </ThemeIcon>
-                )}
-            </Group>
+                </Box>
+            )}
 
             <Box mb="md">
                 {isConnected ? (

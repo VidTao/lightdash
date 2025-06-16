@@ -22,7 +22,7 @@ const Projects: FC = () => {
         return <ErrorState error={error.error} />;
     }
 
-    return <Navigate to={`/projects/${activeProjectUuid}/home`} />;
+    return <Navigate to={`/projects/${activeProjectUuid}/onboarding`} />;
 };
 
 export default Projects;

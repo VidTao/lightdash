@@ -6,7 +6,6 @@ interface TreeNode {
     key: string;
     title: string;
     children?: TreeNode[];
-    checkable?: boolean;
 }
 
 interface Props {
@@ -29,6 +28,7 @@ const TreeItem = ({
 }) => {
     const isChecked = checkedKeys.includes(node.key);
     const hasChildren = node.children && node.children.length > 0;
+    const isCheckable = !hasChildren; // Only checkable if it has no children
 
     return (
         <Box>
@@ -48,22 +48,24 @@ const TreeItem = ({
                         onCheck(node.key, event.currentTarget.checked)
                     }
                     label={
-                        <Text size="sm" weight={500}>
+                        <Text size="sm" weight={hasChildren ? 600 : 400}>
                             {node.title}
                         </Text>
                     }
-                    disabled={!node.checkable}
+                    disabled={!isCheckable}
                     styles={(theme) => ({
                         label: {
-                            cursor: 'pointer',
-                            color: theme.colors.gray[7],
+                            cursor: isCheckable ? 'pointer' : 'default',
+                            color: hasChildren
+                                ? theme.colors.gray[8]
+                                : theme.colors.gray[7],
                         },
                     })}
                 />
             </Box>
             {hasChildren && (
                 <Stack spacing={0} mt={4}>
-                    {node?.children?.map((child) => (
+                    {node.children?.map((child) => (
                         <TreeItem
                             key={child.key}
                             node={child}
@@ -103,7 +105,11 @@ const AccountsSelect = ({ data, onSelectedAccountsChange }: Props) => {
         const accounts: AdPlatformAccountInfo[] = [];
 
         const traverse = (node: TreeNode) => {
-            if (keys.includes(node.key)) {
+            // Only include leaf nodes in selected accounts
+            if (
+                keys.includes(node.key) &&
+                (!node.children || node.children.length === 0)
+            ) {
                 accounts.push({
                     accountId: node.key,
                     accountName: node.title,
