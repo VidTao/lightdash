@@ -53,7 +53,7 @@ const Register: FC = () => {
     const { identify } = useTracking();
     const redirectUrl = location.state?.from
         ? `${location.state.from.pathname}${location.state.from.search}`
-        : '/';
+        : '/projects';
     const { isLoading, mutate, isSuccess } = useMutation<
         LightdashUser,
         ApiError,

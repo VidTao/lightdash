@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+
+import { useRefetchUser } from '../../hooks/user/useRefetchUser';
 import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
@@ -17,6 +19,7 @@ const FacebookAdsConnector = () => {
     const [accountsData, setAccountsData] = useState([]);
     const [isAccountsDataLoading, setIsAccountsDataLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const refetchUser = useRefetchUser();
     const [selectedAccounts, setSelectedAccounts] = useState<
         AdPlatformAccountInfo[]
     >([]);
@@ -42,7 +45,7 @@ const FacebookAdsConnector = () => {
                         userInfo.email,
                         selectedAccounts,
                     );
-                    // fetchApplicationUser();
+                    refetchUser();
                     setIsLoading(false);
                 } catch (error) {
                     console.error(error);

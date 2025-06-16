@@ -19,6 +19,7 @@ export enum PageName {
     PROJECT_SETTINGS = 'project_settings',
     PROFILE_SETTINGS = 'profile_settings',
     GENERAL_SETTINGS = 'general_settings',
+    STORE_SETTINGS = 'store_settings',
     PASSWORD_SETTINGS = 'password_settings',
     ORGANIZATION_SETTINGS = 'organization_settings',
     USER_MANAGEMENT_SETTINGS = 'user_management_settings',

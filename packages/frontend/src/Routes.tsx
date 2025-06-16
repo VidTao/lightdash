@@ -1,6 +1,7 @@
 import { Stack } from '@mantine/core';
 import { type FC } from 'react';
 import { Navigate, Outlet, useParams, type RouteObject } from 'react-router';
+import StoreSettings from './bratrax-implementation/pages/Settings';
 import TrackingPlan from './bratrax-implementation/tracking-plan/TrackingPlan';
 import AppRoute from './components/AppRoute';
 import ForbiddenPanel from './components/ForbiddenPanel';
@@ -492,6 +493,18 @@ const PRIVATE_ROUTES: RouteObject[] = [
                         <NavBar />
                         <TrackPage name={PageName.CREATE_PROJECT_SETTINGS}>
                             <CreateProjectSettings />
+                        </TrackPage>
+                    </>
+                ),
+            },
+            {
+                path: '/storeSettings/*',
+                element: (
+                    <>
+                        <NavBar />
+                        <TrackPage name={PageName.STORE_SETTINGS}>
+                            <StoreSettings />
+                            {/* <Settings /> */}
                         </TrackPage>
                     </>
                 ),

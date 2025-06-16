@@ -9,7 +9,15 @@ interface Props {
     isLoading: boolean;
     handleOk: (selectedAccounts: AdPlatformAccountInfo[]) => void;
     handleCancel: () => void;
-    accountsData: any[]; // We'll need to adjust this type based on your AccountsSelect component
+    accountsData: {
+        key: string;
+        title: string;
+        children?: {
+            key: string;
+            title: string;
+            children?: any[];
+        }[];
+    }[];
 }
 
 const SelectAccountModal = ({

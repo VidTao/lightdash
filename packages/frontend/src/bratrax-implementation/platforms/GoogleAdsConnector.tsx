@@ -1,5 +1,6 @@
 import { useGoogleLogin } from '@react-oauth/google';
 import { useEffect, useState } from 'react';
+import { useRefetchUser } from '../../hooks/user/useRefetchUser';
 import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
@@ -12,6 +13,7 @@ import { apiService } from '../services/api';
 
 const GoogleAdsConnector = () => {
     const { user } = useApp();
+    const refetchUser = useRefetchUser();
     const [googleUser, setGoogleUser] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAccountsDataLoading, setIsAccountsDataLoading] = useState(false);
@@ -74,7 +76,7 @@ const GoogleAdsConnector = () => {
                         'manager_id',
                         res.accounts_data[0].customer_manager_id,
                     );
-
+                    refetchUser();
                     // fetchApplicationUser(); check if this is needed
                 } catch (error) {
                     console.error(error);
@@ -130,7 +132,7 @@ const GoogleAdsConnector = () => {
                 }}
                 isLoading={isLoading}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                isConnected={false}
+                isConnected={!!platformConnection}
                 platformName="Google ads"
                 logoPath="google-ads-logo.svg"
                 description="Connect your Google ads account to get started"

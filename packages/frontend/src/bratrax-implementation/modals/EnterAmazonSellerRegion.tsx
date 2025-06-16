@@ -1,7 +1,18 @@
-import { Modal, Form, Input, DatePicker, Select } from 'antd';
+import {
+    Button,
+    Group,
+    Modal,
+    MultiSelect,
+    Select,
+    Stack,
+    TextInput,
+} from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
+import { useForm } from '@mantine/form';
+import { z } from 'zod';
 
 interface EnterAmazonSellerUrlProps {
-    isOpen: boolean;
+    opened: boolean;
     onClose: () => void;
     onSubmit: (values: AmazonCredentials) => void;
     isLoading?: boolean;
@@ -25,89 +36,107 @@ const MARKETPLACE_OPTIONS = [
     { label: 'Netherlands (NL)', value: 'A1805IZSGTT6HS' },
 ];
 
+const schema = z.object({
+    seller_url: z
+        .string()
+        .min(1, 'Please enter your Marketplace URL')
+        .regex(
+            /^https:\/\/sellercentral.*$/,
+            'URL must start with https://sellercentral',
+        ),
+    marketplaces: z
+        .array(z.string())
+        .min(1, 'Please select at least one marketplace'),
+    sales_data_granularity: z.enum(['ORDER', 'SUMMARY']),
+    start_date: z.date(),
+});
+
 export const EnterAmazonSellerRegion = ({
-    isOpen,
+    opened,
     onClose,
     onSubmit,
     isLoading = false,
 }: EnterAmazonSellerUrlProps) => {
-    const [form] = Form.useForm();
+    const form = useForm({
+        initialValues: {
+            seller_url: '',
+            marketplaces: [] as string[],
+            sales_data_granularity: 'ORDER' as const,
+            start_date: new Date(),
+        },
+        validate: (values) => {
+            try {
+                schema.parse(values);
+                return {};
+            } catch (error) {
+                if (error instanceof z.ZodError) {
+                    return error.formErrors.fieldErrors;
+                }
+                return {};
+            }
+        },
+    });
 
-    const handleSubmit = async () => {
-        try {
-            const values = await form.validateFields();
-            onSubmit({
-                ...values,
-                start_date: values.start_date.format('YYYY-MM-DD'),
-            });
-        } catch (error) {
-            console.error('Validation failed:', error);
-        }
+    const handleSubmit = (values: typeof form.values) => {
+        onSubmit({
+            ...values,
+            start_date: values.start_date.toISOString().split('T')[0],
+        });
     };
 
     return (
         <Modal
+            opened={opened}
+            onClose={onClose}
             title="Amazon Seller Central Configuration"
-            open={isOpen}
-            onCancel={onClose}
-            onOk={handleSubmit}
-            okText="Submit"
-            confirmLoading={isLoading}
+            size="lg"
             centered
-            width={600}
         >
-            <Form form={form} layout="vertical">
-                <Form.Item
-                    name="seller_url"
-                    label="Marketplace URL"
-                    extra="Enter your Amazon Seller Central URL"
-                    rules={[
-                        {
-                            required: true,
-                            message: 'Please enter your Marketplace URL',
-                        },
-                        {
-                            pattern: /^https:\/\/sellercentral.*$/,
-                            message: 'URL must start with https://sellercentral',
-                        },
-                    ]}
-                >
-                    <Input placeholder="https://sellercentral.amazon.com" />
-                </Form.Item>
-
-                <Form.Item
-                    name="marketplaces"
-                    label="Marketplaces"
-                    rules={[{ required: true, message: 'Please select at least one marketplace' }]}
-                >
-                    <Select
-                        mode="multiple"
-                        placeholder="Select marketplaces"
-                        options={MARKETPLACE_OPTIONS}
+            <form onSubmit={form.onSubmit(handleSubmit)}>
+                <Stack spacing="md">
+                    <TextInput
+                        label="Marketplace URL"
+                        placeholder="https://sellercentral.amazon.com"
+                        description="Enter your Amazon Seller Central URL"
+                        required
+                        {...form.getInputProps('seller_url')}
                     />
-                </Form.Item>
 
-                <Form.Item
-                    name="sales_data_granularity"
-                    label="Sales Data Granularity"
-                    rules={[{ required: true, message: 'Please select data granularity' }]}
-                >
+                    <MultiSelect
+                        label="Marketplaces"
+                        placeholder="Select marketplaces"
+                        data={MARKETPLACE_OPTIONS}
+                        required
+                        {...form.getInputProps('marketplaces')}
+                    />
+
                     <Select
-                        options={[
+                        label="Sales Data Granularity"
+                        placeholder="Select data granularity"
+                        data={[
                             { label: 'Order Level', value: 'ORDER' },
                             { label: 'Summary Level', value: 'SUMMARY' },
                         ]}
+                        required
+                        {...form.getInputProps('sales_data_granularity')}
                     />
-                </Form.Item>
 
-                <Form.Item
-                    name="start_date"
-                    label="Start Date"
-                    rules={[{ required: true, message: 'Please select start date' }]}
-                >
-                    <DatePicker />
-                </Form.Item>
-            </Form>
+                    <DatePickerInput
+                        label="Start Date"
+                        required
+                        {...form.getInputProps('start_date')}
+                    />
+
+                    <Group position="right" mt="xl">
+                        <Button variant="light" onClick={onClose}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" loading={isLoading}>
+                            Submit
+                        </Button>
+                    </Group>
+                </Stack>
+            </form>
         </Modal>
     );
-}; 
+};
