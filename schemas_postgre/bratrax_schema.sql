@@ -323,6 +323,7 @@ CREATE TABLE bratrax_store_cogs_settings (
     global_handling_fee NUMERIC(10,2),
     bidirectional_cogs BOOLEAN DEFAULT FALSE,
     marketplace VARCHAR(100),
+    platform_type VARCHAR(100),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     created_by_user_uuid UUID,

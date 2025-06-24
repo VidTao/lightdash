@@ -5,4 +5,5 @@ import { type UserWithAbility } from '../../hooks/user/useUser';
 export interface AppContext {
     health: UseQueryResult<HealthState, ApiError>;
     user: UseQueryResult<UserWithAbility, ApiError>;
+    isAuthSet: boolean;
 }
