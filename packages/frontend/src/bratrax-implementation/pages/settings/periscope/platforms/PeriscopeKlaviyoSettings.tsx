@@ -3,9 +3,9 @@ import { IconArrowLeft } from '@tabler/icons-react';
 import React, { useState } from 'react';
 import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
+import { klaviyoDeliveryData } from '../component-data/klaviyo';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
-import { klaviyoDeliveryData } from '../data/klaviyo';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeKlaviyoSettings: React.FC<PlatformSettingsProps> = ({

@@ -3,9 +3,9 @@ import { IconArrowLeft } from '@tabler/icons-react';
 import React, { useState } from 'react';
 import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
+import { metaDeliveryData } from '../component-data/meta';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
-import { metaDeliveryData } from '../data/meta';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeMetaSettings: React.FC<PlatformSettingsProps> = ({

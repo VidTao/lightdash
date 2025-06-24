@@ -11,9 +11,9 @@ import { IconArrowLeft } from '@tabler/icons-react';
 import React, { useState } from 'react';
 import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
+import { googleDeliveryData } from '../component-data/google';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
-import { googleDeliveryData } from '../data/google';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeGoogleSettings: React.FC<PlatformSettingsProps> = ({

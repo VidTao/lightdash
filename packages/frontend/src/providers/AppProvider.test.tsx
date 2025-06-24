@@ -23,7 +23,7 @@ describe('AppProvider', () => {
 
             expect(result.current.health.data).toBeDefined();
             expect(result.current.user.data).toBeDefined();
-
+            expect(result.current.isAuthSet).toBeDefined();
             expect(result.current.health.data).toHaveProperty('siteUrl');
             expect(result.current.user.data).toHaveProperty(
                 'email',

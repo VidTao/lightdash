@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-import { useState } from "react";
-import { apiService } from "../services/api";
-import { Property } from "../pages/tracking-plan/types";
+import { useState } from 'react';
+import { apiService } from '../services/api';
+import { Property } from '../tracking-plan/types';
 
 interface PropertiesState {
     properties: Property[];
@@ -10,12 +10,11 @@ interface PropertiesState {
     error: Error | null;
 }
 
-
 export const useProperties = () => {
     const [state, setState] = useState<PropertiesState>({
         properties: [],
         loading: true,
-        error: null
+        error: null,
     });
 
     useEffect(() => {
@@ -25,13 +24,13 @@ export const useProperties = () => {
                 setState({
                     properties: data,
                     loading: false,
-                    error: null
+                    error: null,
                 });
             } catch (error) {
                 setState({
                     properties: [],
                     loading: false,
-                    error: error as Error
+                    error: error as Error,
                 });
             }
         };

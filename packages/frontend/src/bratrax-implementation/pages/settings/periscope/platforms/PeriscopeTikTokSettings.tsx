@@ -3,13 +3,13 @@ import { IconArrowLeft } from '@tabler/icons-react';
 import React, { useState } from 'react';
 import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
-import DeliveryOverview from '../components/DeliveryOverview';
-import PlatformSettings from '../components/PlatformSettings';
 import {
     tiktokConnectionOptions,
     tiktokDeliveryData,
     tiktokEvents,
-} from '../data/tiktok';
+} from '../component-data/tiktok';
+import DeliveryOverview from '../components/DeliveryOverview';
+import PlatformSettings from '../components/PlatformSettings';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeTikTokSettings: React.FC<PlatformSettingsProps> = ({
