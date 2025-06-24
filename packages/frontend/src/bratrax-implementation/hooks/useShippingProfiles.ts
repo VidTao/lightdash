@@ -1,41 +1,16 @@
 import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
+import useApp from '../../providers/App/useApp';
 import { ShippingProfile } from '../models/interfaces';
 import { apiService } from '../services/api';
 
 export const useShippingProfiles = () => {
+    const { isAuthSet } = useApp();
     const [shippingProfiles, setShippingProfiles] = useState<ShippingProfile[]>(
         [],
     );
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const fetchShippingProfiles = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-            const results = await apiService.getShippingProfiles();
-
-            if (results.success) {
-                setShippingProfiles(results.data);
-            } else {
-                setError(results.error || 'Failed to fetch shipping profiles');
-                notifications.show({
-                    color: 'red',
-                    message: 'Failed to fetch shipping profiles',
-                });
-            }
-        } catch (error) {
-            console.error('Error fetching shipping profiles:', error);
-            setError('Failed to fetch shipping profiles');
-            notifications.show({
-                color: 'red',
-                message: 'Failed to fetch shipping profiles',
-            });
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const updateShippingProfile = async (record: ShippingProfile) => {
         try {
@@ -81,9 +56,39 @@ export const useShippingProfiles = () => {
         }
     };
 
+    const fetchShippingProfiles = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const results = await apiService.getShippingProfiles();
+
+            if (results.success) {
+                setShippingProfiles(results.data);
+            } else {
+                setError(results.error || 'Failed to fetch shipping profiles');
+                notifications.show({
+                    color: 'red',
+                    message: 'Failed to fetch shipping profiles',
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching shipping profiles:', error);
+            setError('Failed to fetch shipping profiles');
+            notifications.show({
+                color: 'red',
+                message: 'Failed to fetch shipping profiles',
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetchShippingProfiles();
-    }, []);
+        console.log('value of isAuthSet:', isAuthSet);
+        if (isAuthSet) {
+            fetchShippingProfiles();
+        }
+    }, [isAuthSet]);
 
     return {
         shippingProfiles,
