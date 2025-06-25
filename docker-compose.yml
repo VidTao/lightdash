@@ -43,6 +43,8 @@ services:
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
       - PORT=${PORT:-8080}
       - FRONTEND_PORT=3001
+      - VITE_PORT=3001
+      - VITE_HOST=0.0.0.0
       - HOST=0.0.0.0
       - NODE_OPTIONS=--max-old-space-size=8192
       - NODE_ENV=production
