@@ -44,7 +44,6 @@ services:
       - minio
     ports:
       - "8080:8080"
-      - "3000:3000"
     environment:
       - PGHOST=${PGHOST:-db}
       - PGPORT=${PGPORT:-5432}
