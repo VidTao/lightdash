@@ -86,7 +86,7 @@ export default defineConfig({
         setupFiles: './src/testing/vitest.setup.ts',
     },
     server: {
-        port: 3001,
+        port: 3000,
         host: true,
         watch: {
             usePolling: true,
@@ -94,7 +94,7 @@ export default defineConfig({
         },
         hmr: {
             overlay: true,
-            clientPort: 3001,
+            clientPort: 3000,
             host: '0.0.0.0',
         },
         allowedHosts: ['lightdash-dev', '.lightdash.dev'],
