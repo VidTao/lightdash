@@ -52,18 +52,30 @@ export default defineConfig({
         rollupOptions: {
             treeshake: true,
             output: {
-                manualChunks: {
-                    vendor: [
-                        'react',
-                        'react-dom',
-                        'react-router',
-                        '@mantine/core',
-                        '@mantine/hooks',
-                        'echarts',
-                        'lodash',
-                    ],
-                    utils: ['/src/utils/'],
-                    features: ['/src/features/'],
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (
+                            id.includes('react') ||
+                            id.includes('react-dom') ||
+                            id.includes('react-router')
+                        ) {
+                            return 'react-vendor';
+                        }
+                        if (id.includes('@mantine')) {
+                            return 'mantine-vendor';
+                        }
+                        if (id.includes('echarts')) {
+                            return 'echarts-vendor';
+                        }
+                        return 'vendor';
+                    }
+                    if (id.includes('src/features')) {
+                        return 'features';
+                    }
+                    if (id.includes('src/utils')) {
+                        return 'utils';
+                    }
+                    return null;
                 },
             },
         },
