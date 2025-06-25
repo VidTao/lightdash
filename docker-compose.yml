@@ -22,17 +22,14 @@ services:
       args:
         - NODE_OPTIONS=--max-old-space-size=8192
     volumes:
-      - ".:/usr/app"
-      - "node_modules:/usr/app/node_modules/"
       - "${DBT_PROJECT_DIR}:/usr/app/dbt"
       - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
     command: >
       sh -c "
-          pnpm install &&
-          cd packages/backend &&
-          pnpm run migrate &&
+          cd /usr/app/packages/backend &&
+          pnpm run migrate-production &&
           cd ../.. &&
-          pnpm run dev"
+          pnpm run start"
     deploy:
       resources:
         limits:
@@ -121,7 +118,6 @@ services:
       - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
       - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
       - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
-    restart: always
 
   db:
     image: postgres:15.4
