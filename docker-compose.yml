@@ -16,7 +16,11 @@ services:
   lightdash:
     platform: linux/amd64
     build:
+      context: .
+      dockerfile: dockerfile
       target: prod
+      args:
+        - NODE_OPTIONS=--max-old-space-size=4096
     volumes:
       - ".:/usr/app"
       - "node_modules:/usr/app/node_modules/"
