@@ -45,55 +45,21 @@ export default defineConfig({
         outDir: 'build',
         emptyOutDir: false,
         target: 'es2020',
-        minify: true,
+        minify: 'esbuild',
         sourcemap: true,
-
+        chunkSizeWarningLimit: 2000,
         rollupOptions: {
             output: {
-                manualChunks: {
-                    react: [
-                        'react',
-                        'react-dom',
-                        'react-router',
-                        'react-hook-form',
-                        'react-use',
-                        // TODO: removed because of PNPM
-                        // 'react-draggable',
-                        '@hello-pangea/dnd',
-                        '@tanstack/react-query',
-                        '@tanstack/react-table',
-                        '@tanstack/react-virtual',
-                    ],
-                    echarts: ['echarts'],
-                    ace: ['ace-builds', 'react-ace/lib'],
-                    modules: [
-                        // TODO: removed because of PNPM
-                        // 'ajv',
-                        // 'ajv-formats',
-                        // 'liquidjs',
-                        // 'pegjs',
-                        'jspdf',
-                        'lodash',
-                        'colorjs.io',
-                        'zod',
-                    ],
-                    thirdparty: [
-                        '@sentry/react',
-                        'rudder-sdk-js',
-                        'posthog-js',
-                    ],
-                    uiw: [
-                        '@uiw/react-markdown-preview',
-                        '@uiw/react-md-editor',
-                    ],
-                    mantine: [
-                        '@mantine/core',
-                        '@mantine/dates',
-                        '@mantine/form',
-                        '@mantine/hooks',
-                        '@mantine/notifications',
-                        '@mantine/prism',
-                    ],
+                manualChunks: (id) => {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('react')) return 'react-vendor';
+                        if (id.includes('@mantine')) return 'mantine-vendor';
+                        if (id.includes('echarts')) return 'echarts-vendor';
+                        if (id.includes('ace-builds')) return 'ace-vendor';
+                        return 'vendor';
+                    }
+                    if (id.includes('src/pages')) return 'pages';
+                    if (id.includes('src/components')) return 'components';
                 },
             },
         },
