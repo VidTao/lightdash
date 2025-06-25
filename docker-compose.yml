@@ -2,6 +2,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
+      - "3000:3000"
       - "80:80"
       - "443:443"
     volumes:
@@ -9,6 +10,7 @@ services:
       - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
     depends_on:
       - lightdash
+      - minio
     restart: always
 
   lightdash:
@@ -19,6 +21,18 @@ services:
       target: prod
       args:
         - NODE_OPTIONS=--max-old-space-size=8192
+    volumes:
+      - ".:/usr/app"
+      - "node_modules:/usr/app/node_modules/"
+      - "${DBT_PROJECT_DIR}:/usr/app/dbt"
+      - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
+    command: >
+      sh -c "
+          pnpm install &&
+          cd packages/backend &&
+          pnpm run migrate &&
+          cd ../.. &&
+          pnpm run dev"
     deploy:
       resources:
         limits:
@@ -30,14 +44,15 @@ services:
       - minio
     ports:
       - "8080:8080"
+      - "3000:3000"
     environment:
       - PGHOST=${PGHOST:-db}
       - PGPORT=${PGPORT:-5432}
       - PGUSER=${PGUSER:-postgres}
       - PGPASSWORD=${PGPASSWORD}
       - PGDATABASE=${PGDATABASE:-postgres}
-      - SECURE_COOKIES=${SECURE_COOKIES:-false}
-      - TRUST_PROXY=${TRUST_PROXY:-false}
+      - SECURE_COOKIES=true
+      - TRUST_PROXY=true
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
       - PORT=${PORT:-8080}
       - NODE_OPTIONS=--max-old-space-size=8192
@@ -52,6 +67,7 @@ services:
       - AUTH_GOOGLE_OAUTH2_CLIENT_ID=${AUTH_GOOGLE_OAUTH2_CLIENT_ID}
       - AUTH_GOOGLE_OAUTH2_CLIENT_SECRET=${AUTH_GOOGLE_OAUTH2_CLIENT_SECRET}
       - SITE_URL=https://v2.bratrax.com
+      - EXPOSED_SITE_URL=https://v2.bratrax.com
       - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST}
       - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT}
       - EMAIL_SMTP_SECURE=${EMAIL_SMTP_SECURE}
@@ -106,9 +122,6 @@ services:
       - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
       - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
       - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
-    volumes:
-      - "${DBT_PROJECT_DIR}:/usr/app/dbt"
-      - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
     restart: always
 
   db:
@@ -121,7 +134,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
-      - "5433:5432" # Exposed for pgAdmin access
+      - "5433:5432"
 
   headless-browser:
     image: ghcr.io/browserless/chromium:v2.24.3
@@ -143,5 +156,6 @@ services:
     restart: always
 
 volumes:
+  node_modules:
   db-data:
   minio-data:
