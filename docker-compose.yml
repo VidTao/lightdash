@@ -31,6 +31,7 @@ services:
           cd /usr/app &&
           pnpm install &&
           cd packages/backend &&
+          pnpm install &&
           pnpm run migrate-production &&
           cd ../.. &&
           NODE_ENV=production pnpm run dev"
