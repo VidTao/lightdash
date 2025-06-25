@@ -19,13 +19,13 @@ services:
       dockerfile: dockerfile
       target: prod
       args:
-        - NODE_OPTIONS=--max-old-space-size=4096
+        - NODE_OPTIONS=--max-old-space-size=8192
     deploy:
       resources:
         limits:
-          memory: 6G
+          memory: 10G
         reservations:
-          memory: 2G
+          memory: 4G
     depends_on:
       - db
       - minio
@@ -42,7 +42,7 @@ services:
       - TRUST_PROXY=${TRUST_PROXY:-false}
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
       - PORT=${PORT:-8080}
-      - NODE_OPTIONS=--max-old-space-size=4096
+      - NODE_OPTIONS=--max-old-space-size=8192
       - NODE_ENV=production
       - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL}
       - LIGHTDASH_INSTALL_ID=${LIGHTDASH_INSTALL_ID}

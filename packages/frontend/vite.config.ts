@@ -29,7 +29,6 @@ export default defineConfig({
                 name: process.env.SENTRY_RELEASE_VERSION,
                 inject: true,
             },
-            // Sourcemaps are already uploaded by the Sentry CLI
             sourcemaps: {
                 disable: true,
             },
@@ -40,26 +39,31 @@ export default defineConfig({
     },
     optimizeDeps: {
         exclude: ['@lightdash/common'],
+        force: true,
     },
     build: {
         outDir: 'build',
         emptyOutDir: false,
         target: 'es2020',
         minify: 'esbuild',
-        sourcemap: true,
-        chunkSizeWarningLimit: 2000,
+        sourcemap: false,
+        cssCodeSplit: false,
+        chunkSizeWarningLimit: 5000,
         rollupOptions: {
+            treeshake: true,
             output: {
-                manualChunks: (id) => {
-                    if (id.includes('node_modules')) {
-                        if (id.includes('react')) return 'react-vendor';
-                        if (id.includes('@mantine')) return 'mantine-vendor';
-                        if (id.includes('echarts')) return 'echarts-vendor';
-                        if (id.includes('ace-builds')) return 'ace-vendor';
-                        return 'vendor';
-                    }
-                    if (id.includes('src/pages')) return 'pages';
-                    if (id.includes('src/components')) return 'components';
+                manualChunks: {
+                    vendor: [
+                        'react',
+                        'react-dom',
+                        'react-router',
+                        '@mantine/core',
+                        '@mantine/hooks',
+                        'echarts',
+                        'lodash',
+                    ],
+                    utils: ['/src/utils/'],
+                    features: ['/src/features/'],
                 },
             },
         },
@@ -81,10 +85,7 @@ export default defineConfig({
             clientPort: 3000,
             host: '0.0.0.0',
         },
-        allowedHosts: [
-            'lightdash-dev', // for local development with docker
-            '.lightdash.dev', // for cloudflared tunnels
-        ],
+        allowedHosts: ['lightdash-dev', '.lightdash.dev'],
         proxy: {
             '/api': {
                 target: 'http://localhost:8080',
