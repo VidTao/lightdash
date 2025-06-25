@@ -375,6 +375,9 @@ export default class App {
             'https://vega.github.io',
             'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/',
             'https://*.lightdash.cloud',
+            'https://v2.bratrax.com',
+            'https://*.bratrax.com',
+            'https://connect.facebook.net/en_US/sdk.js',
             ...this.lightdashConfig.security.contentSecurityPolicy
                 .allowedDomains,
         ];
