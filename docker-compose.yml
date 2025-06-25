@@ -7,7 +7,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
     depends_on:
       - lightdash
     restart: always
