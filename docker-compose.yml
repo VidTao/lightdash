@@ -32,9 +32,8 @@ services:
           pnpm install &&
           cd packages/backend &&
           pnpm install &&
-          ./node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js &&
-          cd ../.. &&
-          NODE_ENV=production pnpm run dev"
+          pnpm run build &&
+          NODE_ENV=production node dist/index.js"
     deploy:
       resources:
         limits:
