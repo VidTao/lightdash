@@ -29,7 +29,6 @@ services:
       - db
       - minio
     ports:
-      - "3001:3001"
       - "8080:8080"
     environment:
       - PGHOST=${PGHOST:-db}
