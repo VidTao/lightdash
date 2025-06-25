@@ -16,20 +16,20 @@ services:
   lightdash:
     platform: linux/amd64
     build:
-      context: .
-      dockerfile: dockerfile
       target: prod
-      args:
-        - NODE_OPTIONS=--max-old-space-size=4096
     volumes:
+      - ".:/usr/app"
+      - "node_modules:/usr/app/node_modules/"
       - "${DBT_PROJECT_DIR}:/usr/app/dbt"
       - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
     command: >
       sh -c "
-          cd /usr/app/packages/backend &&
+          cd /usr/app &&
+          pnpm install &&
+          cd packages/backend &&
           pnpm run migrate-production &&
           cd ../.. &&
-          pnpm run start"
+          NODE_ENV=production pnpm run dev"
     deploy:
       resources:
         limits:
