@@ -20,7 +20,7 @@ services:
       dockerfile: dockerfile
       target: prod
       args:
-        - NODE_OPTIONS=--max-old-space-size=8192
+        - NODE_OPTIONS=--max-old-space-size=4096
     volumes:
       - "${DBT_PROJECT_DIR}:/usr/app/dbt"
       - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
@@ -33,9 +33,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 10G
+          memory: 6G
         reservations:
-          memory: 4G
+          memory: 2G
     depends_on:
       - db
       - minio
@@ -51,7 +51,7 @@ services:
       - TRUST_PROXY=true
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
       - PORT=${PORT:-8080}
-      - NODE_OPTIONS=--max-old-space-size=8192
+      - NODE_OPTIONS=--max-old-space-size=4096
       - NODE_ENV=production
       - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL}
       - LIGHTDASH_INSTALL_ID=${LIGHTDASH_INSTALL_ID}
