@@ -32,6 +32,7 @@ services:
           pnpm install &&
           cd packages/backend &&
           pnpm install &&
+          pnpm run build &&
           pnpm run migrate &&
           cd ../.. &&
           NODE_ENV=production pnpm run dev"
