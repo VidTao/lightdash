@@ -8,6 +8,7 @@ services:
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
+      - ./packages/frontend/build:/usr/app/packages/frontend/build
     depends_on:
       - lightdash
       - minio
