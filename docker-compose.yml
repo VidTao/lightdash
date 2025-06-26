@@ -28,15 +28,9 @@ services:
       - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
     command: >
       sh -c "
-          cd /usr/app &&
           pnpm install &&
-          cd packages/backend &&
-          pnpm install &&
-          pnpm add -g knex &&
-          pnpm run build &&
-          pnpm run migrate-production &&
-          cd ../.. &&
-          NODE_ENV=production pnpm run dev"
+          ./node_modules/knex/bin/cli.js migrate:latest --knexfile dist/knexfile.js &&
+          node dist/index.js"
     deploy:
       resources:
         limits:
