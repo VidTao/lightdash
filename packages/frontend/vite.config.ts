@@ -56,15 +56,6 @@ export default defineConfig({
         rollupOptions: {
             treeshake: true,
             output: {
-                manualChunks(id) {
-                    if (id.includes('node_modules')) {
-                        if (id.includes('react')) {
-                            return 'react';
-                        }
-                        return 'vendor';
-                    }
-                    return null;
-                },
                 inlineDynamicImports: true,
                 entryFileNames: 'assets/[name].[hash].js',
                 chunkFileNames: 'assets/[name].[hash].js',
