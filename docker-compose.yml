@@ -8,6 +8,7 @@ services:
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
+      - lightdash-frontend:/usr/share/nginx/html
     depends_on:
       - lightdash
       - minio
@@ -25,6 +26,7 @@ services:
       - "node_modules:/usr/app/node_modules/"
       - "${DBT_PROJECT_DIR}:/usr/app/dbt"
       - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
+      - lightdash-frontend:/usr/app/packages/frontend/build
     command: ["node", "dist/index.js"]
     deploy:
       resources:
@@ -148,17 +150,8 @@ services:
     command: server /data --console-address ":9001"
     restart: always
 
-  frontend-build:
-    image: alpine
-    volumes:
-      - frontend-build:/usr/share/nginx/html
-    depends_on:
-      - lightdash
-    command: >
-      sh -c "cp -r /usr/app/packages/frontend/build/* /usr/share/nginx/html/"
-
 volumes:
   node_modules:
   db-data:
   minio-data:
-  frontend-build:
+  lightdash-frontend:
