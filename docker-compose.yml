@@ -8,7 +8,6 @@ services:
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
-      - ./packages/frontend/build:/usr/app/packages/frontend/build
     depends_on:
       - lightdash
       - minio
@@ -149,7 +148,17 @@ services:
     command: server /data --console-address ":9001"
     restart: always
 
+  frontend-build:
+    image: alpine
+    volumes:
+      - frontend-build:/usr/share/nginx/html
+    depends_on:
+      - lightdash
+    command: >
+      sh -c "cp -r /usr/app/packages/frontend/build/* /usr/share/nginx/html/"
+
 volumes:
   node_modules:
   db-data:
   minio-data:
+  frontend-build:
