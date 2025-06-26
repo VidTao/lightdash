@@ -39,44 +39,40 @@ export default defineConfig({
     },
     optimizeDeps: {
         exclude: ['@lightdash/common'],
+        include: ['react', 'react-dom', 'react-router-dom'],
         force: true,
     },
     build: {
         outDir: 'build',
-        emptyOutDir: false,
+        emptyOutDir: true,
         target: 'es2020',
         minify: 'esbuild',
-        sourcemap: false,
-        cssCodeSplit: false,
+        sourcemap: true,
+        cssCodeSplit: true,
         chunkSizeWarningLimit: 5000,
         rollupOptions: {
             treeshake: true,
             output: {
-                manualChunks(id) {
-                    if (id.includes('node_modules')) {
-                        if (
-                            id.includes('react') ||
-                            id.includes('react-dom') ||
-                            id.includes('react-router')
-                        ) {
-                            return 'react-vendor';
-                        }
-                        if (id.includes('@mantine')) {
-                            return 'mantine-vendor';
-                        }
-                        if (id.includes('echarts')) {
-                            return 'echarts-vendor';
-                        }
-                        return 'vendor';
-                    }
-                    if (id.includes('src/features')) {
-                        return 'features';
-                    }
-                    if (id.includes('src/utils')) {
-                        return 'utils';
-                    }
-                    return null;
+                manualChunks: {
+                    'react-vendor': [
+                        'react',
+                        'react-dom',
+                        'react-router-dom',
+                        'react-router',
+                        'react-query',
+                    ],
+                    'mantine-vendor': [
+                        '@mantine/core',
+                        '@mantine/hooks',
+                        '@mantine/form',
+                        '@mantine/notifications',
+                    ],
+                    'echarts-vendor': ['echarts'],
                 },
+                inlineDynamicImports: false,
+                entryFileNames: 'assets/[name]-[hash].js',
+                chunkFileNames: 'assets/[name]-[hash].js',
+                assetFileNames: 'assets/[name]-[hash].[ext]',
             },
         },
     },
