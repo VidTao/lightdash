@@ -56,7 +56,6 @@ export default defineConfig({
         rollupOptions: {
             treeshake: true,
             output: {
-                inlineDynamicImports: true,
                 entryFileNames: 'assets/[name].[hash].js',
                 chunkFileNames: 'assets/[name].[hash].js',
                 assetFileNames: 'assets/[name].[hash].[ext]',
