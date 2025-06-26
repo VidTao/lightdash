@@ -39,7 +39,15 @@ export default defineConfig({
     },
     optimizeDeps: {
         exclude: ['@lightdash/common'],
-        include: ['react', 'react-dom', 'react-router-dom'],
+        include: [
+            'react',
+            'react-dom',
+            'react-router-dom',
+            'react-router',
+            '@mantine/core',
+            '@mantine/hooks',
+            'echarts',
+        ],
         force: true,
     },
     build: {
@@ -48,31 +56,50 @@ export default defineConfig({
         target: 'es2020',
         minify: 'esbuild',
         sourcemap: true,
-        cssCodeSplit: true,
+        cssCodeSplit: false,
         chunkSizeWarningLimit: 5000,
+        modulePreload: {
+            polyfill: true,
+        },
         rollupOptions: {
-            treeshake: true,
+            input: {
+                main: './index.html',
+            },
             output: {
-                manualChunks: {
-                    'react-vendor': [
-                        'react',
-                        'react-dom',
-                        'react-router-dom',
-                        'react-router',
-                        'react-query',
-                    ],
-                    'mantine-vendor': [
-                        '@mantine/core',
-                        '@mantine/hooks',
-                        '@mantine/form',
-                        '@mantine/notifications',
-                    ],
-                    'echarts-vendor': ['echarts'],
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('@mantine')) {
+                            return 'mantine';
+                        }
+                        if (id.includes('echarts')) {
+                            return 'echarts';
+                        }
+                        // Bundle all React-related packages together
+                        if (
+                            id.includes('react') ||
+                            id.includes('react-dom') ||
+                            id.includes('react-router') ||
+                            id.includes('react-query')
+                        ) {
+                            return 'react';
+                        }
+                        // All other node_modules go here
+                        return 'vendors';
+                    }
+                    // Group all utils together
+                    if (id.includes('src/utils')) {
+                        return 'utils';
+                    }
+                    // Features get their own chunk
+                    if (id.includes('src/features')) {
+                        return 'features';
+                    }
+                    return null;
                 },
                 inlineDynamicImports: false,
-                entryFileNames: 'assets/[name]-[hash].js',
-                chunkFileNames: 'assets/[name]-[hash].js',
-                assetFileNames: 'assets/[name]-[hash].[ext]',
+                entryFileNames: 'assets/[name].[hash].js',
+                chunkFileNames: 'assets/[name].[hash].js',
+                assetFileNames: 'assets/[name].[hash].[ext]',
             },
         },
     },
@@ -93,7 +120,6 @@ export default defineConfig({
             clientPort: 3000,
             host: '0.0.0.0',
         },
-        allowedHosts: ['lightdash-dev', '.lightdash.dev'],
         proxy: {
             '/api': {
                 target: 'http://localhost:8080',
