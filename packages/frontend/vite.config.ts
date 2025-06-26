@@ -39,15 +39,7 @@ export default defineConfig({
     },
     optimizeDeps: {
         exclude: ['@lightdash/common'],
-        include: [
-            'react',
-            'react-dom',
-            'react-router-dom',
-            'react-router',
-            '@mantine/core',
-            '@mantine/hooks',
-            'echarts',
-        ],
+        include: ['react', 'react-dom'],
         force: true,
     },
     build: {
@@ -55,48 +47,25 @@ export default defineConfig({
         emptyOutDir: true,
         target: 'es2020',
         minify: 'esbuild',
-        sourcemap: true,
+        sourcemap: false,
         cssCodeSplit: false,
         chunkSizeWarningLimit: 5000,
         modulePreload: {
             polyfill: true,
         },
         rollupOptions: {
-            input: {
-                main: './index.html',
-            },
+            treeshake: true,
             output: {
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
-                        if (id.includes('@mantine')) {
-                            return 'mantine';
-                        }
-                        if (id.includes('echarts')) {
-                            return 'echarts';
-                        }
-                        // Bundle all React-related packages together
-                        if (
-                            id.includes('react') ||
-                            id.includes('react-dom') ||
-                            id.includes('react-router') ||
-                            id.includes('react-query')
-                        ) {
+                        if (id.includes('react')) {
                             return 'react';
                         }
-                        // All other node_modules go here
-                        return 'vendors';
-                    }
-                    // Group all utils together
-                    if (id.includes('src/utils')) {
-                        return 'utils';
-                    }
-                    // Features get their own chunk
-                    if (id.includes('src/features')) {
-                        return 'features';
+                        return 'vendor';
                     }
                     return null;
                 },
-                inlineDynamicImports: false,
+                inlineDynamicImports: true,
                 entryFileNames: 'assets/[name].[hash].js',
                 chunkFileNames: 'assets/[name].[hash].js',
                 assetFileNames: 'assets/[name].[hash].[ext]',
