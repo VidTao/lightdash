@@ -32,8 +32,9 @@ services:
           pnpm install &&
           cd packages/backend &&
           pnpm install &&
+          pnpm add -g knex &&
           pnpm run build &&
-          pnpm run migrate &&
+          pnpm run migrate-production &&
           cd ../.. &&
           NODE_ENV=production pnpm run dev"
     deploy:
