@@ -1,3 +1,10 @@
+version: "3.8"
+volumes:
+  node_modules:
+  db-data:
+  minio-data:
+  ssl-certs:
+
 services:
   nginx:
     image: nginx:alpine
@@ -8,7 +15,7 @@ services:
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
-      - lightdash-frontend:/usr/share/nginx/html
+      - ./packages/frontend:/usr/share/nginx/html
     depends_on:
       - lightdash
       - minio
@@ -19,15 +26,20 @@ services:
     build:
       context: .
       dockerfile: dockerfile
-      target: prod
-      args:
-        - NODE_OPTIONS=--max-old-space-size=4096
+      target: dev
     volumes:
-      - "node_modules:/usr/app/node_modules/"
+      - ".:/usr/app"
       - "${DBT_PROJECT_DIR}:/usr/app/dbt"
+      - "./dbt/bratrax:/usr/app/dbt/bratrax"
       - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
-      - lightdash-frontend:/usr/app/packages/frontend/build
-    command: ["node", "dist/index.js"]
+      - "node_modules:/usr/app/node_modules/"
+    command: >
+      sh -c "
+          pnpm install &&
+          cd packages/backend &&
+          pnpm run migrate &&
+          cd ../.. &&
+          pnpm run dev"
     deploy:
       resources:
         limits:
@@ -49,7 +61,7 @@ services:
       - TRUST_PROXY=true
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
       - PORT=${PORT:-8080}
-      - NODE_ENV=production
+      - NODE_ENV=development
       - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL}
       - LIGHTDASH_INSTALL_ID=${LIGHTDASH_INSTALL_ID}
       - LIGHTDASH_INSTALL_TYPE=${LIGHTDASH_INSTALL_TYPE:-docker_image}
@@ -115,9 +127,6 @@ services:
       - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
       - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
       - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
-      - PNPM_HOME=/pnpm
-      - PATH=/pnpm:$PATH
-      - SKIP_ARROW_BINS=true
 
   db:
     image: postgres:15.4
@@ -149,9 +158,3 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     command: server /data --console-address ":9001"
     restart: always
-
-volumes:
-  node_modules:
-  db-data:
-  minio-data:
-  lightdash-frontend:
