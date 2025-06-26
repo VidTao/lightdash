@@ -1,8 +1,6 @@
 version: "3.8"
 volumes:
   node_modules:
-  db-data:
-  minio-data:
   ssl-certs:
 
 services:
@@ -15,23 +13,106 @@ services:
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl/live/v2.bratrax.com:/etc/nginx/ssl/live/v2.bratrax.com
-      - ./packages/frontend:/usr/share/nginx/html
+      - ssl-certs:/etc/nginx/ssl
     depends_on:
-      - lightdash
+      - lightdash-dev
       - minio
-    restart: always
+    command: >
+      sh -c "
+          if [ ! -f /etc/nginx/ssl/localhost.crt ]; then
+              apk add --no-cache openssl &&
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/localhost.key -out /etc/nginx/ssl/localhost.crt -subj '/CN=localhost'
+          fi &&
+          nginx -g 'daemon off;'"
 
-  lightdash:
-    platform: linux/amd64
+  minio:
+    image: bitnami/minio:latest
+    expose:
+      - "9000"
+      - "9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_DEFAULT_BUCKETS=${MINIO_DEFAULT_BUCKETS}
+
+  lightdash-dev:
     build:
-      context: .
+      context: ..
       dockerfile: dockerfile
       target: dev
+    depends_on:
+      - minio
+      - db-dev
+    expose:
+      - "8080"
+      - "9090"
+      - "3000"
+      - "6006"
+    environment:
+      - PGHOST=${PGHOST}
+      - PGPORT=${PGPORT}
+      - PGUSER=${PGUSER}
+      - PGPASSWORD=${PGPASSWORD}
+      - PGDATABASE=${PGDATABASE}
+      - RUDDERSTACK_WRITE_KEY=${RUDDERSTACK_WRITE_KEY}
+      - RUDDERSTACK_DATA_PLANE_URL=${RUDDERSTACK_DATA_PLANE_URL}
+      - SECURE_COOKIES=true
+      - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
+      - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL}
+      - LIGHTDASH_LICENSE_KEY=${LIGHTDASH_LICENSE_KEY}
+      - NODE_ENV=${NODE_ENV}
+      - DBT_DEMO_DIR=${DBT_DEMO_DIR}
+      - AUTH_DISABLE_PASSWORD_AUTHENTICATION=${AUTH_DISABLE_PASSWORD_AUTHENTICATION}
+      - AUTH_ENABLE_GROUP_SYNC=${AUTH_ENABLE_GROUP_SYNC}
+      - SITE_URL=https://v2.bratrax.com
+      - EXPOSED_SITE_URL=https://v2.bratrax.com
+      - ALLOW_MULTIPLE_ORGS=${ALLOW_MULTIPLE_ORGS}
+      - LIGHTDASH_QUERY_MAX_LIMIT=${LIGHTDASH_QUERY_MAX_LIMIT}
+      - HEADLESS_BROWSER_HOST=${HEADLESS_BROWSER_HOST}
+      - HEADLESS_BROWSER_PORT=${HEADLESS_BROWSER_PORT}
+      - SCHEDULER_ENABLED=${SCHEDULER_ENABLED}
+      - GROUPS_ENABLED=${GROUPS_ENABLED}
+      - TRUST_PROXY=true
+      - POSTHOG_PROJECT_API_KEY=${POSTHOG_PROJECT_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME}
+      - OPENAI_EMBEDDING_MODEL_NAME=${OPENAI_EMBEDDING_MODEL_NAME}
+      - AI_COPILOT_ENABLED=${AI_COPILOT_ENABLED}
+      - AI_COPILOT_EMBEDDING_SEARCH_ENABLED=${AI_COPILOT_EMBEDDING_SEARCH_ENABLED}
+      - POSTHOG_FE_API_HOST=${POSTHOG_FE_API_HOST}
+      - POSTHOG_BE_API_HOST=${POSTHOG_BE_API_HOST}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET}
+      - SLACK_STATE_SECRET=${SLACK_STATE_SECRET}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2}
+      - LANGCHAIN_ENDPOINT=${LANGCHAIN_ENDPOINT}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_APP_NAME=${GITHUB_APP_NAME}
+      - GITHUB_REDIRECT_DOMAIN=${GITHUB_REDIRECT_DOMAIN}
+      - GOOGLE_DRIVE_API_KEY=${GOOGLE_DRIVE_API_KEY}
+      - AUTH_GOOGLE_OAUTH2_CLIENT_ID=${AUTH_GOOGLE_OAUTH2_CLIENT_ID}
+      - AUTH_GOOGLE_OAUTH2_CLIENT_SECRET=${AUTH_GOOGLE_OAUTH2_CLIENT_SECRET}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_REGION=${S3_REGION}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE}
+      - S3_EXPIRATION_TIME=${S3_EXPIRATION_TIME}
+      - RESULTS_CACHE_S3_REGION=${RESULTS_CACHE_S3_REGION}
+      - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
+      - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
+      - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
     volumes:
-      - ".:/usr/app"
-      - "${DBT_PROJECT_DIR}:/usr/app/dbt"
-      - "./dbt/bratrax:/usr/app/dbt/bratrax"
-      - "./credentials/bratrax-757cb21d02c8.json:/usr/app/bigquery-credentials.json"
+      - "../:/usr/app"
+      - "../examples/full-jaffle-shop-demo/dbt:/usr/app/dbt"
+      - "../dbt/bratrax:/usr/app/dbt/bratrax"
       - "node_modules:/usr/app/node_modules/"
     command: >
       sh -c "
@@ -46,115 +127,17 @@ services:
           memory: 6G
         reservations:
           memory: 2G
-    depends_on:
-      - db
-      - minio
-    ports:
-      - "8080:8080"
-    environment:
-      - PGHOST=${PGHOST:-db}
-      - PGPORT=${PGPORT:-5432}
-      - PGUSER=${PGUSER:-postgres}
-      - PGPASSWORD=${PGPASSWORD}
-      - PGDATABASE=${PGDATABASE:-postgres}
-      - SECURE_COOKIES=true
-      - TRUST_PROXY=true
-      - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
-      - PORT=${PORT:-8080}
-      - NODE_ENV=development
-      - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL}
-      - LIGHTDASH_INSTALL_ID=${LIGHTDASH_INSTALL_ID}
-      - LIGHTDASH_INSTALL_TYPE=${LIGHTDASH_INSTALL_TYPE:-docker_image}
-      - LIGHTDASH_LICENSE_KEY=${LIGHTDASH_LICENSE_KEY}
-      - AUTH_DISABLE_PASSWORD_AUTHENTICATION=${AUTH_DISABLE_PASSWORD_AUTHENTICATION}
-      - AUTH_ENABLE_GROUP_SYNC=${AUTH_ENABLE_GROUP_SYNC}
-      - AUTH_GOOGLE_ENABLED=${AUTH_GOOGLE_ENABLED}
-      - AUTH_GOOGLE_OAUTH2_CLIENT_ID=${AUTH_GOOGLE_OAUTH2_CLIENT_ID}
-      - AUTH_GOOGLE_OAUTH2_CLIENT_SECRET=${AUTH_GOOGLE_OAUTH2_CLIENT_SECRET}
-      - SITE_URL=https://v2.bratrax.com
-      - EXPOSED_SITE_URL=https://v2.bratrax.com
-      - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST}
-      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT}
-      - EMAIL_SMTP_SECURE=${EMAIL_SMTP_SECURE}
-      - EMAIL_SMTP_USE_AUTH=${EMAIL_SMTP_USE_AUTH}
-      - EMAIL_SMTP_USER=${EMAIL_SMTP_USER}
-      - EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD}
-      - EMAIL_SMTP_ALLOW_INVALID_CERT=${EMAIL_SMTP_ALLOW_INVALID_CERT}
-      - EMAIL_SMTP_SENDER_NAME=${EMAIL_SMTP_SENDER_NAME}
-      - EMAIL_SMTP_SENDER_EMAIL=${EMAIL_SMTP_SENDER_EMAIL}
-      - ALLOW_MULTIPLE_ORGS=${ALLOW_MULTIPLE_ORGS:-false}
-      - LIGHTDASH_QUERY_MAX_LIMIT=${LIGHTDASH_QUERY_MAX_LIMIT}
-      - LIGHTDASH_MAX_PAYLOAD=${LIGHTDASH_MAX_PAYLOAD:-5mb}
-      - HEADLESS_BROWSER_HOST=headless-browser
-      - HEADLESS_BROWSER_PORT=3000
-      - RUDDERSTACK_WRITE_KEY=${RUDDERSTACK_WRITE_KEY}
-      - RUDDERSTACK_DATA_PLANE_URL=${RUDDERSTACK_DATA_PLANE_URL}
-      - SCHEDULER_ENABLED=true
-      - GROUPS_ENABLED=${GROUPS_ENABLED:-false}
-      - POSTHOG_PROJECT_API_KEY=${POSTHOG_PROJECT_API_KEY}
-      - POSTHOG_FE_API_HOST=${POSTHOG_FE_API_HOST}
-      - POSTHOG_BE_API_HOST=${POSTHOG_BE_API_HOST}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME}
-      - OPENAI_EMBEDDING_MODEL_NAME=${OPENAI_EMBEDDING_MODEL_NAME}
-      - AI_COPILOT_ENABLED=${AI_COPILOT_ENABLED}
-      - AI_COPILOT_EMBEDDING_SEARCH_ENABLED=${AI_COPILOT_EMBEDDING_SEARCH_ENABLED}
-      - CLIENT_AI_COPILOT_FEATURE_FLAG_ENABLED=${CLIENT_AI_COPILOT_FEATURE_FLAG_ENABLED}
-      - SERVER_AI_COPILOT_FEATURE_FLAG_ENABLED=${SERVER_AI_COPILOT_FEATURE_FLAG_ENABLED}
-      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2}
-      - LANGCHAIN_ENDPOINT=${LANGCHAIN_ENDPOINT}
-      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
-      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT}
-      - GOOGLE_DRIVE_API_KEY=${GOOGLE_DRIVE_API_KEY}
-      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
-      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID}
-      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET}
-      - SLACK_STATE_SECRET=${SLACK_STATE_SECRET}
-      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
-      - GITHUB_APP_ID=${GITHUB_APP_ID}
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-      - GITHUB_APP_NAME=${GITHUB_APP_NAME}
-      - GITHUB_REDIRECT_DOMAIN=${GITHUB_REDIRECT_DOMAIN}
-      - S3_ENDPOINT=${S3_ENDPOINT}
-      - S3_REGION=${S3_REGION}
-      - S3_BUCKET=${S3_BUCKET}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
-      - S3_SECRET_KEY=${S3_SECRET_KEY}
-      - S3_FORCE_PATH_STYLE=true
-      - S3_EXPIRATION_TIME=${S3_EXPIRATION_TIME}
-      - RESULTS_CACHE_S3_REGION=${RESULTS_CACHE_S3_REGION}
-      - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
-      - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
-      - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
 
-  db:
-    image: postgres:15.4
+  db-dev:
+    image: pgvector/pgvector:pg16
     restart: always
     environment:
-      POSTGRES_PASSWORD: ${PGPASSWORD}
-      POSTGRES_USER: ${PGUSER:-postgres}
-      POSTGRES_DB: ${PGDATABASE:-postgres}
-    volumes:
-      - db-data:/var/lib/postgresql/data
+      POSTGRES_PASSWORD: password
     ports:
-      - "5433:5432"
+      - "5432:5432"
 
   headless-browser:
     image: ghcr.io/browserless/chromium:v2.24.3
     restart: always
     expose:
       - "3000"
-
-  minio:
-    image: minio/minio
-    expose:
-      - "9000"
-      - "9001"
-    volumes:
-      - minio-data:/data
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
-    command: server /data --console-address ":9001"
-    restart: always
