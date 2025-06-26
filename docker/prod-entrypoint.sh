@@ -1,12 +1,13 @@
 #!/bin/bash
 set -e
 
-# Install dependencies first
+# Install dependencies and build
 cd /usr/app
 pnpm install --prod
-
-# Run migrations using local knex
 cd packages/backend
+pnpm run build
+
+# Run migrations using local knex after build
 ./node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js
 
 # Run prod
