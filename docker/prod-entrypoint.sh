@@ -1,13 +1,12 @@
 #!/bin/bash
 set -e
 
-# Install dependencies and build
+# Install production dependencies only
 cd /usr/app
-pnpm install --prod
-cd packages/backend
-pnpm run build
+pnpm install --prod --frozen-lockfile
 
-# Run migrations using local knex after build
+# Run migrations using local knex (dist should already exist from prod-builder stage)
+cd packages/backend
 ./node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js
 
 # Run prod

@@ -19,6 +19,8 @@ services:
       context: .
       dockerfile: dockerfile
       target: prod
+      args:
+        - NODE_OPTIONS=--max-old-space-size=4096
     volumes:
       - ".:/usr/app"
       - "node_modules:/usr/app/node_modules/"
@@ -46,7 +48,6 @@ services:
       - TRUST_PROXY=true
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET}
       - PORT=${PORT:-8080}
-      - NODE_OPTIONS=--max-old-space-size=4096
       - NODE_ENV=production
       - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL}
       - LIGHTDASH_INSTALL_ID=${LIGHTDASH_INSTALL_ID}
@@ -113,6 +114,9 @@ services:
       - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
       - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
       - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
+      - PNPM_HOME=/pnpm
+      - PATH=/pnpm:$PATH
+      - SKIP_ARROW_BINS=true
 
   db:
     image: postgres:15.4
