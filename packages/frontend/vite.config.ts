@@ -46,7 +46,7 @@ export default defineConfig({
         outDir: 'build',
         emptyOutDir: true,
         target: 'es2020',
-        minify: 'esbuild',
+        minify: false,
         sourcemap: false,
         cssCodeSplit: false,
         chunkSizeWarningLimit: 5000,
@@ -54,8 +54,16 @@ export default defineConfig({
             polyfill: true,
         },
         rollupOptions: {
-            treeshake: true,
+            treeshake: {
+                moduleSideEffects: true,
+                correctVarValueBeforeDeclaration: true,
+            },
             output: {
+                hoistTransitiveImports: false,
+                generatedCode: {
+                    reservedNamesAsProps: true,
+                    objectShorthand: false,
+                },
                 entryFileNames: 'assets/[name].[hash].js',
                 chunkFileNames: 'assets/[name].[hash].js',
                 assetFileNames: 'assets/[name].[hash].[ext]',
