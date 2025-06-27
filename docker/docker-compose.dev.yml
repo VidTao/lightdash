@@ -115,6 +115,7 @@ services:
       - "/usr/app/packages/common/dist"
     command: >
       sh -c "
+          pnpm install &&
           cd packages/backend &&
           pnpm run migrate &&
           cd ../.. &&
