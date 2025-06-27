@@ -39,6 +39,15 @@ export default defineConfig({
         transformer: 'lightningcss',
     },
     optimizeDeps: {
+        include: [
+            'react',
+            'react-dom',
+            'react-router',
+            '@mantine/core',
+            '@mantine/hooks',
+            '@mantine/form',
+            '@tanstack/react-query',
+        ],
         exclude: ['@lightdash/common'],
     },
     build: {
@@ -46,54 +55,18 @@ export default defineConfig({
         emptyOutDir: false,
         target: 'es2020',
         minify: true,
-        sourcemap: true,
+        sourcemap: false,
 
         rollupOptions: {
             output: {
-                manualChunks: {
-                    react: [
-                        'react',
-                        'react-dom',
-                        'react-router',
-                        'react-hook-form',
-                        'react-use',
-                        // TODO: removed because of PNPM
-                        // 'react-draggable',
-                        '@hello-pangea/dnd',
-                        '@tanstack/react-query',
-                        '@tanstack/react-table',
-                        '@tanstack/react-virtual',
-                    ],
-                    echarts: ['echarts'],
-                    ace: ['ace-builds', 'react-ace/lib'],
-                    modules: [
-                        // TODO: removed because of PNPM
-                        // 'ajv',
-                        // 'ajv-formats',
-                        // 'liquidjs',
-                        // 'pegjs',
-                        'jspdf',
-                        'lodash',
-                        'colorjs.io',
-                        'zod',
-                    ],
-                    thirdparty: [
-                        '@sentry/react',
-                        'rudder-sdk-js',
-                        'posthog-js',
-                    ],
-                    uiw: [
-                        '@uiw/react-markdown-preview',
-                        '@uiw/react-md-editor',
-                    ],
-                    mantine: [
-                        '@mantine/core',
-                        '@mantine/dates',
-                        '@mantine/form',
-                        '@mantine/hooks',
-                        '@mantine/notifications',
-                        '@mantine/prism',
-                    ],
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('react')) return 'react-vendor';
+                        if (id.includes('@mantine')) return 'mantine-vendor';
+                        if (id.includes('echarts')) return 'echarts-vendor';
+                        if (id.includes('@tanstack')) return 'tanstack-vendor';
+                        return 'vendor';
+                    }
                 },
             },
         },
@@ -108,7 +81,6 @@ export default defineConfig({
         host: true,
         watch: {
             usePolling: false,
-            interval: 2000,
         },
         hmr: {
             overlay: false,

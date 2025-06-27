@@ -39,7 +39,6 @@ services:
       - "8080"
       - "9090"
       - "3000"
-      - "6006"
     environment:
       - PGHOST=${PGHOST}
       - PGPORT=${PGPORT}
@@ -102,17 +101,16 @@ services:
       - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
       - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
     volumes:
-      - "../:/usr/app"
+      - "../packages/frontend/src:/usr/app/packages/frontend/src"
+      - "../packages/backend/src:/usr/app/packages/backend/src"
+      - "../packages/common/src:/usr/app/packages/common/src"
       - "../examples/full-jaffle-shop-demo/dbt:/usr/app/dbt"
       - "../dbt/bratrax:/usr/app/dbt/bratrax"
       - "node_modules:/usr/app/node_modules/"
       - "/usr/app/packages/common/dist"
     command: >
       sh -c "
-          pnpm install &&
-          cd packages/common &&
-          pnpm run build &&
-          cd ../backend &&
+          cd packages/backend &&
           pnpm run migrate &&
           cd ../.. &&
           pnpm run dev"
