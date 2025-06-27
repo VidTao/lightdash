@@ -124,6 +124,8 @@ services:
       - "../dbt/bratrax:/usr/app/dbt/bratrax"
       - "node_modules:/usr/app/node_modules/"
       - "/usr/app/packages/common/dist"
+      - "../packages/frontend/vite.config.ts:/usr/app/packages/frontend/vite.config.ts"
+      - "../packages/frontend/vite.config.sdk.ts:/usr/app/packages/frontend/vite.config.sdk.ts"
     command: >
       sh -c "
           pnpm install &&
