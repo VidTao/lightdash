@@ -6,6 +6,7 @@ import svgrPlugin from 'vite-plugin-svgr';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+    root: __dirname,
     publicDir: 'public',
     define: {
         __APP_VERSION__: JSON.stringify(
