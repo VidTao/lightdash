@@ -9,6 +9,8 @@ import {
 import { spanToTraceHeader, startSpan } from '@sentry/react';
 import fetch from 'isomorphic-fetch';
 
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '0.1627.0';
+
 // TODO: import from common or fix the instantiation of the request module
 const LIGHTDASH_SDK_INSTANCE_URL_LOCAL_STORAGE_KEY =
     '__lightdash_sdk_instance_url';
@@ -21,7 +23,7 @@ export const BASE_API_URL =
 const defaultHeaders = {
     'Content-Type': 'application/json',
     [LightdashRequestMethodHeader]: RequestMethod.WEB_APP,
-    [LightdashVersionHeader]: __APP_VERSION__,
+    [LightdashVersionHeader]: APP_VERSION,
 };
 
 const handleError = (err: any): ApiError => {
