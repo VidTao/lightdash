@@ -1,5 +1,5 @@
 import { Stack } from '@mantine/core';
-import { type FC } from 'react';
+import { lazy, type FC } from 'react';
 import { Navigate, Outlet, useParams, type RouteObject } from 'react-router';
 import StoreSettings from './bratrax-implementation/pages/Settings';
 import TrackingPlan from './bratrax-implementation/tracking-plan/TrackingPlan';
@@ -39,12 +39,13 @@ import Settings from './pages/Settings';
 import ShareRedirect from './pages/ShareRedirect';
 import Space from './pages/Space';
 import Spaces from './pages/Spaces';
-import SqlRunner from './pages/SqlRunner';
 import UserActivity from './pages/UserActivity';
 import VerifyEmailPage from './pages/VerifyEmail';
 import ViewSqlChart from './pages/ViewSqlChart';
 import { TrackPage } from './providers/Tracking/TrackingProvider';
 import { PageName } from './types/Events';
+
+const SqlRunner = lazy(() => import('./pages/SqlRunner'));
 
 const DashboardPageWrapper: FC = () => {
     const { dashboardUuid } = useParams<{ dashboardUuid: string }>();
