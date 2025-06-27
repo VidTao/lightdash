@@ -129,10 +129,13 @@ services:
       - "../packages/frontend/vite.config.ts:/usr/app/packages/frontend/vite.config.ts"
       - "../packages/frontend/vite.config.sdk.ts:/usr/app/packages/frontend/vite.config.sdk.ts"
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - "../packages/frontend/build:/usr/app/packages/frontend/build"
     command: >
       sh -c "
           pnpm install &&
           cd packages/common &&
+          pnpm run build &&
+          cd ../frontend &&
           pnpm run build &&
           cd ../backend &&
           pnpm run migrate &&
