@@ -123,7 +123,7 @@ services:
     environment:
       POSTGRES_PASSWORD: ${PGPASSWORD}
     ports:
-      - "5433:5432"
+      - "5433:${PGPORT}"
 
   headless-browser:
     image: ghcr.io/browserless/chromium:v2.24.3
