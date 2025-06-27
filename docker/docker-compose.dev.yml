@@ -133,10 +133,6 @@ services:
       - "../packages/frontend/build:/usr/app/packages/frontend/build"
     command: >
       sh -c "
-          echo 'Cleaning node_modules...' &&
-          rm -rf node_modules &&
-          rm -rf packages/*/node_modules &&
-          echo 'Installing dependencies...' &&
           pnpm install --force &&
           cd packages/common &&
           pnpm run build &&
