@@ -78,7 +78,7 @@ export default defineConfig({
     },
     server: {
         port: 3000,
-        host: true,
+        host: '0.0.0.0',
         watch: {
             usePolling: false,
         },
@@ -87,10 +87,14 @@ export default defineConfig({
             clientPort: 3000,
             host: '0.0.0.0',
         },
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+        },
         allowedHosts: [
-            'lightdash-dev', // for local development with docker
-            '.lightdash.dev', // for cloudflared tunnels
+            'lightdash-dev',
+            '.lightdash.dev',
             'v2.bratrax.com',
+            'localhost',
         ],
         proxy: {
             '/api': {
