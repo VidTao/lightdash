@@ -56,16 +56,25 @@ export default defineConfig({
         exclude: ['@lightdash/common'],
         esbuildOptions: {
             target: 'es2020',
-            supported: { 'top-level-await': true },
-            jsx: 'automatic',
+            supported: {
+                'top-level-await': true,
+            },
+            logLevel: 'debug',
+        },
+    },
+    esbuild: {
+        logLevel: 'debug',
+        target: 'es2020',
+        supported: {
+            'top-level-await': true,
         },
     },
     build: {
         outDir: 'build',
         emptyOutDir: false,
         target: 'es2020',
-        minify: true,
-        sourcemap: false,
+        minify: 'esbuild',
+        sourcemap: true,
         rollupOptions: {
             external: [
                 '@mantine/hooks',
