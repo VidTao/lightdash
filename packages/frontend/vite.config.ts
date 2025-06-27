@@ -49,6 +49,8 @@ export default defineConfig({
             '@mantine/core',
             '@mantine/hooks',
             '@mantine/form',
+            '@mantine-8/core',
+            '@mantine-8/hooks',
             '@tanstack/react-query',
         ],
         exclude: ['@lightdash/common'],
@@ -73,7 +75,7 @@ export default defineConfig({
                 },
             },
             onwarn(warning, warn) {
-                // Ignore 'use client' warnings
+                // Ignore 'use client' warnings from Mantine v8
                 if (
                     warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
                     warning.message.includes('use client')
