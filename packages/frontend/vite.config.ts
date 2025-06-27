@@ -118,6 +118,7 @@ export default defineConfig({
         allowedHosts: [
             'lightdash-dev', // for local development with docker
             '.lightdash.dev', // for cloudflared tunnels
+            'v2.bratrax.com',
         ],
         proxy: {
             '/api': {
