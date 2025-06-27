@@ -72,7 +72,7 @@ const TreeItem: React.FC<Props> = ({
                 <ActionIcon
                     data-has-children={hasChildren}
                     className={classes.actionIcon}
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                         e.stopPropagation();
                         onClickExpand?.();
                     }}
