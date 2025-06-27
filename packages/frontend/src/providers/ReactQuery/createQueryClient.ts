@@ -5,8 +5,9 @@ export const createQueryClient = (options?: DefaultOptions) => {
         defaultOptions: {
             queries: {
                 retry: false,
-                staleTime: 30000, // 30 seconds
+                staleTime: 60000, // Increase stale time to 1 minute to reduce refetches
                 refetchOnWindowFocus: false,
+                refetchOnMount: false, // Disable refetch on mount
                 onError: async (result) => {
                     // @ts-ignore
                     const { error: { statusCode } = {} } = result;

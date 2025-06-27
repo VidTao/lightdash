@@ -109,7 +109,7 @@ services:
       - "/usr/app/packages/common/dist"
     command: >
       sh -c "
-          pnpm install --include-workspace-root --dev &&
+          pnpm install &&
           cd packages/common &&
           pnpm run build &&
           cd ../backend &&

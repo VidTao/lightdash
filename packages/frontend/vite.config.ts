@@ -107,11 +107,11 @@ export default defineConfig({
         port: 3000,
         host: true,
         watch: {
-            usePolling: true,
-            interval: 1000,
+            usePolling: false,
+            interval: 2000,
         },
         hmr: {
-            overlay: true,
+            overlay: false,
             clientPort: 3000,
             host: '0.0.0.0',
         },
