@@ -1,9 +1,6 @@
-import { useState, useEffect } from 'react';
-import { apiService } from "../services/api";
-import { StandardEvent } from '../pages/tracking-plan/types';
-
-
-
+import { useEffect, useState } from 'react';
+import { apiService } from '../services/api';
+import { StandardEvent } from '../tracking-plan/types';
 
 export const useStandardEvents = (platform: string | null) => {
     const [events, setEvents] = useState<StandardEvent[]>([]);
