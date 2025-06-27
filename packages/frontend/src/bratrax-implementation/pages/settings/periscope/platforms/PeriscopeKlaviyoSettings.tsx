@@ -5,7 +5,7 @@ import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
-import { klaviyoDeliveryData } from '../data/klaviyo';
+import { klaviyoDeliveryData } from '../data-model/klaviyo';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeKlaviyoSettings: React.FC<PlatformSettingsProps> = ({

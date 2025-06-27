@@ -9,7 +9,7 @@ import {
     tiktokConnectionOptions,
     tiktokDeliveryData,
     tiktokEvents,
-} from '../data/tiktok';
+} from '../data-model/tiktok';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeTikTokSettings: React.FC<PlatformSettingsProps> = ({
