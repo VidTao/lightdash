@@ -100,6 +100,8 @@ services:
       - RESULTS_CACHE_S3_BUCKET=${RESULTS_CACHE_S3_BUCKET}
       - RESULTS_CACHE_S3_SECRET_KEY=${RESULTS_CACHE_S3_SECRET_KEY}
       - RESULTS_CACHE_S3_ACCESS_KEY=${RESULTS_CACHE_S3_ACCESS_KEY}
+      - SSL_KEY_FILE=${SSL_KEY_FILE}
+      - SSL_CERT_FILE=${SSL_CERT_FILE}
     volumes:
       - "../packages/frontend/src:/usr/app/packages/frontend/src"
       - "../packages/backend/src:/usr/app/packages/backend/src"
@@ -126,6 +128,7 @@ services:
       - "/usr/app/packages/common/dist"
       - "../packages/frontend/vite.config.ts:/usr/app/packages/frontend/vite.config.ts"
       - "../packages/frontend/vite.config.sdk.ts:/usr/app/packages/frontend/vite.config.sdk.ts"
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     command: >
       sh -c "
           pnpm install &&

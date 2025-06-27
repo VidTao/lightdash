@@ -79,6 +79,10 @@ export default defineConfig({
     server: {
         port: 3000,
         host: true,
+        https: {
+            key: process.env.SSL_KEY_FILE,
+            cert: process.env.SSL_CERT_FILE,
+        },
         watch: {
             usePolling: false,
         },
