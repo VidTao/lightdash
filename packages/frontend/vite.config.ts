@@ -54,6 +54,11 @@ export default defineConfig({
             '@tanstack/react-query',
         ],
         exclude: ['@lightdash/common'],
+        esbuildOptions: {
+            target: 'es2020',
+            supported: { 'top-level-await': true },
+            jsx: 'automatic',
+        },
     },
     build: {
         outDir: 'build',
@@ -61,8 +66,13 @@ export default defineConfig({
         target: 'es2020',
         minify: true,
         sourcemap: false,
-
         rollupOptions: {
+            external: [
+                '@mantine/hooks',
+                '@mantine/core',
+                '@mantine-8/hooks',
+                '@mantine-8/core',
+            ],
             output: {
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
@@ -75,13 +85,9 @@ export default defineConfig({
                 },
             },
             onwarn(warning, warn) {
-                // Ignore 'use client' warnings from Mantine v8
-                if (
-                    warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
-                    warning.message.includes('use client')
-                ) {
-                    return;
-                }
+                // Ignore specific warnings
+                if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return;
+                if (warning.message.includes('use client')) return;
                 warn(warning);
             },
         },
