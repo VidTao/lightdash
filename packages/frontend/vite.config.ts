@@ -64,12 +64,12 @@ export default defineConfig({
             supported: {
                 'top-level-await': true,
             },
-            logLevel: 'verbose',
+            logLevel: 'error',
             logLimit: 0,
         },
     },
     esbuild: {
-        logLevel: 'debug',
+        logLevel: 'error',
         target: 'es2020',
         supported: {
             'top-level-await': true,
@@ -112,9 +112,8 @@ export default defineConfig({
             usePolling: false,
         },
         hmr: {
-            overlay: false,
-            clientPort: 3000,
-            host: '0.0.0.0',
+            clientPort: 443,
+            host: 'v2.bratrax.com',
         },
         headers: {
             'Access-Control-Allow-Origin': '*',
