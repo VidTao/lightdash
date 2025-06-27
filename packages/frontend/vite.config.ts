@@ -72,6 +72,16 @@ export default defineConfig({
                     }
                 },
             },
+            onwarn(warning, warn) {
+                // Ignore 'use client' warnings
+                if (
+                    warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
+                    warning.message.includes('use client')
+                ) {
+                    return;
+                }
+                warn(warning);
+            },
         },
     },
     test: {
