@@ -59,7 +59,8 @@ export default defineConfig({
             supported: {
                 'top-level-await': true,
             },
-            logLevel: 'debug',
+            logLevel: 'verbose',
+            logLimit: 0,
         },
     },
     esbuild: {
@@ -76,12 +77,6 @@ export default defineConfig({
         minify: 'esbuild',
         sourcemap: true,
         rollupOptions: {
-            external: [
-                '@mantine/hooks',
-                '@mantine/core',
-                '@mantine-8/hooks',
-                '@mantine-8/core',
-            ],
             output: {
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
@@ -92,12 +87,6 @@ export default defineConfig({
                         return 'vendor';
                     }
                 },
-            },
-            onwarn(warning, warn) {
-                // Ignore specific warnings
-                if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return;
-                if (warning.message.includes('use client')) return;
-                warn(warning);
             },
         },
     },
@@ -138,4 +127,10 @@ export default defineConfig({
         },
     },
     clearScreen: false,
+    resolve: {
+        alias: {
+            '@mantine-8/core': '@mantine/core@8.0.0',
+            '@mantine-8/hooks': '@mantine/hooks@8.0.0',
+        },
+    },
 });
