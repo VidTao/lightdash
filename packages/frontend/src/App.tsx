@@ -20,7 +20,7 @@ import TrackingProvider from './providers/Tracking/TrackingProvider';
 import Routes from './Routes';
 
 // Mantine v8 styles
-import '@mantine-8/core/styles.css';
+// import '@mantine-8/core/styles.css';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { useEffect } from 'react';
 import environment from './bratrax-implementation/environments';
