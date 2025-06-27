@@ -106,10 +106,13 @@ services:
       - "../examples/full-jaffle-shop-demo/dbt:/usr/app/dbt"
       - "../dbt/bratrax:/usr/app/dbt/bratrax"
       - "node_modules:/usr/app/node_modules/"
+      - "/usr/app/packages/common/dist"
     command: >
       sh -c "
           pnpm install &&
-          cd packages/backend &&
+          cd packages/common &&
+          pnpm run build &&
+          cd ../backend &&
           pnpm run migrate &&
           cd ../.. &&
           pnpm run dev"
