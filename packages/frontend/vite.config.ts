@@ -8,7 +8,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
     publicDir: 'public',
     define: {
-        __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
+        __APP_VERSION__: JSON.stringify(
+            process.env.npm_package_version || '0.1627.0',
+        ),
     },
     plugins: [
         svgrPlugin(),
