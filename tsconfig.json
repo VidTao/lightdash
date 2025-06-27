@@ -1,35 +1,32 @@
 {
-    "compilerOptions": {
-        "noUncheckedIndexedAccess": false, // Disabled until we fix all tests in all packages
-        "useUnknownInCatchVariables": true,
-        "noImplicitAny": true
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false, // Disabled until we fix all tests in all packages
+    "useUnknownInCatchVariables": true,
+    "noImplicitAny": true
+  },
+  "references": [
+    {
+      "path": "./packages/frontend"
     },
-    "references": [
-        {
-            "path": "./packages/frontend"
-        },
-        {
-            "path": "./packages/backend"
-        },
-        {
-            "path": "./packages/common"
-        },
-        {
-            "path": "./packages/cli"
-        },
-        {
-            "path": "./packages/warehouses"
-        },
-        {
-            "path": "./packages/e2e"
-        },
-        {
-            "path": "./packages/sdk-test-app"
-        }
-    ],
-    "exclude": [
-        "dist",
-        "build",
-        "node_modules"
-    ]
+    {
+      "path": "./packages/backend"
+    },
+    {
+      "path": "./packages/common"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./packages/warehouses"
+    },
+    {
+      "path": "./packages/e2e"
+    },
+    {
+      "path": "./packages/sdk-test-app"
+    }
+  ],
+  "exclude": ["dist", "build", "node_modules"],
+  "include": ["./src", "./sdk/index.tsx", "./vite-env.d.ts", "./src/types/**/*.d.ts"]
 }
