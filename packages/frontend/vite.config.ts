@@ -49,6 +49,11 @@ export default defineConfig({
             '@mantine/core',
             '@mantine/hooks',
             '@mantine/form',
+            '@mantine/dates',
+            '@mantine/notifications',
+            '@mantine/prism',
+            '@mantine/tiptap',
+            '@mantine/utils',
             '@mantine-8/core',
             '@mantine-8/hooks',
             '@tanstack/react-query',
@@ -87,6 +92,11 @@ export default defineConfig({
                         return 'vendor';
                     }
                 },
+            },
+            onwarn(warning, warn) {
+                if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return;
+                if (warning.message.includes('use client')) return;
+                warn(warning);
             },
         },
     },

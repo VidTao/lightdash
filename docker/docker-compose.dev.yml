@@ -133,13 +133,17 @@ services:
       - "../packages/frontend/build:/usr/app/packages/frontend/build"
     command: >
       sh -c "
-          pnpm install &&
+          echo 'Cleaning node_modules...' &&
+          rm -rf node_modules &&
+          rm -rf packages/*/node_modules &&
+          echo 'Installing dependencies...' &&
+          pnpm install --force &&
           cd packages/common &&
           pnpm run build &&
           cd ../backend &&
           pnpm run migrate &&
           cd ../.. &&
-          pnpm run dev"
+          DEBUG=vite:* VITE_DEBUG=true pnpm run dev"
 
   db-dev:
     image: pgvector/pgvector:pg16
