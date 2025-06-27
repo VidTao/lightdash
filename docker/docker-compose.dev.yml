@@ -118,7 +118,9 @@ services:
     command: >
       sh -c "
           pnpm install &&
-          cd packages/backend &&
+          cd packages/common &&
+          pnpm run build &&
+          cd ../backend &&
           pnpm run migrate &&
           cd ../.. &&
           pnpm run dev"
