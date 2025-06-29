@@ -32,6 +32,7 @@ import {
     ParameterError,
     ProjectType,
     RequestMethod,
+    ServiceAccountScope,
     SessionUser,
     UnexpectedServerError,
     UpdateAllowedEmailDomains,
@@ -958,8 +959,7 @@ export class OrganizationService extends BaseService {
                         organizationUuid,
                         expiresAt: setup.serviceAccount.expirationTime,
                         description: 'Initial setup service account',
-                        // scopes: [ServiceAccountScope.ORG_ADMIN],
-                        scopes: ['org:admin'],
+                        scopes: [ServiceAccountScope.ORG_ADMIN],
                     },
                     setup.serviceAccount.token,
                 );

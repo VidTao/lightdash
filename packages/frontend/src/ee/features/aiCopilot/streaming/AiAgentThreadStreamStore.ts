@@ -5,7 +5,7 @@ import {
     type PayloadAction,
 } from '@reduxjs/toolkit';
 
-interface ToolCall {
+export interface ToolCall {
     toolCallId: string;
     toolName: string;
     args: Record<string, AnyType>;
