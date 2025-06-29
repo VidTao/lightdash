@@ -1,10 +1,10 @@
 import {
     FilterType,
     getFilterTypeFromItem,
-    type ConditionalOperator,
     type Dashboard,
     type DashboardFilterRule,
     type FilterableDimension,
+    type FilterOperator,
     type SchedulerFilterRule,
 } from '@lightdash/common';
 import {
@@ -33,7 +33,7 @@ import FieldIcon from '../../../components/common/Filters/FieldIcon';
 import FieldLabel from '../../../components/common/Filters/FieldLabel';
 import FilterInputComponent from '../../../components/common/Filters/FilterInputs';
 import {
-    getConditionalRuleLabel,
+    getConditionalRuleLabelFromItem,
     getFilterOperatorOptions,
 } from '../../../components/common/Filters/FilterInputs/utils';
 import FiltersProvider from '../../../components/common/Filters/FiltersProvider';
@@ -43,10 +43,9 @@ import { useProject } from '../../../hooks/useProject';
 import useDashboardContext from '../../../providers/Dashboard/useDashboardContext';
 
 const FilterSummaryLabel: FC<
-    { filterSummary: ReturnType<typeof getConditionalRuleLabel> } & Record<
-        'isDisabled',
-        boolean
-    >
+    {
+        filterSummary: ReturnType<typeof getConditionalRuleLabelFromItem>;
+    } & Record<'isDisabled', boolean>
 > = ({ filterSummary, isDisabled }) => {
     if (isDisabled) {
         return (
@@ -168,7 +167,7 @@ const FilterItem: FC<SchedulerFilterItemProps> = ({
                     <>
                         {isEditing || hasChanged ? null : (
                             <FilterSummaryLabel
-                                filterSummary={getConditionalRuleLabel(
+                                filterSummary={getConditionalRuleLabelFromItem(
                                     schedulerFilter ?? dashboardFilter,
                                     field,
                                 )}
@@ -200,7 +199,7 @@ const FilterItem: FC<SchedulerFilterItemProps> = ({
                                 dashboardFilter.operator
                             }
                             data={filterOperatorOptions}
-                            onChange={(operator: ConditionalOperator) => {
+                            onChange={(operator: FilterOperator) => {
                                 onChange({
                                     ...dashboardFilter,
                                     operator,

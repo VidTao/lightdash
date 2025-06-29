@@ -60,12 +60,11 @@ const schedulerWorkerFactory = (context: {
         s3Client: context.clients.getS3Client(),
         schedulerClient: context.clients.getSchedulerClient(),
         slackClient: context.clients.getSlackClient(),
-        semanticLayerService:
-            context.serviceRepository.getSemanticLayerService(),
         catalogService: context.serviceRepository.getCatalogService(),
         encryptionUtil: context.utils.getEncryptionUtil(),
         msTeamsClient: context.clients.getMsTeamsClient(),
         renameService: context.serviceRepository.getRenameService(),
+        asyncQueryService: context.serviceRepository.getAsyncQueryService(),
     });
 
 export default class SchedulerApp {

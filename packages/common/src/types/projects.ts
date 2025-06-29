@@ -25,11 +25,6 @@ export enum WarehouseTypes {
     TRINO = 'trino',
 }
 
-export enum SemanticLayerType {
-    DBT = 'DBT',
-    CUBE = 'CUBE',
-}
-
 export type SshTunnelConfiguration = {
     useSshTunnel?: boolean;
     sshTunnelHost?: string;
@@ -39,6 +34,10 @@ export type SshTunnelConfiguration = {
     sshTunnelPrivateKey?: string;
 };
 
+export enum BigqueryAuthenticationType {
+    SSO = 'sso',
+    PRIVATE_KEY = 'private_key',
+}
 export type CreateBigqueryCredentials = {
     type: WarehouseTypes.BIGQUERY;
     project: string;
@@ -46,7 +45,8 @@ export type CreateBigqueryCredentials = {
     threads?: number;
     timeoutSeconds: number | undefined;
     priority: 'interactive' | 'batch' | undefined;
-    keyfileContents: Record<string, string>;
+    authenticationType?: BigqueryAuthenticationType;
+    keyfileContents: Record<string, string>; // used for both sso and private key
     requireUserCredentials?: boolean;
     retries: number | undefined;
     location: string | undefined;
@@ -159,6 +159,14 @@ export type RedshiftCredentials = Omit<
     CreateRedshiftCredentials,
     SensitiveCredentialsFieldNames
 >;
+
+// TODO use enum instead
+export enum SnowflakeAuthenticationType {
+    PASSWORD = 'password',
+    PRIVATE_KEY = 'private_key',
+    SSO = 'sso',
+}
+
 export type CreateSnowflakeCredentials = {
     type: WarehouseTypes.SNOWFLAKE;
     account: string;
@@ -167,7 +175,8 @@ export type CreateSnowflakeCredentials = {
     requireUserCredentials?: boolean;
     privateKey?: string;
     privateKeyPass?: string;
-    authenticationType?: 'password' | 'private_key';
+    authenticationType?: SnowflakeAuthenticationType;
+    token?: string; // oauth token for sso
     role?: string;
     database: string;
     warehouse: string;
@@ -361,27 +370,6 @@ export const maybeOverrideDbtConnection = <T extends DbtProjectConfig>(
         : undefined),
 });
 
-export type DbtSemanticLayerConnection = {
-    type: SemanticLayerType.DBT;
-    environmentId: string;
-    domain: string;
-    token: string;
-};
-
-export type CubeSemanticLayerConnection = {
-    type: SemanticLayerType.CUBE;
-    domain: string;
-    token: string;
-};
-
-export type SemanticLayerConnection =
-    | DbtSemanticLayerConnection
-    | CubeSemanticLayerConnection;
-
-export type SemanticLayerConnectionUpdate =
-    | (Partial<DbtSemanticLayerConnection> & { type: SemanticLayerType.DBT })
-    | (Partial<CubeSemanticLayerConnection> & { type: SemanticLayerType.CUBE });
-
 export type Project = {
     organizationUuid: string;
     projectUuid: string;
@@ -392,7 +380,6 @@ export type Project = {
     pinnedListUuid?: string;
     upstreamProjectUuid?: string;
     dbtVersion: DbtVersionOption;
-    semanticLayerConnection?: SemanticLayerConnection;
     schedulerTimezone: string;
     createdByUserUuid: string | null;
 };

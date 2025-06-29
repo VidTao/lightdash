@@ -12,6 +12,7 @@ import {
     type ParsedMetric,
 } from './dbtFromSchema';
 import { DbtError, ParseError } from './errors';
+import { type JoinRelationship } from './explore';
 import {
     FieldType,
     friendlyName,
@@ -23,7 +24,7 @@ import {
     type MetricType,
     type Source,
 } from './field';
-import { parseFilters } from './filterGrammar';
+import { parseFilters, type RequiredFilter } from './filterGrammar';
 import { type LightdashProjectConfig } from './lightdashProjectConfig';
 import { type OrderFieldsByStrategy } from './table';
 import { type DefaultTimeDimension, type TimeFrames } from './timeFrames';
@@ -79,7 +80,8 @@ type DbtModelLightdashConfig = {
     sql_filter?: string;
     sql_where?: string; // alias for sql_filter
     sql_from?: string; // overrides dbt model relation_name
-    required_filters?: { [key: string]: AnyType }[];
+    default_filters?: RequiredFilter[];
+    required_filters?: RequiredFilter[]; // Alias for default_filters, for backwards compatibility
     required_attributes?: Record<string, string | string[]>;
     group_details?: Record<string, DbtModelGroup>;
     default_time_dimension?: {
@@ -110,6 +112,8 @@ type DbtModelJoin = {
     hidden?: boolean;
     fields?: string[];
     always?: boolean;
+    relationship?: JoinRelationship;
+    primary_key?: string | string[];
 };
 export type DbtColumnMetadata = DbtColumnLightdashConfig & {};
 type DbtColumnLightdashConfig = {

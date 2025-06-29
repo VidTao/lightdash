@@ -64,6 +64,14 @@ export const lightdashConfigMock: LightdashConfig = {
             x509PublicKeyCert: undefined,
             x509PublicKeyCertPath: undefined,
         },
+        snowflake: {
+            loginPath: '/login/snowflake',
+            callbackPath: '/oauth/redirect/snowflake',
+            authorizationEndpoint: undefined,
+            tokenEndpoint: undefined,
+            clientId: undefined,
+            clientSecret: undefined,
+        },
     },
     lightdashCloudInstance: 'test-instance',
     k8s: {
@@ -89,7 +97,7 @@ export const lightdashConfigMock: LightdashConfig = {
     pylon: {
         appId: '',
     },
-    lightdashSecret: '',
+    lightdashSecret: 'look away this is a secret',
     logging: {
         level: 'debug',
         format: 'pretty',
@@ -165,7 +173,16 @@ export const lightdashConfigMock: LightdashConfig = {
     ai: {
         copilot: {
             enabled: false,
+            telemetryEnabled: false,
             requiresFeatureFlag: false,
+            defaultProvider: 'openai',
+            providers: {
+                openai: {
+                    apiKey: 'mock_api_key',
+                    modelName: 'mock_model_name',
+                },
+            },
+            embeddingSearchEnabled: false,
         },
     },
     embedding: {
@@ -191,12 +208,16 @@ export const lightdashConfigMock: LightdashConfig = {
     },
     headlessBrowser: {
         internalLightdashHost: 'https://test.lightdash.cloud',
+        browserEndpoint: 'ws://headless-browser:3000',
     },
     contentAsCode: {
         maxDownloads: 100,
     },
     appearance: {},
     microsoftTeams: {
+        enabled: false,
+    },
+    serviceAccount: {
         enabled: false,
     },
     googleCloudPlatform: {

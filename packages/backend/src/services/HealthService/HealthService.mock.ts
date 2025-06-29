@@ -47,6 +47,9 @@ export const BaseResponse: HealthState = {
         pat: {
             maxExpirationTimeInDays: undefined,
         },
+        snowflake: {
+            enabled: false,
+        },
     },
     intercom: {
         apiBase: '',
@@ -86,6 +89,7 @@ export const BaseResponse: HealthState = {
         overrideColorPalette: undefined,
         overrideColorPaletteName: undefined,
     },
+    isServiceAccountEnabled: false,
 };
 
 export const userMock = {

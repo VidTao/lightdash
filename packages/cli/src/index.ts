@@ -26,6 +26,7 @@ import { setProjectHandler } from './handlers/setProject';
 import { validateHandler } from './handlers/validate';
 import * as styles from './styles';
 
+// Trigger CLI tests
 // Suppress AWS SDK V2 warning, imported by snowflake SDK
 process.env.AWS_SDK_JS_SUPPRESS_MAINTENANCE_MODE_MESSAGE = '1';
 
@@ -172,11 +173,11 @@ ${styles.bold('Examples:')}
   ${styles.title('⚡')}️lightdash ${styles.bold(
             'login',
         )} https://custom.lightdash.domain --token 12345 ${styles.secondary(
-            '-- Logs in with a personal access token (useful for users that use SSO in the browser)',
+            '-- Logs in with an API access token (useful for users that use SSO in the browser)',
         )}
 `,
     )
-    .option('--token <token>', 'Login with a personal access token', undefined)
+    .option('--token <token>', 'Login with an API access token', undefined)
     .option('--verbose', undefined, false)
 
     .action(login);
@@ -275,6 +276,11 @@ ${styles.bold('Examples:')}
     .option('--verbose', undefined, false)
     .option('-y, --assume-yes', 'assume yes to prompts', false)
     .option('-no, --assume-no', 'assume no to prompts', false)
+    .option(
+        '--preserve-column-case',
+        'preserve original casing of column names in generated schema files',
+        false,
+    )
     .action(dbtRunHandler);
 
 program
@@ -405,6 +411,16 @@ program
         true,
     )
     .option('--ignore-errors', 'Allows deploy with errors on compile', false)
+    .option(
+        '--table-configuration <prod|all>',
+        `If set to 'prod' it will copy the table configuration from prod project`,
+        'all',
+    )
+    .option(
+        '--skip-copy-content',
+        'Skip copying content from the source project',
+        false,
+    )
     .action(previewHandler);
 
 program
@@ -478,6 +494,16 @@ program
         true,
     )
     .option('--ignore-errors', 'Allows deploy with errors on compile', false)
+    .option(
+        '--table-configuration <prod|all>',
+        `If set to 'prod' it will copy the table configuration from prod project`,
+        'all',
+    )
+    .option(
+        '--skip-copy-content',
+        'Skip copying content from the source project',
+        false,
+    )
     .action(startPreviewHandler);
 
 program
@@ -763,6 +789,11 @@ ${styles.bold('Examples:')}
     .option(
         '--exclude-meta',
         'exclude Lightdash metadata from the generated .yml',
+        false,
+    )
+    .option(
+        '--preserve-column-case',
+        'preserve original casing of column names in generated schema files',
         false,
     )
     .option('--verbose', undefined, false)

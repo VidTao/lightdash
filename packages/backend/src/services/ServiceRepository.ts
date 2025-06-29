@@ -29,11 +29,9 @@ import { ProjectService } from './ProjectService/ProjectService';
 import { PromoteService } from './PromoteService/PromoteService';
 import { RenameService } from './RenameService/RenameService';
 import { SavedChartService } from './SavedChartsService/SavedChartService';
-import { SavedSemanticViewerChartService } from './SavedSemanticViewerChartService/SavedSemanticViewerChartService';
 import { SavedSqlService } from './SavedSqlService/SavedSqlService';
 import { SchedulerService } from './SchedulerService/SchedulerService';
 import { SearchService } from './SearchService/SearchService';
-import { SemanticLayerService } from './SemanticLayerService/SemanticLayerService';
 import { ShareService } from './ShareService/ShareService';
 import { SlackIntegrationService } from './SlackIntegrationService/SlackIntegrationService';
 import { SpaceService } from './SpaceService/SpaceService';
@@ -80,8 +78,6 @@ interface ServiceManifest {
     promoteService: PromoteService;
     savedSqlService: SavedSqlService;
     contentService: ContentService;
-    semanticLayerService: SemanticLayerService;
-    savedSemanticViewerChartService: SavedSemanticViewerChartService;
     coderService: CoderService;
     featureFlagService: FeatureFlagService;
     spotlightService: SpotlightService;
@@ -91,9 +87,11 @@ interface ServiceManifest {
     /** An implementation signature for these services are not available at this stage */
     embedService: unknown;
     aiService: unknown;
+    aiAgentService: unknown;
     scimService: unknown;
     supportService: unknown;
     cacheService: unknown;
+    serviceAccountService: unknown;
 }
 
 /**
@@ -405,7 +403,10 @@ export class ServiceRepository
                     organizationAllowedEmailDomainsModel:
                         this.models.getOrganizationAllowedEmailDomainsModel(),
                     groupsModel: this.models.getGroupsModel(),
-                    services: this,
+                    personalAccessTokenModel:
+                        this.models.getPersonalAccessTokenModel(),
+                    emailModel: this.models.getEmailModel(),
+                    projectService: this.getProjectService(),
                 }),
         );
     }
@@ -509,8 +510,8 @@ export class ServiceRepository
                     userModel: this.models.getUserModel(),
                     queryHistoryModel: this.models.getQueryHistoryModel(),
                     savedSqlModel: this.models.getSavedSqlModel(),
-                    resultsFileModel: this.models.getResultsFileModel(),
                     storageClient: this.clients.getResultsFileStorageClient(),
+                    csvService: this.getCsvService(),
                 }),
         );
     }
@@ -597,6 +598,7 @@ export class ServiceRepository
                     analytics: this.context.lightdashAnalytics,
                     slackAuthenticationModel:
                         this.models.getSlackAuthenticationModel(),
+                    slackClient: this.clients.getSlackClient(),
                 }),
         );
     }
@@ -790,51 +792,13 @@ export class ServiceRepository
             () =>
                 new ContentService({
                     analytics: this.context.lightdashAnalytics,
-                    // models
                     projectModel: this.models.getProjectModel(),
                     contentModel: this.models.getContentModel(),
                     spaceModel: this.models.getSpaceModel(),
-                    // services
                     spaceService: this.getSpaceService(),
                     dashboardService: this.getDashboardService(),
                     savedChartService: this.getSavedChartService(),
                     savedSqlService: this.getSavedSqlService(),
-                    savedSemanticViewerChartService:
-                        this.getSavedSemanticViewerChartService(),
-                }),
-        );
-    }
-
-    public getSemanticLayerService(): SemanticLayerService {
-        return this.getService(
-            'semanticLayerService',
-            () =>
-                new SemanticLayerService({
-                    lightdashConfig: this.context.lightdashConfig,
-                    analytics: this.context.lightdashAnalytics,
-
-                    schedulerClient: this.clients.getSchedulerClient(),
-                    s3Client: this.clients.getS3Client(),
-
-                    savedSemanticViewerChartService:
-                        this.getSavedSemanticViewerChartService(),
-
-                    projectModel: this.models.getProjectModel(),
-                    downloadFileModel: this.models.getDownloadFileModel(),
-                }),
-        );
-    }
-
-    public getSavedSemanticViewerChartService(): SavedSemanticViewerChartService {
-        return this.getService(
-            'savedSemanticViewerChartService',
-            () =>
-                new SavedSemanticViewerChartService({
-                    analytics: this.context.lightdashAnalytics,
-                    projectModel: this.models.getProjectModel(),
-                    savedSemanticViewerChartModel:
-                        this.models.getSavedSemanticViewerChartModel(),
-                    spaceModel: this.models.getSpaceModel(),
                 }),
         );
     }
@@ -856,6 +820,10 @@ export class ServiceRepository
 
     public getAiService<AiServiceImplT>(): AiServiceImplT {
         return this.getService('aiService');
+    }
+
+    public getAiAgentService<AiAgentServiceImplT>(): AiAgentServiceImplT {
+        return this.getService('aiAgentService');
     }
 
     public getScimService<ScimServiceImplT>(): ScimServiceImplT {
@@ -893,6 +861,12 @@ export class ServiceRepository
 
     public getCacheService<CacheServiceImplT>(): CacheServiceImplT {
         return this.getService('cacheService');
+    }
+
+    public getServiceAccountService<
+        ServiceAccountServiceImplT,
+    >(): ServiceAccountServiceImplT {
+        return this.getService('serviceAccountService');
     }
 
     /**

@@ -1,6 +1,7 @@
 import {
     AnyType,
-    ConditionalOperator,
+    BigqueryAuthenticationType,
+    BigqueryCredentials,
     CreateBigqueryCredentials,
     CreatePostgresCredentials,
     DbtCloudIDEProjectConfig,
@@ -9,6 +10,7 @@ import {
     DimensionType,
     Explore,
     FieldType,
+    FilterOperator,
     MetricFilterRule,
     MetricType,
     OrderFieldsByStrategy,
@@ -90,6 +92,7 @@ export const expectedProject: Project = {
         type: DbtProjectType.DBT_CLOUD_IDE,
     } as AnyType as DbtCloudIDEProjectConfig,
     warehouseConnection: {
+        authenticationType: BigqueryAuthenticationType.PRIVATE_KEY, // Default
         dataset: 'name',
         location: 'name',
         maximumBytesBilled: 1,
@@ -98,7 +101,7 @@ export const expectedProject: Project = {
         retries: 1,
         timeoutSeconds: 1,
         type: WarehouseTypes.BIGQUERY,
-    },
+    } as AnyType as BigqueryCredentials,
     dbtVersion: DefaultSupportedDbtVersion,
     schedulerTimezone: 'UTC',
     createdByUserUuid: null,
@@ -106,14 +109,14 @@ export const expectedProject: Project = {
 
 const metricFilter: MetricFilterRule = {
     id: '1234',
-    operator: ConditionalOperator.EQUALS,
+    operator: FilterOperator.EQUALS,
     values: ['test'],
     target: { fieldRef: 'table_field' },
 };
 
 const outdatedMetricFilter: MetricFilterRule = {
     id: '1234',
-    operator: ConditionalOperator.EQUALS,
+    operator: FilterOperator.EQUALS,
     values: ['test'],
     // @ts-expect-error outdated target with fieldId
     target: { fieldId: 'table_field' },

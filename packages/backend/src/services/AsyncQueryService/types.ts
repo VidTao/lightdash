@@ -1,7 +1,9 @@
 import {
+    DownloadFileType,
     GroupByColumn,
     ItemsMap,
     MetricQuery,
+    PivotConfig,
     SortBy,
     ValuesColumn,
     type CacheMetadata,
@@ -31,6 +33,21 @@ export type GetAsyncQueryResultsArgs = Omit<
         queryUuid: string;
     };
 
+export type DownloadAsyncQueryResultsArgs = Omit<
+    CommonAsyncQueryArgs,
+    'invalidateCache' | 'context'
+> & {
+    queryUuid: string;
+    type?: DownloadFileType;
+    onlyRaw?: boolean;
+    showTableNames?: boolean;
+    customLabels?: Record<string, string>;
+    columnOrder?: string[];
+    hiddenFields?: string[];
+    pivotConfig?: PivotConfig;
+    attachmentDownloadName?: string;
+};
+
 export type ExecuteAsyncMetricQueryArgs = CommonAsyncQueryArgs & {
     metricQuery: MetricQuery;
     dateZoom?: DateZoom;
@@ -39,6 +56,7 @@ export type ExecuteAsyncMetricQueryArgs = CommonAsyncQueryArgs & {
 export type ExecuteAsyncSavedChartQueryArgs = CommonAsyncQueryArgs & {
     chartUuid: string;
     versionUuid?: string;
+    limit?: number | null | undefined;
 };
 
 export type ExecuteAsyncDashboardChartQueryArgs = CommonAsyncQueryArgs & {
@@ -47,6 +65,7 @@ export type ExecuteAsyncDashboardChartQueryArgs = CommonAsyncQueryArgs & {
     dashboardFilters: DashboardFilters;
     dashboardSorts: SortField[];
     dateZoom?: DateZoom;
+    limit?: number | null | undefined;
 };
 
 export type ExecuteAsyncUnderlyingDataQueryArgs = CommonAsyncQueryArgs & {
@@ -74,6 +93,7 @@ export type ExecuteAsyncSqlQueryArgs = CommonAsyncQueryArgs & {
 
 export type ExecuteAsyncDashboardSqlChartCommonArgs = CommonAsyncQueryArgs & {
     dashboardUuid: string;
+    tileUuid: string;
     dashboardFilters: DashboardFilters;
     dashboardSorts: SortField[];
 };

@@ -52,9 +52,11 @@ const Schedulers: FC<SchedulersProps> = ({
     const { data: slackInstallation } = useGetSlack();
     const organizationHasSlack = !!slackInstallation?.organizationUuid;
 
-    const { data: allSlackChannels } = useSlackChannels('', false, {
-        enabled: organizationHasSlack,
-    });
+    const { data: allSlackChannels } = useSlackChannels(
+        '',
+        { excludeArchived: false },
+        { enabled: organizationHasSlack },
+    );
 
     const getSlackChannelName = useCallback(
         (channelId: string) => {
@@ -96,6 +98,8 @@ const Schedulers: FC<SchedulersProps> = ({
                                   switch (item.format) {
                                       case SchedulerFormat.CSV:
                                           return 'CSV';
+                                      case SchedulerFormat.XLSX:
+                                          return 'XLSX';
                                       case SchedulerFormat.IMAGE:
                                           return 'Image';
                                       case SchedulerFormat.GSHEETS:

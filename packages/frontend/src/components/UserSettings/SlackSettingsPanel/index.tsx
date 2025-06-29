@@ -15,6 +15,7 @@ import {
     Loader,
     Select,
     Stack,
+    Switch,
     Text,
     TextInput,
     Title,
@@ -30,16 +31,16 @@ import {
 } from '@tabler/icons-react';
 import { debounce } from 'lodash';
 import { useEffect, useMemo, useState, type FC } from 'react';
+import { Link } from 'react-router';
 import { z } from 'zod';
-import ChannelProjectMappings from '../../../ee/features/aiCopilot/components/ChannelProjectMappings';
 import {
     useDeleteSlack,
     useGetSlack,
     useSlackChannels,
     useUpdateSlackAppCustomSettingsMutation,
 } from '../../../hooks/slack/useSlack';
+import { useActiveProjectUuid } from '../../../hooks/useActiveProject';
 import { useFeatureFlag } from '../../../hooks/useFeatureFlagEnabled';
-import { useProjects } from '../../../hooks/useProjects';
 import slackSvg from '../../../svgs/slack.svg';
 import MantineIcon from '../../common/MantineIcon';
 import { SettingsGridCard } from '../../common/Settings/SettingsCard';
@@ -67,6 +68,7 @@ const formSchema = z.object({
 });
 
 const SlackSettingsPanel: FC = () => {
+    const { activeProjectUuid } = useActiveProjectUuid();
     const { data: aiCopilotFlag } = useFeatureFlag(
         CommercialFeatureFlags.AiCopilot,
     );
@@ -78,9 +80,15 @@ const SlackSettingsPanel: FC = () => {
     const debounceSetSearch = debounce((val) => setSearch(val), 1500);
 
     const { data: slackChannels, isInitialLoading: isLoadingSlackChannels } =
-        useSlackChannels(search, true, {
-            enabled: organizationHasSlack,
-        });
+        useSlackChannels(
+            search,
+            {
+                excludeArchived: true,
+                excludeDms: true,
+                excludeGroups: true,
+            },
+            { enabled: organizationHasSlack },
+        );
 
     const { mutate: deleteSlack } = useDeleteSlack();
     const { mutate: updateCustomSettings } =
@@ -105,6 +113,8 @@ const SlackSettingsPanel: FC = () => {
             appProfilePhotoUrl: slackInstallation.appProfilePhotoUrl ?? null,
             slackChannelProjectMappings:
                 slackInstallation.slackChannelProjectMappings ?? [],
+            aiThreadAccessConsent:
+                slackInstallation.aiThreadAccessConsent ?? false,
         };
 
         if (form.initialized) {
@@ -124,17 +134,6 @@ const SlackSettingsPanel: FC = () => {
             })) ?? []
         );
     }, [slackChannels]);
-
-    const { data: projects } = useProjects();
-
-    const projectOptions = useMemo(() => {
-        return (
-            projects?.map((project) => ({
-                value: project.projectUuid,
-                label: project.name,
-            })) ?? []
-        );
-    }, [projects]);
 
     let responsiveChannelsSearchEnabled =
         slackChannelOptions.length >= MAX_SLACK_CHANNELS || search.length > 0; // enable responvive channels search if there are more than MAX_SLACK_CHANNELS defined channels
@@ -254,11 +253,55 @@ const SlackSettingsPanel: FC = () => {
                                 />
                             </Group>
                             {aiCopilotFlag?.enabled && (
-                                <ChannelProjectMappings
-                                    form={form}
-                                    channelOptions={slackChannelOptions}
-                                    projectOptions={projectOptions}
-                                />
+                                <Stack spacing="sm">
+                                    <Group spacing="two">
+                                        <Title order={6} fw={500}>
+                                            AI Agents thread access consent
+                                        </Title>
+
+                                        <Tooltip
+                                            multiline
+                                            variant="xs"
+                                            maw={250}
+                                            label="The longer the thread, the more context the AI Agents will have to work with."
+                                        >
+                                            <MantineIcon
+                                                icon={IconHelpCircle}
+                                            />
+                                        </Tooltip>
+                                    </Group>
+
+                                    <Text c="dimmed" fz="xs">
+                                        Allow the AI Agents to access thread
+                                        messages when a user mentions the bot in
+                                        a thread.
+                                    </Text>
+
+                                    <Switch
+                                        label="Allow AI to access thread messages"
+                                        checked={
+                                            form.values.aiThreadAccessConsent ??
+                                            false
+                                        }
+                                        onChange={(event) => {
+                                            setFieldValue(
+                                                'aiThreadAccessConsent',
+                                                event.currentTarget.checked,
+                                            );
+                                        }}
+                                    />
+                                    <Text fz="xs" c="dimmed">
+                                        Configure which channels your AI Agents
+                                        can access{' '}
+                                        <Anchor
+                                            component={Link}
+                                            to={`/projects/${activeProjectUuid}/ai-agents`}
+                                        >
+                                            here
+                                        </Anchor>
+                                        .
+                                    </Text>
+                                </Stack>
                             )}
                         </Stack>
                         <Stack align="end" mt="xl">

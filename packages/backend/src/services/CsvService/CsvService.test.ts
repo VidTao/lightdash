@@ -99,7 +99,8 @@ describe('Csv service', () => {
         });
 
         expect(csvContent).toEqual(
-            `column number,column string,column date
+            // eslint-disable-next-line no-irregular-whitespace
+            `﻿column number,column string,column date
 $0.00,value_0,2020-03-16
 $1.00,value_1,2020-03-16
 $2.00,value_2,2020-03-16
@@ -132,7 +133,8 @@ $4.00,value_4,2020-03-16
         });
 
         expect(csvContent).toEqual(
-            `table column number,column string,table column date
+            // eslint-disable-next-line no-irregular-whitespace
+            `﻿table column number,column string,table column date
 0,value_0,2020-03-16
 1,value_1,2020-03-16
 2,value_2,2020-03-16
@@ -231,27 +233,27 @@ $4.00,value_4,2020-03-16
             `csv-payment-${timestamp}.csv`,
         );
         expect(CsvService.generateFileId('MyTable', false, time)).toEqual(
-            `csv-mytable-${timestamp}.csv`,
+            `csv-MyTable-${timestamp}.csv`,
         );
         expect(CsvService.generateFileId('my table', false, time)).toEqual(
-            `csv-my_table-${timestamp}.csv`,
+            `csv-my table-${timestamp}.csv`,
         );
         expect(CsvService.generateFileId('table!', false, time)).toEqual(
-            `csv-table_-${timestamp}.csv`,
+            `csv-table!-${timestamp}.csv`,
         );
         expect(
             CsvService.generateFileId('this is a chart title', false, time),
-        ).toEqual(`csv-this_is_a_chart_title-${timestamp}.csv`);
+        ).toEqual(`csv-this is a chart title-${timestamp}.csv`);
         expect(
             CsvService.generateFileId(
                 'another table (for testing)',
                 false,
                 time,
             ),
-        ).toEqual(`csv-another_table_for_testing_-${timestamp}.csv`);
+        ).toEqual(`csv-another table (for testing)-${timestamp}.csv`);
         expect(
             CsvService.generateFileId('weird chars *!"()_-', false, time),
-        ).toEqual(`csv-weird_chars_-${timestamp}.csv`);
+        ).toEqual(`csv-weird chars _!_()_--${timestamp}.csv`);
 
         // Test without time
         expect(CsvService.generateFileId('payment')).toContain(`csv-payment-`);
@@ -276,12 +278,12 @@ $4.00,value_4,2020-03-16
 
         const validNames = [
             `csv-payment-${timestamp}.csv`,
-            `csv-mytable-${timestamp}.csv`,
-            `csv-my_table-${timestamp}.csv`,
-            `csv-table_-${timestamp}.csv`,
-            `csv-this_is_a_chart_title-${timestamp}.csv`,
-            `csv-another_table_for_testing_-${timestamp}.csv`,
-            `csv-weird_chars_-${timestamp}.csv`,
+            `csv-MyTable-${timestamp}.csv`,
+            `csv-my table-${timestamp}.csv`,
+            `csv-table!-${timestamp}.csv`,
+            `csv-this is a chart title-${timestamp}.csv`,
+            `csv-another table (for testing)-${timestamp}.csv`,
+            `csv-weird chars _!_()_--${timestamp}.csv`,
             `csv-incomplete_results-payment-${timestamp}.csv`,
         ];
 
@@ -289,8 +291,8 @@ $4.00,value_4,2020-03-16
             `without_prefix-${timestamp}.csv`,
             `csv-without_suffix-${timestamp}`,
             `csv-no_timestamp.csv`,
-            `csv-with space-${timestamp}.csv`,
-            `csv-UPPERCASED-${timestamp}.csv`,
+            `csv-file/invalid-${timestamp}.csv`,
+            `csv-file\\invalid-${timestamp}.csv`,
         ];
         validNames.forEach((name) => {
             expect(name + CsvService.isValidCsvFileId(name)).toEqual(

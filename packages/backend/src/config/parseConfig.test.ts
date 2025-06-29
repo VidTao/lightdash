@@ -62,17 +62,39 @@ test('Should default results S3 config to S3 config', () => {
 });
 
 test('Should use explicit results S3 config when set', () => {
-    process.env.RESULTS_CACHE_S3_BUCKET = 'explicit_bucket';
-    process.env.RESULTS_CACHE_S3_REGION = 'explicit_region';
-    process.env.RESULTS_CACHE_S3_ACCESS_KEY = 'explicit_access_key';
-    process.env.RESULTS_CACHE_S3_SECRET_KEY = 'explicit_secret_key';
+    process.env.RESULTS_S3_BUCKET = 'new_bucket';
+    process.env.RESULTS_S3_REGION = 'new_region';
+    process.env.RESULTS_S3_ACCESS_KEY = 'new_access_key';
+    process.env.RESULTS_S3_SECRET_KEY = 'new_secret_key';
     const config = parseConfig();
     expect(config.results.s3).toEqual({
-        endpoint: 'mock_endpoint', // ! Endpoint is not overriden
-        bucket: 'explicit_bucket',
-        region: 'explicit_region',
-        accessKey: 'explicit_access_key',
-        secretKey: 'explicit_secret_key',
+        endpoint: 'mock_endpoint',
+        bucket: 'new_bucket',
+        region: 'new_region',
+        accessKey: 'new_access_key',
+        secretKey: 'new_secret_key',
+        forcePathStyle: false,
+    });
+});
+
+test('Should prioritize new results S3 config over deprecated config when both are set', () => {
+    // Set both new and deprecated environment variables
+    process.env.RESULTS_S3_BUCKET = 'new_bucket';
+    process.env.RESULTS_S3_REGION = 'new_region';
+    process.env.RESULTS_S3_ACCESS_KEY = 'new_access_key';
+    process.env.RESULTS_S3_SECRET_KEY = 'new_secret_key';
+    process.env.RESULTS_CACHE_S3_BUCKET = 'deprecated_bucket';
+    process.env.RESULTS_CACHE_S3_REGION = 'deprecated_region';
+    process.env.RESULTS_CACHE_S3_ACCESS_KEY = 'deprecated_access_key';
+    process.env.RESULTS_CACHE_S3_SECRET_KEY = 'deprecated_secret_key';
+
+    const config = parseConfig();
+    expect(config.results.s3).toEqual({
+        endpoint: 'mock_endpoint',
+        bucket: 'new_bucket',
+        region: 'new_region',
+        accessKey: 'new_access_key',
+        secretKey: 'new_secret_key',
         forcePathStyle: false,
     });
 });
@@ -347,5 +369,69 @@ describe('process.env.LIGHTDASH_IFRAME_EMBEDDING_DOMAINS', () => {
         process.env.LIGHTDASH_IFRAME_EMBEDDING_DOMAINS =
             'https://example.com,https://example.org';
         expect(() => parseConfig()).toThrowError(ParameterError);
+    });
+
+    describe('headlessBrowser configuration', () => {
+        beforeEach(() => {
+            process.env.HEADLESS_BROWSER_HOST = 'headless-browser-host';
+            process.env.HEADLESS_BROWSER_PORT = '3000';
+        });
+        test('should use ws and port when USE_SECURE_BROWSER is not set', () => {
+            const config = parseConfig();
+            expect(config.headlessBrowser.browserEndpoint).toEqual(
+                'ws://headless-browser-host:3000',
+            );
+        });
+
+        test('should use wss and omit the port when USE_SECURE_BROWSER is true', () => {
+            process.env.USE_SECURE_BROWSER = 'true';
+            const config = parseConfig();
+            expect(config.headlessBrowser.browserEndpoint).toEqual(
+                'wss://headless-browser-host',
+            );
+        });
+    });
+
+    describe('environment variables for API tokens', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-06-19'));
+
+            process.env.LD_SETUP_ADMIN_EMAIL = 'admin@example.com';
+            process.env.LD_SETUP_SERVICE_ACCOUNT_EXPIRATION = '0';
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        test('should parse service account token', () => {
+            process.env.LD_SETUP_SERVICE_ACCOUNT_TOKEN =
+                'ldsvc_service-account-token';
+            const config = parseConfig();
+            expect(config.initialSetup?.serviceAccount).toEqual({
+                token: 'ldsvc_service-account-token',
+                expirationTime: null,
+            });
+        });
+
+        test('should parse personal access token', () => {
+            process.env.LD_SETUP_PROJECT_PAT = 'ldpat_personal-access-token';
+            const config = parseConfig();
+            expect(config.initialSetup?.project?.personalAccessToken).toBe(
+                'ldpat_personal-access-token',
+            );
+        });
+
+        test('should throw error if service account token is not prefixed with "svc_"', () => {
+            process.env.LD_SETUP_SERVICE_ACCOUNT_TOKEN =
+                'service-account-token';
+            expect(() => parseConfig()).toThrowError(ParseError);
+        });
+
+        test('should throw error if personal access token is not prefixed with "pat-"', () => {
+            process.env.LD_SETUP_PROJECT_PAT = 'personal-access-token';
+            expect(() => parseConfig()).toThrowError(ParseError);
+        });
     });
 });

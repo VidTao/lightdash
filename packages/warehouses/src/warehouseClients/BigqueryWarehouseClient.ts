@@ -12,15 +12,14 @@ import {
 import bigquery from '@google-cloud/bigquery/build/src/types';
 import {
     AnyType,
+    BigqueryDataset,
     CreateBigqueryCredentials,
     DimensionType,
     getErrorMessage,
-    isBigQueryWarehouseQueryMetadata,
     Metric,
     MetricType,
     PartitionColumn,
     PartitionType,
-    sleep,
     SupportedDbtAdapter,
     WarehouseConnectionError,
     WarehouseQueryError,
@@ -34,7 +33,12 @@ import {
     WarehouseExecuteAsyncQueryArgs,
     WarehouseTableSchema,
 } from '../types';
+import {
+    DEFAULT_BATCH_SIZE,
+    processPromisesInBatches,
+} from '../utils/processPromisesInBatches';
 import WarehouseBaseClient from './WarehouseBaseClient';
+import WarehouseBaseSqlBuilder from './WarehouseBaseSqlBuilder';
 
 export enum BigqueryFieldType {
     STRING = 'STRING',
@@ -126,11 +130,32 @@ type BigqueryError = {
     errors: bigquery.IErrorProto[];
 };
 
+export class BigquerySqlBuilder extends WarehouseBaseSqlBuilder {
+    readonly type = WarehouseTypes.BIGQUERY;
+
+    getAdapterType(): SupportedDbtAdapter {
+        return SupportedDbtAdapter.BIGQUERY;
+    }
+
+    getMetricSql(sql: string, metric: Metric): string {
+        switch (metric.type) {
+            case MetricType.PERCENTILE:
+                return `APPROX_QUANTILES(${sql}, 100)[OFFSET(${
+                    metric.percentile ?? 50
+                })]`;
+            case MetricType.MEDIAN:
+                return `APPROX_QUANTILES(${sql}, 100)[OFFSET(50)]`;
+            default:
+                return super.getMetricSql(sql, metric);
+        }
+    }
+}
+
 export class BigqueryWarehouseClient extends WarehouseBaseClient<CreateBigqueryCredentials> {
     client: BigQuery;
 
     constructor(credentials: CreateBigqueryCredentials) {
-        super(credentials);
+        super(credentials, new BigquerySqlBuilder(credentials.startOfWeek));
         try {
             this.client = new BigQuery({
                 projectId: credentials.executionProject || credentials.project,
@@ -314,29 +339,29 @@ export class BigqueryWarehouseClient extends WarehouseBaseClient<CreateBigqueryC
             table: string;
         }[],
     ) {
-        const tablesMetadataPromises: Promise<
-            [string, string, string, TableSchema] | undefined
-        >[] = requests.map(({ database, schema, table }) => {
-            const dataset: Dataset = new Dataset(this.client, schema, {
-                projectId: database,
-            });
-            return BigqueryWarehouseClient.getTableMetadata(
-                dataset,
-                table,
-            ).catch((e) => {
-                if (e?.code === 404) {
-                    // Ignore error and let UI show invalid table
-                    return undefined;
-                }
-                throw new WarehouseConnectionError(
-                    `Failed to fetch table metadata for '${database}.${schema}.${table}'. ${getErrorMessage(
-                        e,
-                    )}`,
-                );
-            });
-        });
+        const tablesMetadata = await processPromisesInBatches(
+            requests,
+            DEFAULT_BATCH_SIZE,
+            async ({ database, schema, table }) => {
+                const dataset: Dataset = new Dataset(this.client, schema, {
+                    projectId: database,
+                });
 
-        const tablesMetadata = await Promise.all(tablesMetadataPromises);
+                return BigqueryWarehouseClient.getTableMetadata(
+                    dataset,
+                    table,
+                ).catch((e) => {
+                    if (e?.code === 404) {
+                        return undefined;
+                    }
+                    throw new WarehouseConnectionError(
+                        `Failed to fetch table metadata for '${database}.${schema}.${table}'. ${getErrorMessage(
+                            e,
+                        )}`,
+                    );
+                });
+            },
+        );
 
         return tablesMetadata.reduce<WarehouseCatalog>((acc, result) => {
             if (result) {
@@ -355,31 +380,6 @@ export class BigqueryWarehouseClient extends WarehouseBaseClient<CreateBigqueryC
 
             return acc;
         }, {});
-    }
-
-    getStringQuoteChar() {
-        return "'";
-    }
-
-    getEscapeStringQuoteChar() {
-        return '\\';
-    }
-
-    getAdapterType(): SupportedDbtAdapter {
-        return SupportedDbtAdapter.BIGQUERY;
-    }
-
-    getMetricSql(sql: string, metric: Metric) {
-        switch (metric.type) {
-            case MetricType.PERCENTILE:
-                return `APPROX_QUANTILES(${sql}, 100)[OFFSET(${
-                    metric.percentile ?? 50
-                })]`;
-            case MetricType.MEDIAN:
-                return `APPROX_QUANTILES(${sql}, 100)[OFFSET(50)]`;
-            default:
-                return super.getMetricSql(sql, metric);
-        }
     }
 
     async getAllTables() {
@@ -533,7 +533,10 @@ export class BigqueryWarehouseClient extends WarehouseBaseClient<CreateBigqueryC
 
     async executeAsyncQuery(
         { sql, tags }: WarehouseExecuteAsyncQueryArgs,
-        resultsStreamCallback?: (rows: WarehouseResults['rows']) => void,
+        resultsStreamCallback: (
+            rows: WarehouseResults['rows'],
+            fields: WarehouseResults['fields'],
+        ) => void,
     ): Promise<WarehouseExecuteAsyncQuery> {
         try {
             const [job] = await this.createJob(sql, {
@@ -560,13 +563,13 @@ export class BigqueryWarehouseClient extends WarehouseBaseClient<CreateBigqueryC
             const totalRows: number = resultsMetadata?.totalRows
                 ? parseInt(resultsMetadata.totalRows, 10)
                 : 1;
+            const fields =
+                BigqueryWarehouseClient.getFieldsFromResponse(resultsMetadata);
 
             // If a callback is provided, stream the results to the callback
-            if (resultsStreamCallback) {
-                await this.streamResults(job, (row) =>
-                    resultsStreamCallback([row]),
-                );
-            }
+            await this.streamResults(job, (row) =>
+                resultsStreamCallback([row], fields),
+            );
 
             return {
                 queryId: job.id,
@@ -598,5 +601,28 @@ export class BigqueryWarehouseClient extends WarehouseBaseClient<CreateBigqueryC
                 reject(error);
             });
         });
+    }
+
+    static async getDatabases(
+        projectId: string,
+        refresh_token: string,
+    ): Promise<BigqueryDataset[]> {
+        const bigqueryClient = new BigQuery({
+            projectId,
+            credentials: {
+                type: 'authorized_user',
+                client_id: process.env.AUTH_GOOGLE_OAUTH2_CLIENT_ID,
+                client_secret: process.env.AUTH_GOOGLE_OAUTH2_CLIENT_SECRET,
+                refresh_token,
+            },
+        });
+
+        const datasets = await bigqueryClient.getDatasets();
+        const databases = datasets[0].map((d) => ({
+            projectId: d.projectId,
+            location: d.location,
+            datasetId: d.id!,
+        }));
+        return databases;
     }
 }

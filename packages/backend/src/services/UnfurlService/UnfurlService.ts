@@ -615,12 +615,11 @@ export class UnfurlService extends BaseService {
                 let page: playwright.Page | undefined;
 
                 try {
-                    const browserWSEndpoint = `ws://${
-                        this.lightdashConfig.headlessBrowser?.host
-                    }:${this.lightdashConfig.headlessBrowser?.port || 3001}`;
+                    const { browserEndpoint } =
+                        this.lightdashConfig.headlessBrowser;
 
                     browser = await playwright.chromium.connectOverCDP(
-                        browserWSEndpoint,
+                        browserEndpoint,
                         {
                             timeout: 1000 * 60 * 30, // 30 minutes
                             logger: {
@@ -648,6 +647,13 @@ export class UnfurlService extends BaseService {
                     );
 
                     page = await browser.newPage({
+                        viewport:
+                            chartType === ChartType.BIG_NUMBER
+                                ? bigNumberViewport
+                                : {
+                                      ...viewport,
+                                      width: gridWidth ?? viewport.width,
+                                  },
                         extraHTTPHeaders: {
                             [LightdashRequestMethodHeader]:
                                 RequestMethod.HEADLESS_BROWSER,
@@ -672,15 +678,6 @@ export class UnfurlService extends BaseService {
                             sameSite: 'Strict',
                         },
                     ]);
-
-                    if (chartType === ChartType.BIG_NUMBER) {
-                        await page.setViewportSize(bigNumberViewport);
-                    } else {
-                        await page.setViewportSize({
-                            ...viewport,
-                            width: gridWidth ?? viewport.width,
-                        });
-                    }
 
                     page.on('requestfailed', (request) => {
                         this.logger.warn(
@@ -779,7 +776,7 @@ export class UnfurlService extends BaseService {
                                 );
 
                                 const expectedPaginatedResponses =
-                                    chartTileUuids.length;
+                                    nonNullChartTileUuids.length;
                                 this.logger.info(
                                     `Dashboard screenshot: Expecting ${expectedPaginatedResponses} paginated responses`,
                                 );
@@ -943,18 +940,19 @@ export class UnfurlService extends BaseService {
                     }
 
                     const fullPage = await page.locator(finalSelector);
+                    const fullPageSize = await fullPage?.boundingBox();
 
-                    if (chartType === ChartType.BIG_NUMBER) {
-                        await page.setViewportSize(bigNumberViewport);
-                    } else {
-                        const fullPageSize = await fullPage?.boundingBox();
-
+                    if (
+                        chartType !== ChartType.BIG_NUMBER &&
+                        fullPageSize?.height
+                    ) {
                         await page.setViewportSize({
                             width: gridWidth ?? viewport.width,
-                            height: fullPageSize?.height
-                                ? Math.round(fullPageSize.height)
-                                : viewport.height,
+                            height: Math.round(fullPageSize.height),
                         });
+                        // Viewport changes can trigger layout shifts - wait for things to settle
+                        // before taking the shot 📸
+                        await page.waitForTimeout(100);
                     }
 
                     if (

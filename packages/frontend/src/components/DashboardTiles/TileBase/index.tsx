@@ -31,7 +31,6 @@ import MoveTileToTabModal from '../TileForms/MoveTileToTabModal';
 import TileUpdateModal from '../TileForms/TileUpdateModal';
 
 import {
-    ButtonsWrapper,
     ChartContainer,
     HeaderContainer,
     TileTitleLink,
@@ -112,9 +111,6 @@ const TileBase = <T extends Dashboard['tiles'][number]>({
             shadow={isEditMode ? 'xs' : undefined}
             sx={(theme) => {
                 let border = `1px solid ${theme.colors.gray[1]}`;
-                if (tabs && tabs.length > 1) {
-                    border = `1px solid ${theme.colors.gray[3]}`;
-                }
                 if (isEditMode) {
                     border = `1px dashed ${theme.colors.blue[5]}`;
                 }
@@ -198,13 +194,16 @@ const TileBase = <T extends Dashboard['tiles'][number]>({
                         </TitleWrapper>
                     </Group>
                 )}
-                {visibleHeaderElement && (
-                    <ButtonsWrapper className="non-draggable">
-                        {visibleHeaderElement}
-                    </ButtonsWrapper>
-                )}
-
-                <ButtonsWrapper className="non-draggable">
+                <Group
+                    spacing="xs"
+                    className="non-draggable"
+                    sx={{ marginLeft: 'auto' }}
+                >
+                    {visibleHeaderElement && (
+                        <Group spacing="xs" className="non-draggable">
+                            {visibleHeaderElement}
+                        </Group>
+                    )}
                     {(containerHovered && !titleHovered) ||
                     isMenuOpen ||
                     lockHeaderVisibility ? (
@@ -314,7 +313,7 @@ const TileBase = <T extends Dashboard['tiles'][number]>({
                             )}
                         </>
                     ) : null}
-                </ButtonsWrapper>
+                </Group>
             </HeaderContainer>
 
             <ChartContainer className="non-draggable sentry-block ph-no-capture">

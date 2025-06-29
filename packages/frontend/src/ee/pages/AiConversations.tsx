@@ -27,13 +27,12 @@ import { Link, useNavigate, useParams, type LinkProps } from 'react-router';
 import { lightdashApi } from '../../api';
 import Page from '../../components/common/Page/Page';
 import SuboptimalState from '../../components/common/SuboptimalState/SuboptimalState';
-import { getNameInitials } from '../../features/comments/utils';
 import { useTimeAgo } from '../../hooks/useTimeAgo';
 import slackSvg from '../../svgs/slack.svg';
 
-const getAiConversations = async (projectUuid: string) => {
+const getAiAgentConversations = async (projectUuid: string) => {
     const data = await lightdashApi<AiConversation[]>({
-        url: `/ai/${projectUuid}/conversations`,
+        url: `/aiAgents/projects/${projectUuid}/conversations`,
         method: 'GET',
         body: null,
     });
@@ -46,16 +45,19 @@ const useAiConversation = (projectUuid?: string) => {
         queryKey: ['ai-conversations', projectUuid],
         queryFn: async () => {
             return projectUuid
-                ? getAiConversations(projectUuid)
+                ? getAiAgentConversations(projectUuid)
                 : Promise.reject();
         },
         enabled: !!projectUuid,
     });
 };
 
-const getMessages = async (projectUuid: string, aiThreadUuid: string) => {
+const getAiAgentConversationMessages = async (
+    projectUuid: string,
+    aiThreadUuid: string,
+) => {
     const data = await lightdashApi<AiConversationMessage[]>({
-        url: `/ai/${projectUuid}/conversations/${aiThreadUuid}/messages`,
+        url: `/aiAgents/projects/${projectUuid}/conversations/${aiThreadUuid}/messages`,
         method: 'GET',
         body: null,
     });
@@ -63,13 +65,16 @@ const getMessages = async (projectUuid: string, aiThreadUuid: string) => {
     return data;
 };
 
-const useAiMessages = (projectUuid?: string, aiThreadUuid?: string) => {
+const useAiAgentConversationMessages = (
+    projectUuid?: string,
+    aiThreadUuid?: string,
+) => {
     return useQuery({
-        queryKey: ['ai-messages', projectUuid, aiThreadUuid],
+        queryKey: ['ai-agent-messages', projectUuid, aiThreadUuid],
         queryFn: async () => {
             await new Promise((resolve) => setTimeout(resolve, 1000));
             return projectUuid
-                ? getMessages(projectUuid, aiThreadUuid!)
+                ? getAiAgentConversationMessages(projectUuid, aiThreadUuid!)
                 : Promise.reject();
         },
         enabled: !!aiThreadUuid && !!projectUuid,
@@ -111,13 +116,12 @@ const AiThreadMessage: FC<AiThreadMessageProps> = ({
             }}
         >
             <Avatar
-                color={actor === 'human' ? 'violet' : 'gray.3'}
+                color={actor === 'human' ? 'violet' : 'cyan'}
                 radius="xl"
                 variant="filled"
             >
-                {initials}
+                {actor === 'human' ? initials[0] : 'AI'}
             </Avatar>
-
             <Stack
                 spacing="xs"
                 align={actor === 'human' ? 'flex-end' : 'flex-start'}
@@ -222,13 +226,8 @@ const AiThread: FC<AiThreadProps> = ({
         >
             <Group align="flex-start" noWrap>
                 <div style={{ position: 'relative' }}>
-                    <Avatar
-                        color="violet"
-                        radius="xl"
-                        variant="filled"
-                        // style={{ overflow: 'unset' }}
-                    >
-                        {getNameInitials(conversation.user.name)}
+                    <Avatar color="violet" radius="xl" variant="filled">
+                        {conversation.user.name[0]}
                     </Avatar>
 
                     {conversation.createdFrom === 'slack' && (
@@ -288,10 +287,8 @@ const AiConversationsPage: FC = () => {
     const { data: aiConversations, isLoading: isAiConversationsLoading } =
         useAiConversation(projectUuid);
 
-    const { data: aiMessages, isFetching: isAiMessagesLoading } = useAiMessages(
-        projectUuid,
-        threadUuid,
-    );
+    const { data: aiMessages, isFetching: isAiMessagesLoading } =
+        useAiAgentConversationMessages(projectUuid, threadUuid);
 
     const selectedConversation = aiConversations?.find(
         (conversation) => conversation.threadUuid === threadUuid,
@@ -402,9 +399,7 @@ const AiConversationsPage: FC = () => {
                             >
                                 <AiThreadMessage
                                     actor="human"
-                                    initials={getNameInitials(
-                                        message.user.name,
-                                    )}
+                                    initials={message.user.name}
                                     message={message.message}
                                     messagedAt={new Date(message.createdAt)}
                                 />
@@ -412,7 +407,7 @@ const AiConversationsPage: FC = () => {
                                 {isAiConversationMessageComplete(message) && (
                                     <AiThreadMessage
                                         actor="ai"
-                                        initials="🤖"
+                                        initials="AI"
                                         message={message.response}
                                         messagedAt={
                                             new Date(message.respondedAt)

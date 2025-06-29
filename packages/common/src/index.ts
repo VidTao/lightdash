@@ -33,7 +33,11 @@ import {
     type Metric,
     type TableCalculation,
 } from './types/field';
-import { type AdditionalMetric, type MetricQuery } from './types/metricQuery';
+import {
+    type AdditionalMetric,
+    type MetricQuery,
+    type QueryWarning,
+} from './types/metricQuery';
 import {
     OrganizationMemberRole,
     type ApiOrganizationMemberProfiles,
@@ -116,9 +120,16 @@ import { type UserWarehouseCredentials } from './types/userWarehouseCredentials'
 import { type ValidationResponse } from './types/validation';
 
 import type {
+    ApiAiAgentThreadCreateResponse,
+    ApiAiAgentThreadMessageCreateResponse,
+    ApiAiAgentThreadMessageVizQueryResponse,
+    ApiAiAgentThreadMessageVizResponse,
+    ApiAiAgentThreadResponse,
     ApiAiConversationMessages,
     ApiAiConversationResponse,
     ApiAiConversations,
+    ApiGetUserAgentPreferencesResponse,
+    ApiUpdateUserAgentPreferencesResponse,
     DecodedEmbed,
     EmbedUrl,
 } from './ee';
@@ -147,13 +158,8 @@ import type {
 import type { ResultsPaginationMetadata } from './types/paginateResults';
 import { type ApiPromotionChangesResponse } from './types/promotion';
 import type { QueryHistoryStatus } from './types/queryHistory';
+import { type ApiRenameFieldsResponse } from './types/rename';
 import { type SchedulerWithLogs } from './types/schedulerLog';
-import {
-    type ApiSemanticLayerClientInfo,
-    type ApiSemanticViewerChartCreate,
-    type ApiSemanticViewerChartGet,
-    type ApiSemanticViewerChartUpdate,
-} from './types/semanticLayer';
 import {
     type ApiCreateSqlChart,
     type ApiCreateVirtualView,
@@ -161,6 +167,8 @@ import {
     type ApiSqlChart,
     type ApiSqlRunnerJobStatusResponse,
     type ApiUpdateSqlChart,
+    type GroupByColumn,
+    type SortBy,
 } from './types/sqlRunner';
 import { TimeFrames } from './types/timeFrames';
 import { type ApiWarehouseTableFields } from './types/warehouse';
@@ -169,7 +177,10 @@ import { getFields } from './utils/fields';
 import { formatItemValue } from './utils/formatting';
 import { getItemId, getItemLabelWithoutTableName } from './utils/item';
 import { getOrganizationNameSchema } from './utils/organization';
-import type { PivotValuesColumn } from './visualizations/types';
+import type {
+    PivotIndexColum,
+    PivotValuesColumn,
+} from './visualizations/types';
 
 dayjs.extend(utc);
 export * from './authorization/index';
@@ -197,16 +208,16 @@ export * from './types/api/sort';
 export * from './types/api/spotlight';
 export * from './types/api/success';
 export * from './types/api/uuid';
+export * from './types/auth';
+export * from './types/bigQuerySSO';
 export * from './types/catalog';
 export * from './types/coder';
 export * from './types/comments';
 export * from './types/conditionalFormatting';
-export * from './types/conditionalRule';
 export * from './types/content';
 export * from './types/csv';
 export * from './types/dashboard';
 export * from './types/dbt';
-export * from './types/dbtSemanticLayer';
 export * from './types/downloadFile';
 export * from './types/email';
 export * from './types/errors';
@@ -245,7 +256,6 @@ export * from './types/scheduler';
 export * from './types/schedulerLog';
 export * from './types/schedulerTaskList';
 export * from './types/search';
-export * from './types/semanticLayer';
 export * from './types/share';
 export * from './types/slack';
 export * from './types/slackSettings';
@@ -291,7 +301,6 @@ export * from './utils/promises';
 export * from './utils/sanitizeHtml';
 export * from './utils/scheduler';
 export * from './utils/searchParams';
-export * from './utils/semanticLayer';
 export * from './utils/sleep';
 export * from './utils/slugs';
 export * from './utils/subtotals';
@@ -533,6 +542,7 @@ export type ApiExecuteAsyncMetricQueryResults =
     ApiExecuteAsyncQueryResultsCommon & {
         metricQuery: MetricQuery;
         fields: ItemsMap;
+        warnings: QueryWarning[];
     };
 
 export type ApiExecuteAsyncDashboardChartQueryResults =
@@ -562,8 +572,11 @@ export type ReadyQueryResultsPage = ResultsPaginationMetadata<ResultRow> & {
     pivotDetails: {
         // Unlimited total column count, this is used to display a warning to the user in the frontend when the number of columns is over MAX_PIVOT_COLUMN_LIMIT
         totalColumnCount: number | null;
+        indexColumn: PivotIndexColum;
         valuesColumns: PivotValuesColumn[];
-        unpivotedColumns: ResultColumns;
+        groupByColumns: GroupByColumn[] | undefined;
+        sortBy: SortBy | undefined;
+        originalColumns: ResultColumns;
     } | null;
 };
 
@@ -578,6 +591,20 @@ export type ApiGetAsyncQueryResults =
           queryUuid: string;
           error: string | null;
       };
+
+export type ApiDownloadAsyncQueryResults = {
+    fileUrl: string;
+};
+
+export type ApiDownloadAsyncQueryResultsAsCsv = {
+    fileUrl: string;
+    truncated: boolean;
+};
+
+export type ApiDownloadAsyncQueryResultsAsXlsx = {
+    fileUrl: string;
+    truncated: boolean;
+};
 
 export type ApiChartAndResults = {
     chart: SavedChart;
@@ -859,10 +886,6 @@ type ApiResults =
     | ApiContentResponse['results']
     | ApiChartContentResponse['results']
     | ApiSqlRunnerJobStatusResponse['results']
-    | ApiSemanticLayerClientInfo['results']
-    | ApiSemanticViewerChartCreate['results']
-    | ApiSemanticViewerChartGet['results']
-    | ApiSemanticViewerChartUpdate['results']
     | ApiCreateVirtualView['results']
     | ApiGithubDbtWritePreview['results']
     | ApiMetricsCatalog['results']
@@ -881,7 +904,17 @@ type ApiResults =
     | ApiExecuteAsyncMetricQueryResults
     | ApiExecuteAsyncDashboardChartQueryResults
     | ApiGetAsyncQueryResults
-    | ApiUserActivityDownloadCsv['results'];
+    | ApiUserActivityDownloadCsv['results']
+    | ApiRenameFieldsResponse['results']
+    | ApiDownloadAsyncQueryResults
+    | ApiDownloadAsyncQueryResultsAsXlsx
+    | ApiAiAgentThreadResponse['results']
+    | ApiAiAgentThreadMessageVizResponse['results']
+    | ApiAiAgentThreadMessageVizQueryResponse['results']
+    | ApiUpdateUserAgentPreferencesResponse['results']
+    | ApiGetUserAgentPreferencesResponse[`results`]
+    | ApiAiAgentThreadCreateResponse['results']
+    | ApiAiAgentThreadMessageCreateResponse['results'];
 
 export type ApiResponse<T extends ApiResults = ApiResults> = {
     status: 'ok';
@@ -954,6 +987,7 @@ export type HealthState = {
     requiresOrgRegistration: boolean;
     hasEmailClient: boolean;
     hasMicrosoftTeams: boolean;
+    isServiceAccountEnabled: boolean;
     latest: {
         version?: string;
     };
@@ -995,6 +1029,9 @@ export type HealthState = {
         };
         pat: {
             maxExpirationTimeInDays: number | undefined;
+        };
+        snowflake: {
+            enabled: boolean;
         };
     };
     posthog:
@@ -1054,6 +1091,11 @@ export const DbtProjectTypeLabels: Record<DbtProjectType, string> = {
     [DbtProjectType.NONE]: 'CLI',
 };
 
+export enum CreateProjectTableConfiguration {
+    PROD = 'prod',
+    ALL = 'all',
+}
+
 export type CreateProject = Omit<
     Project,
     | 'projectUuid'
@@ -1063,6 +1105,8 @@ export type CreateProject = Omit<
 > & {
     warehouseConnection: CreateWarehouseCredentials;
     copyWarehouseConnectionFromUpstreamProject?: boolean;
+    tableConfiguration?: CreateProjectTableConfiguration;
+    copyContent?: boolean;
 };
 
 export type UpdateProject = Omit<

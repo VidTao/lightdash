@@ -1,50 +1,16 @@
+import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
-import { ConditionalOperator } from '../../types/conditionalRule';
 import { DimensionType, MetricType } from '../../types/field';
-import { UnitOfTime } from '../../types/filter';
+import {
+    FilterOperator,
+    type FilterRule,
+    type Filters,
+    UnitOfTime,
+} from '../../types/filter';
+import assertUnreachable from '../../utils/assertUnreachable';
 
 // TODO: most of the things should live in common and some of the existing types should be inferred from here
 // we can't reuse them because there's a bug with TSOA+ZOD - we can't use zod types in TSOA controllers
-
-export const FieldIdSchema = z
-    .string()
-    .min(1)
-    .describe(
-        `Field ID is a unique identifier of a Metric or a Dimension within a project
-ID consists of the table name and field name separated by an underscore.
-@example: orders_status, customers_first_name, orders_total_order_amount, etc.`,
-    );
-
-// All the operators that can be applied to a filter, now we have a validator
-const FilterOperatorSchema = z
-    .union([
-        z.literal(ConditionalOperator.NULL),
-        z.literal(ConditionalOperator.NOT_NULL),
-        z.literal(ConditionalOperator.EQUALS),
-        z.literal(ConditionalOperator.NOT_EQUALS),
-        z.literal(ConditionalOperator.STARTS_WITH),
-        z.literal(ConditionalOperator.ENDS_WITH),
-        z.literal(ConditionalOperator.INCLUDE),
-        z.literal(ConditionalOperator.NOT_INCLUDE),
-        z.literal(ConditionalOperator.LESS_THAN),
-        z.literal(ConditionalOperator.LESS_THAN_OR_EQUAL),
-        z.literal(ConditionalOperator.GREATER_THAN),
-        z.literal(ConditionalOperator.GREATER_THAN_OR_EQUAL),
-        z.literal(ConditionalOperator.IN_BETWEEN),
-    ])
-    .describe('Filter operators that can be applied to a filter');
-
-const DateFilterOperatorSchemaReqUnitOfTime = z
-    .union([
-        z.literal(ConditionalOperator.IN_THE_PAST),
-        z.literal(ConditionalOperator.NOT_IN_THE_PAST),
-        z.literal(ConditionalOperator.IN_THE_NEXT),
-        z.literal(ConditionalOperator.IN_THE_CURRENT),
-        z.literal(ConditionalOperator.NOT_IN_THE_CURRENT),
-    ])
-    .describe(
-        'Operators that require a unit of time to be applied on the filter',
-    );
 
 const DimensionTypeSchema = z.union([
     z.literal(DimensionType.BOOLEAN),
@@ -72,109 +38,254 @@ const MetricTypeSchema = z.union([
 
 const FieldTypeSchema = z.union([DimensionTypeSchema, MetricTypeSchema]);
 
-const FilterRuleSchemaBase = z
-    .object({
-        id: z.string().describe('A unique identifier for the filter'),
-        target: z
-            .object({
-                fieldId: FieldIdSchema,
-                type: FieldTypeSchema.describe('Type of the field'),
-            })
-            .describe('Target field to apply the filter'),
-        operator: FilterOperatorSchema.describe(
-            'Filter operator to apply to the target field',
-        ),
-        values: z
-            .array(
-                z.union([
-                    z.null(),
-                    z.boolean(),
-                    z.string().describe('Use strings for date filters'),
-                    z.number().describe('Do not use numbers for date filters'),
-                ]),
-            )
-            .describe(
-                'Use the provided values with the specified operator on the target field. If the target field type is timestamp or date, ensure values are JavaScript Date-compatible strings.',
-            ),
-    })
-    .describe('Base filter rule schema');
+const fieldIdSchema = z
+    .string()
+    .min(1)
+    .describe(
+        `Field ID is a unique identifier of a Metric or a Dimension within a project
+ID consists of the table name and field name separated by an underscore.
+@example: orders_status, customers_first_name, orders_total_order_amount, etc.`,
+    );
 
-const UnitOfTimeFilterRuleSchema = FilterRuleSchemaBase.merge(
+const booleanFilterSchema = z.union([
     z.object({
-        operator: DateFilterOperatorSchemaReqUnitOfTime.describe(
-            'The operator to apply the filter',
-        ),
-        values: z
-            .array(z.union([z.null(), z.string()]))
-            .describe('Ensure values are JavaScript Date-compatible strings.'),
+        operator: z.union([
+            z.literal(FilterOperator.NULL),
+            z.literal(FilterOperator.NOT_NULL),
+        ]),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.EQUALS),
+            z.literal(FilterOperator.NOT_EQUALS),
+        ]),
+        values: z.array(z.boolean()).length(1),
+    }),
+]);
+
+const stringFilterSchema = z.union([
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.NULL),
+            z.literal(FilterOperator.NOT_NULL),
+        ]),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.EQUALS),
+            z.literal(FilterOperator.NOT_EQUALS),
+            z.literal(FilterOperator.STARTS_WITH),
+            z.literal(FilterOperator.ENDS_WITH),
+            z.literal(FilterOperator.INCLUDE),
+            z.literal(FilterOperator.NOT_INCLUDE),
+        ]),
+        values: z.array(z.string()),
+    }),
+]);
+
+const numberFilterSchema = z.union([
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.NULL),
+            z.literal(FilterOperator.NOT_NULL),
+        ]),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.EQUALS),
+            z.literal(FilterOperator.NOT_EQUALS),
+        ]),
+        values: z.array(z.number()),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.LESS_THAN),
+            z.literal(FilterOperator.GREATER_THAN),
+        ]),
+        values: z.array(z.number()).length(1),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.IN_BETWEEN),
+            z.literal(FilterOperator.NOT_IN_BETWEEN),
+        ]),
+        values: z.array(z.number()).length(2),
+    }),
+]);
+
+const dateOrDateTimeSchema = z.union([
+    z.string().date(),
+    z.string().datetime(),
+]);
+
+const dateFilterSchema = z.union([
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.NULL),
+            z.literal(FilterOperator.NOT_NULL),
+        ]),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.EQUALS),
+            z.literal(FilterOperator.NOT_EQUALS),
+        ]),
+        values: z.array(dateOrDateTimeSchema),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.IN_THE_PAST),
+            z.literal(FilterOperator.NOT_IN_THE_PAST),
+            z.literal(FilterOperator.IN_THE_NEXT),
+            // NOTE: NOT_IN_THE_NEXT is not supported...
+        ]),
+        values: z.array(z.number()).length(1),
         settings: z.object({
-            completed: z
-                .boolean()
-                .describe("e.g. if it's a completed month or not"),
-            unitOfTime: z
-                .nativeEnum(UnitOfTime)
-                .describe(
-                    'the unit of time to apply on the filter, e.g. month, year, etc',
-                ),
+            completed: z.boolean(),
+            unitOfTime: z.union([
+                z.literal(UnitOfTime.days),
+                z.literal(UnitOfTime.weeks),
+                z.literal(UnitOfTime.months),
+                z.literal(UnitOfTime.quarters),
+                z.literal(UnitOfTime.years),
+            ]),
         }),
     }),
-).describe(
-    'Specific filter rule schema for filter operators that require unit of time',
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.IN_THE_CURRENT),
+            z.literal(FilterOperator.NOT_IN_THE_CURRENT),
+        ]),
+        values: z.array(z.literal(1)).length(1),
+        settings: z.object({
+            completed: z.literal(false),
+            unitOfTime: z.union([
+                z.literal(UnitOfTime.days),
+                z.literal(UnitOfTime.weeks),
+                z.literal(UnitOfTime.months),
+                z.literal(UnitOfTime.quarters),
+                z.literal(UnitOfTime.years),
+            ]),
+        }),
+    }),
+    z.object({
+        operator: z.union([
+            z.literal(FilterOperator.LESS_THAN),
+            z.literal(FilterOperator.LESS_THAN_OR_EQUAL),
+            z.literal(FilterOperator.GREATER_THAN),
+            z.literal(FilterOperator.GREATER_THAN_OR_EQUAL),
+        ]),
+        values: z.array(dateOrDateTimeSchema).length(1),
+    }),
+    z.object({
+        operator: z.literal(FilterOperator.IN_BETWEEN),
+        values: z.array(dateOrDateTimeSchema).length(2),
+    }),
+]);
+
+/**
+ * Raw schema for filter rules that are passed to the AI.
+ */
+const filterRuleSchema = z.object({
+    type: z.enum(['or', 'and']).describe('Type of filter group operation'),
+    target: z.object({
+        fieldId: fieldIdSchema,
+        type: FieldTypeSchema,
+    }),
+    rule: z.union([
+        booleanFilterSchema.describe('Boolean filter'),
+        stringFilterSchema.describe('String filter'),
+        numberFilterSchema.describe('Number filter'),
+        dateFilterSchema.describe('Date filter'),
+    ]),
+});
+
+/**
+ * Transformed schema for filter rules that are passed to the query.
+ */
+const filterRuleSchemaTransformed = filterRuleSchema.transform(
+    (data): FilterRule => ({
+        id: uuid(),
+        target: data.target,
+        operator: data.rule.operator,
+        values: 'values' in data.rule ? data.rule.values : [],
+        ...('settings' in data.rule ? { settings: data.rule.settings } : {}),
+    }),
 );
 
-const FilterRuleSchema = z.union([
-    FilterRuleSchemaBase,
-    UnitOfTimeFilterRuleSchema,
-]);
-
-const AndFilterGroupSchema = z.object({
-    id: z.string().describe('A unique identifier for the filter group'),
-    and: z
-        .array(FilterRuleSchema)
-        .describe(
-            'List of filters to apply to the query. Filters in AND groups can target both metrics and dimensions',
-        ),
+/**
+ * Raw schema for filters with raw filter rule schema
+ */
+export const filtersSchema = z.object({
+    type: z.enum(['and', 'or']).describe('Type of filter group operation'),
+    dimensions: z.array(filterRuleSchema).nullable(),
+    metrics: z.array(filterRuleSchema).nullable(),
 });
 
-const OrFilterGroupSchema = z.object({
-    id: z.string().describe('A unique identifier for the filter group'),
-    or: z
-        .array(FilterRuleSchema)
-        .describe(
-            'List of filters to apply to the query. Filters in OR groups need to target either only metrics or only dimensions',
-        ),
+/**
+ * Raw filters schema with transformed filter rules.
+ */
+const filtersSchemaAndFilterRulesTransformed = z.object({
+    type: z.enum(['and', 'or']).describe('Type of filter group operation'),
+    dimensions: z.array(filterRuleSchemaTransformed).nullable(),
+    metrics: z.array(filterRuleSchemaTransformed).nullable(),
 });
 
-export const FilterGroupSchema = z.union([
-    AndFilterGroupSchema,
-    OrFilterGroupSchema,
-]);
+/**
+ * Final output schema for filters that are passed to the query.
+ */
+export const filtersSchemaTransformed =
+    filtersSchemaAndFilterRulesTransformed.transform((data): Filters => {
+        switch (data.type) {
+            case 'and':
+                return {
+                    dimensions: {
+                        id: uuid(),
+                        and: data.dimensions ?? [],
+                    },
+                    metrics: {
+                        id: uuid(),
+                        and: data.metrics ?? [],
+                    },
+                };
+            case 'or':
+                return {
+                    dimensions: {
+                        id: uuid(),
+                        or: data.dimensions ?? [],
+                    },
+                    metrics: {
+                        id: uuid(),
+                        or: data.metrics ?? [],
+                    },
+                };
+            default:
+                return assertUnreachable(data.type, 'Invalid filter type');
+        }
+    });
 
-export const FilterSchema = z.object({
-    dimensions: FilterGroupSchema.optional(),
-    metrics: FilterGroupSchema.optional(),
-});
-
-export const GenerateQueryFiltersToolSchema = z.object({
+export const generateQueryFiltersToolSchema = z.object({
     exploreName: z.string().describe('Name of the selected explore'),
-    filterGroup: FilterGroupSchema.describe(
-        'Filters to apply to the query. Filtered fields must exist in the selected explore.',
-    ),
+    filters: filtersSchema,
 });
 
 export const SortFieldSchema = z.object({
-    fieldId: FieldIdSchema.describe(
+    fieldId: fieldIdSchema.describe(
         '"fieldId" must come from the selected Metrics or Dimensions; otherwise, it will throw an error.',
     ),
     descending: z
         .boolean()
-        .optional()
-        .default(true)
         .describe(
-            '(optional, default true). If true sorts in descending order, if false sorts in ascending order',
+            'If true sorts in descending order, if false sorts in ascending order',
         ),
 });
 
+export const VisualizationMetadataSchema = z.object({
+    title: z.string().describe('A descriptive title for the chart'),
+    description: z
+        .string()
+        .describe('A descriptive summary or explanation for the chart.'),
+});
 // export const CompactOrAliasSchema = z
 //     .nativeEnum(Compact)
 //     .or(z.enum(CompactAlias));
@@ -183,29 +294,29 @@ export const SortFieldSchema = z.object({
 //     type: z.nativeEnum(CustomFormatType).describe('Type of custom format'),
 //     round: z
 //         .number()
-//         .optional()
+//         .nullable()
 //         .describe('Number of decimal places to round to'),
 //     separator: z
 //         .nativeEnum(NumberSeparator)
-//         .optional()
+//         .nullable()
 //         .describe('Separator for thousands'),
 //     // TODO: this should be enum but currencies is loosely typed
-//     currency: z.string().optional().describe('Three-letter currency code'),
-//     compact: CompactOrAliasSchema.optional().describe('Compact number format'),
-//     prefix: z.string().optional().describe('Prefix to add to the number'),
-//     suffix: z.string().optional().describe('Suffix to add to the number'),
+//     currency: z.string().nullable().describe('Three-letter currency code'),
+//     compact: CompactOrAliasSchema.nullable().describe('Compact number format'),
+//     prefix: z.string().nullable().describe('Prefix to add to the number'),
+//     suffix: z.string().nullable().describe('Suffix to add to the number'),
 // });
 
 // export const TableCalculationSchema = z.object({
 //   // TODO: I don't know what this is
-//   index: z.number().optional().describe('Index of the table calculation'),
+//   index: z.number().nullable().describe('Index of the table calculation'),
 //   name: z.string().min(1).describe('Name of the table calculation'),
 //   displayName: z
 //       .string()
 //       .min(1)
 //       .describe('Display name of the table calculation'),
 //   sql: z.string().min(1).describe('SQL for the table calculation'),
-//   format: CustomFormatSchema.optional().describe(
+//   format: CustomFormatSchema.nullable().describe(
 //       'Format of the table calculation',
 //   ),
 // });
@@ -216,16 +327,16 @@ export const lighterMetricQuerySchema = z.object({
         .string()
         .describe('Name of the explore to query. @example: "users"'),
     metrics: z
-        .array(FieldIdSchema)
+        .array(fieldIdSchema)
         .describe(
             'Metrics (measures) to calculate over the table for this query. @example: ["payments_total_amount", "orders_total_shipping_cost"]',
         ),
     dimensions: z
-        .array(FieldIdSchema)
+        .array(fieldIdSchema)
         .describe(
             'Dimensions to break down the metric into groups. @example: ["orders_status", "customers_first_name"]',
         ),
-    filters: FilterSchema.describe('Filters to apply to the query'),
+    filters: filtersSchema.describe('Filters to apply to the query'),
     sorts: z
         .array(SortFieldSchema)
         .describe(
@@ -245,7 +356,7 @@ export const lighterMetricQuerySchema = z.object({
     // additionalMetrics: z
     //     .array(z.unknown())
     //     .max(0)
-    //     .optional()
+    //     .nullable()
     //     .describe(
     //         'Additional metrics to compute in the explore - not supported yet',
     //     ),
@@ -253,7 +364,7 @@ export const lighterMetricQuerySchema = z.object({
     // customDimensions: z
     //     .array(z.unknown())
     //     .max(0)
-    //     .optional()
+    //     .nullable()
     //     .describe('Custom dimensions to group by in the explore'),
     // metadata: z
     //     .object({
@@ -263,9 +374,15 @@ export const lighterMetricQuerySchema = z.object({
     //             name: z.string().describe('Name of the date dimension'),
     //         }),
     //     })
-    //     .optional()
+    //     .nullable()
     //     .describe('Metadata about the query'),
 });
+
+export const lighterMetricQuerySchemaTransformed =
+    lighterMetricQuerySchema.transform((data) => ({
+        ...data,
+        filters: filtersSchemaTransformed.parse(data.filters),
+    }));
 
 export const aiAskForAdditionalInformationSchema = z.object({
     message: z
@@ -290,3 +407,165 @@ export const aiFindFieldsToolSchema = z.object({
             `Break down user input sentence into field names and descriptions to find the most relevant fields in the explore.`,
         ),
 });
+
+export const timeSeriesMetricVizConfigSchema =
+    VisualizationMetadataSchema.extend({
+        exploreName: z
+            .string()
+            .describe(
+                'The name of the explore containing the metrics and dimensions used for the chart.',
+            ),
+        xDimension: z
+            .string()
+            .describe(
+                'The field id of the time dimension to be displayed on the x-axis.',
+            ),
+        yMetrics: z
+            .array(z.string())
+            .min(1)
+            .describe(
+                'At least one metric is required. The field ids of the metrics to be displayed on the y-axis. If there are multiple metrics there will be one line per metric',
+            ),
+        sorts: z
+            .array(SortFieldSchema)
+            .describe(
+                'Sort configuration for the query, it can use a combination of metrics and dimensions.',
+            ),
+        breakdownByDimension: z
+            .string()
+            .nullable()
+            .describe(
+                'The field id of the dimension used to split the metrics into series for each dimension value. For example if you wanted to split a metric into multiple series based on City you would use the City dimension field id here. If this is not provided then the metric will be displayed as a single series.',
+            ),
+        lineType: z
+            .union([z.literal('line'), z.literal('area')])
+            .describe(
+                'default line. The type of line to display. If area then the area under the line will be filled in.',
+            ),
+    });
+
+export type TimeSeriesMetricVizConfigSchemaType = z.infer<
+    typeof timeSeriesMetricVizConfigSchema
+>;
+
+export const verticalBarMetricVizConfigSchema =
+    VisualizationMetadataSchema.extend({
+        exploreName: z
+            .string()
+            .describe(
+                'The name of the explore containing the metrics and dimensions used for the chart.',
+            ),
+        xDimension: z
+            .string()
+            .describe(
+                'The field id of the dimension to be displayed on the x-axis.',
+            ),
+        yMetrics: z
+            .array(z.string())
+            .min(1)
+            .describe(
+                'At least one metric is required. The field ids of the metrics to be displayed on the y-axis. The height of the bars',
+            ),
+        sorts: z
+            .array(SortFieldSchema)
+            .describe(
+                'Sort configuration for the query, it can use a combination of metrics and dimensions.',
+            ),
+        breakdownByDimension: z
+            .string()
+            .nullable()
+            .describe(
+                'The field id of the dimension used to split the metrics into groups along the x-axis. If stacking is false then this will create multiple bars around each x value, if stacking is true then this will create multiple bars for each metric stacked on top of each other',
+            ),
+        stackBars: z
+            .boolean()
+            .nullable()
+            .describe(
+                'If using breakdownByDimension then this will stack the bars on top of each other instead of side by side.',
+            ),
+        xAxisType: z
+            .union([z.literal('category'), z.literal('time')])
+            .describe(
+                'The x-axis type can be categorical for string value or time if the dimension is a date or timestamp.',
+            ),
+        xAxisLabel: z
+            .string()
+            .nullable()
+            .describe('A helpful label to explain the x-axis'),
+        yAxisLabel: z
+            .string()
+            .nullable()
+            .describe('A helpful label to explain the y-axis'),
+    });
+
+export type VerticalBarMetricVizConfigSchemaType = z.infer<
+    typeof verticalBarMetricVizConfigSchema
+>;
+
+export const csvFileVizConfigSchema = VisualizationMetadataSchema.extend({
+    exploreName: z
+        .string()
+        .describe(
+            'The name of the explore containing the metrics and dimensions used for csv query',
+        ),
+    metrics: z
+        .array(z.string())
+        .min(1)
+        .describe(
+            'At least one metric is required. The field ids of the metrics to be calculated for the CSV. They will be grouped by the dimensions.',
+        ),
+    dimensions: z
+        .array(z.string())
+        .nullable()
+        .describe('The field id for the dimensions to group the metrics by'),
+    sorts: z
+        .array(SortFieldSchema)
+        .describe(
+            'Sort configuration for the query, it can use a combination of metrics and dimensions.',
+        ),
+});
+
+export type CsvFileVizConfigSchemaType = z.infer<typeof csvFileVizConfigSchema>;
+
+// Derived types from schemas
+export type FindFieldsToolArgs = z.infer<typeof aiFindFieldsToolSchema>;
+
+// define tool names
+export const ToolNameSchema = z.enum([
+    'findFields',
+    'generateBarVizConfig',
+    'generateCsv',
+    'generateQueryFilters',
+    'generateTimeSeriesVizConfig',
+]);
+
+export type ToolName = z.infer<typeof ToolNameSchema>;
+
+export const isToolName = (toolName: string): toolName is ToolName =>
+    ToolNameSchema.safeParse(toolName).success;
+
+export const isFindFieldsToolArgs = (
+    toolArgs: unknown,
+): toolArgs is FindFieldsToolArgs =>
+    aiFindFieldsToolSchema.safeParse(toolArgs).success;
+
+// display messages schema
+export const ToolDisplayMessagesSchema = z.record(ToolNameSchema, z.string());
+
+export const TOOL_DISPLAY_MESSAGES = ToolDisplayMessagesSchema.parse({
+    findFields: 'Finding relevant fields',
+    generateBarVizConfig: 'Generating a bar chart',
+    generateCsv: 'Generating CSV file',
+    generateQueryFilters: 'Applying filters to the query',
+    generateTimeSeriesVizConfig: 'Generating a line chart',
+});
+
+// after-tool-call messages
+export const TOOL_DISPLAY_MESSAGES_AFTER_TOOL_CALL =
+    ToolDisplayMessagesSchema.parse({
+        findFields: 'Found relevant fields',
+        generateBarVizConfig: 'Generated a bar chart',
+        generateCsv: 'Generated CSV file',
+        generateQueryFilters: 'Applied filters to the query',
+        generateTimeSeriesVizConfig: 'Generated a line chart',
+    });

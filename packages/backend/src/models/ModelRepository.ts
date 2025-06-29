@@ -24,11 +24,9 @@ import { OrganizationModel } from './OrganizationModel';
 import { PasswordResetLinkModel } from './PasswordResetLinkModel';
 import { PinnedListModel } from './PinnedListModel';
 import { ProjectModel } from './ProjectModel/ProjectModel';
-import { QueryHistoryModel } from './QueryHistoryModel';
+import { QueryHistoryModel } from './QueryHistoryModel/QueryHistoryModel';
 import { ResourceViewItemModel } from './ResourceViewItemModel';
-import { ResultsFileModel } from './ResultsFileModel/ResultsFileModel';
 import { SavedChartModel } from './SavedChartModel';
-import { SavedSemanticViewerChartModel } from './SavedSemanticViewerChartModel';
 import { SavedSqlModel } from './SavedSqlModel';
 import { SchedulerModel } from './SchedulerModel';
 import { SearchModel } from './SearchModel';
@@ -86,18 +84,16 @@ export type ModelManifest = {
     validationModel: ValidationModel;
     catalogModel: CatalogModel;
     savedSqlModel: SavedSqlModel;
-    SavedSemanticViewerChartModel: SavedSemanticViewerChartModel;
     contentModel: ContentModel;
     tagsModel: TagsModel;
     featureFlagModel: FeatureFlagModel;
     spotlightTableConfigModel: SpotlightTableConfigModel;
     queryHistoryModel: QueryHistoryModel;
-    resultsFileModel: ResultsFileModel;
     /** An implementation signature for these models are not available at this stage */
-    aiModel: unknown;
+    aiAgentModel: unknown;
     embedModel: unknown;
     dashboardSummaryModel: unknown;
-    scimOrganizationAccessTokenModel: unknown;
+    serviceAccountModel: unknown;
 };
 
 /**
@@ -489,16 +485,6 @@ export class ModelRepository
         );
     }
 
-    public getSavedSemanticViewerChartModel(): SavedSemanticViewerChartModel {
-        return this.getModel(
-            'SavedSemanticViewerChartModel',
-            () =>
-                new SavedSemanticViewerChartModel({
-                    database: this.database,
-                }),
-        );
-    }
-
     public getContentModel(): ContentModel {
         return this.getModel(
             'contentModel',
@@ -517,8 +503,8 @@ export class ModelRepository
         );
     }
 
-    public getAiModel<ModelImplT>(): ModelImplT {
-        return this.getModel('aiModel');
+    public getAiAgentModel<ModelImplT>(): ModelImplT {
+        return this.getModel('aiAgentModel');
     }
 
     public getEmbedModel<ModelImplT>(): ModelImplT {
@@ -536,8 +522,8 @@ export class ModelRepository
         );
     }
 
-    public getScimOrganizationAccessTokenModel<ModelImplT>(): ModelImplT {
-        return this.getModel('scimOrganizationAccessTokenModel');
+    public getServiceAccountModel<ModelImplT>(): ModelImplT {
+        return this.getModel('serviceAccountModel');
     }
 
     public getSpotlightTableConfigModel(): SpotlightTableConfigModel {
@@ -555,17 +541,6 @@ export class ModelRepository
         return this.getModel(
             'queryHistoryModel',
             () => new QueryHistoryModel({ database: this.database }),
-        );
-    }
-
-    public getResultsFileModel(): ResultsFileModel {
-        return this.getModel(
-            'resultsFileModel',
-            () =>
-                new ResultsFileModel({
-                    database: this.database,
-                    lightdashConfig: this.lightdashConfig,
-                }),
         );
     }
 

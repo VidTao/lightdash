@@ -1,4 +1,3 @@
-import type { AnyType } from '../../types/any';
 import { type TraceTaskBase } from '../../types/scheduler';
 
 export type AiThread = {
@@ -7,6 +6,7 @@ export type AiThread = {
     projectUuid: string;
     createdAt: Date;
     createdFrom: string;
+    agentUuid: string | null;
 };
 
 export type CreateSlackThread = {
@@ -16,6 +16,7 @@ export type CreateSlackThread = {
     slackUserId: string;
     slackChannelId: string;
     slackThreadTs: string;
+    agentUuid: string | null;
 };
 
 export type CreateWebAppThread = {
@@ -23,17 +24,19 @@ export type CreateWebAppThread = {
     projectUuid: string;
     userUuid: string;
     createdFrom: 'web_app';
+    agentUuid: string | null;
 };
 
 export type AiPrompt = {
     organizationUuid: string;
     projectUuid: string;
+    agentUuid: string | null;
     promptUuid: string;
     threadUuid: string;
     createdByUserUuid: string;
     prompt: string;
     createdAt: Date;
-    response: string;
+    response: string | null;
     filtersOutput: object | null;
     vizConfigOutput: object | null;
     humanScore: number | null;
@@ -97,16 +100,6 @@ export type SlackPromptJobPayload = TraceTaskBase & {
     slackPromptUuid: string;
 };
 
-export enum AiChatAgents {
-    HUMAN = 'human',
-    AI = 'ai',
-}
-
-export type AiChatMessage = {
-    agent: AiChatAgents;
-    message: string;
-};
-
 export type AiConversation = {
     threadUuid: string;
     createdAt: string | Date;
@@ -155,7 +148,6 @@ export type ApiAiConversationResponse = {
     status: 'ok';
     results: {
         prompt: AiWebAppPrompt;
-        rows: Record<string, AnyType>[] | undefined;
     };
 };
 

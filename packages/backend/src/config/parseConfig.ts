@@ -1,5 +1,12 @@
 import {
+    AnyType,
+    AuthTokenPrefix,
     cleanColorArray,
+    CreateDatabricksCredentials,
+    DbtGithubProjectConfig,
+    DbtProjectType,
+    DbtVersionOption,
+    DbtVersionOptionLatest,
     getErrorMessage,
     getInvalidHexColors,
     isLightdashMode,
@@ -9,9 +16,53 @@ import {
     ParameterError,
     ParseError,
     SentryConfig,
+    SupportedDbtVersions,
+    WarehouseTypes,
+    WeekDay,
 } from '@lightdash/common';
+import * as Sentry from '@sentry/core';
 import { type ClientAuthMethod } from 'openid-client';
+import { isValid } from 'zod';
 import { VERSION } from '../version';
+import {
+    aiCopilotConfigSchema,
+    AiCopilotConfigSchemaType,
+    DEFAULT_ANTHROPIC_MODEL_NAME,
+    DEFAULT_DEFAULT_AI_PROVIDER,
+    DEFAULT_OPENAI_MODEL_NAME,
+} from './aiConfigSchema';
+
+enum TokenEnvironmentVariable {
+    SERVICE_ACCOUNT = 'LD_SETUP_SERVICE_ACCOUNT_TOKEN',
+    PERSONAL_ACCESS_TOKEN = 'LD_SETUP_PROJECT_PAT',
+}
+
+const tokenConfigs = {
+    [TokenEnvironmentVariable.SERVICE_ACCOUNT]: {
+        prefix: AuthTokenPrefix.SERVICE_ACCOUNT,
+    },
+    [TokenEnvironmentVariable.PERSONAL_ACCESS_TOKEN]: {
+        prefix: AuthTokenPrefix.PERSONAL_ACCESS_TOKEN,
+    },
+};
+
+const isApiValidToken = (tokenVar: TokenEnvironmentVariable) => {
+    const { prefix } = tokenConfigs[tokenVar];
+    const token = process.env[tokenVar];
+
+    if (!token) return undefined;
+
+    if (token.startsWith(prefix)) {
+        return {
+            value: token,
+        };
+    }
+
+    throw new ParseError(
+        `Cannot parse API token environment variable ${tokenVar}. The token needs to be prefixed with ${prefix}.`,
+        { variant: 'ApiToken' },
+    );
+};
 
 export const getIntegerFromEnvironmentVariable = (
     name: string,
@@ -237,6 +288,126 @@ export const parseOrganizationMemberRoleArray = (
         return role;
     });
 };
+const getInitialSetupConfig = (): LightdashConfig['initialSetup'] => {
+    const parseEnum = <T>(
+        value: string | undefined,
+        enumObj?: AnyType,
+    ): T | undefined => {
+        if (!value) return undefined;
+
+        const enumValues = enumObj ? Object.values(enumObj) : [];
+        if (enumValues.length > 0 && !enumValues.includes(value)) {
+            throw new ParameterError(
+                `Invalid value "${value}". Must be one of ${enumValues.join(
+                    ', ',
+                )}`,
+            );
+        }
+        return value as T;
+    };
+
+    const parseApiExpiration = (envVariable: string): Date | null => {
+        const apiExpiration = process.env[envVariable];
+        const apiExpirationDays = apiExpiration
+            ? parseInt(apiExpiration, 10)
+            : 30; // Convert to number, this might throw an error
+        if (apiExpirationDays === 0) return null; // If 0, we return null, which means, no expiration
+        if (Number.isNaN(apiExpirationDays)) {
+            throw new ParameterError(`${envVariable} must be a valid number`);
+        }
+        return new Date(Date.now() + 1000 * 60 * 60 * 24 * apiExpirationDays);
+    };
+    const parseCompute = (): CreateDatabricksCredentials['compute'] => {
+        // This is a stringified array of objects, in JSON format
+        // If format is not correct, it will throw an error
+        const compute = process.env.LD_SETUP_PROJECT_COMPUTE;
+        if (!compute) return undefined;
+        return JSON.parse(compute) as CreateDatabricksCredentials['compute'];
+    };
+
+    try {
+        if (!process.env.LD_SETUP_ADMIN_EMAIL) return undefined;
+
+        return {
+            organization: {
+                admin: {
+                    name: process.env.LD_SETUP_ADMIN_NAME || 'Admin User',
+                    email: process.env.LD_SETUP_ADMIN_EMAIL!,
+                },
+                emailDomain: process.env.LD_SETUP_ORGANIZATION_EMAIL_DOMAIN,
+                defaultRole:
+                    parseEnum<OrganizationMemberRole>(
+                        process.env.LD_SETUP_ORGANIZATION_DEFAULT_ROLE,
+                        OrganizationMemberRole,
+                    ) || OrganizationMemberRole.VIEWER,
+                name: process.env.LD_SETUP_ORGANIZATION_NAME!,
+            },
+            // TODO: Does this need validation as well?
+            apiKey: process.env.LD_SETUP_ADMIN_API_KEY
+                ? {
+                      token: process.env.LD_SETUP_ADMIN_API_KEY,
+                      expirationTime: parseApiExpiration(
+                          'LD_SETUP_API_KEY_EXPIRATION',
+                      ),
+                  }
+                : undefined,
+            serviceAccount: isApiValidToken(
+                TokenEnvironmentVariable.SERVICE_ACCOUNT,
+            )
+                ? {
+                      token: process.env.LD_SETUP_SERVICE_ACCOUNT_TOKEN!,
+                      expirationTime: parseApiExpiration(
+                          'LD_SETUP_SERVICE_ACCOUNT_EXPIRATION',
+                      ),
+                  }
+                : undefined,
+            project: {
+                name: process.env.LD_SETUP_PROJECT_NAME!,
+                type: WarehouseTypes.DATABRICKS,
+                catalog: process.env.LD_SETUP_PROJECT_CATALOG,
+                database: process.env.LD_SETUP_PROJECT_SCHEMA!,
+                serverHostName: process.env.LD_SETUP_PROJECT_HOST!,
+                httpPath: process.env.LD_SETUP_PROJECT_HTTP_PATH!,
+                personalAccessToken: isApiValidToken(
+                    TokenEnvironmentVariable.PERSONAL_ACCESS_TOKEN,
+                )?.value!,
+                requireUserCredentials: undefined,
+                startOfWeek: parseEnum<WeekDay>(
+                    process.env.LD_SETUP_START_OF_WEEK,
+                    WeekDay,
+                ),
+                compute: parseCompute(),
+                dbtVersion:
+                    parseEnum<SupportedDbtVersions>(
+                        process.env.LD_SETUP_DBT_VERSION,
+                        SupportedDbtVersions,
+                    ) || DbtVersionOptionLatest.LATEST,
+            },
+            dbt: {
+                type: DbtProjectType.GITHUB,
+                authorization_method: 'personal_access_token',
+                personal_access_token: process.env.LD_SETUP_GITHUB_PAT!,
+                repository: process.env.LD_SETUP_GITHUB_REPOSITORY!,
+                branch: process.env.LD_SETUP_GITHUB_BRANCH!,
+                project_sub_path: process.env.LD_SETUP_GITHUB_PATH || '/',
+                host_domain: undefined,
+            },
+        };
+    } catch (e) {
+        // If a variable is not set, we will skip the initial setup
+        // log an error, but don't throw an error, to avoid blocking the backend.
+        //
+        // Unless it's related to API tokens, in which case we throw an error to get
+        // a proper token. Otherwise, the CLI will not work and the app will be in a state
+        // that needs to be recovered.
+        if (e instanceof ParseError && e.data.variant === 'ApiToken') {
+            throw e;
+        }
+
+        console.error('Error parsing initial setup config', e);
+        return undefined;
+    }
+};
 
 export const parseBaseS3Config = (): LightdashConfig['s3'] => {
     const endpoint = process.env.S3_ENDPOINT;
@@ -279,14 +450,22 @@ export const parseResultsS3Config = (): LightdashConfig['results']['s3'] => {
         forcePathStyle: baseForcePathStyle,
     } = baseS3Config;
 
-    // TODO: rename to RESULTS_S3_BUCKET
-    const bucket = process.env.RESULTS_CACHE_S3_BUCKET || baseBucket;
-    // TODO: rename to RESULTS_S3_REGION
-    const region = process.env.RESULTS_CACHE_S3_REGION || baseRegion;
-    // TODO: rename to RESULTS_S3_ACCESS_KEY
-    const accessKey = process.env.RESULTS_CACHE_S3_ACCESS_KEY || baseAccessKey;
-    // TODO: rename to RESULTS_S3_SECRET_KEY
-    const secretKey = process.env.RESULTS_CACHE_S3_SECRET_KEY || baseSecretKey;
+    const bucket =
+        process.env.RESULTS_S3_BUCKET ||
+        process.env.RESULTS_CACHE_S3_BUCKET || // Deprecated
+        baseBucket;
+    const region =
+        process.env.RESULTS_S3_REGION ||
+        process.env.RESULTS_CACHE_S3_REGION || // Deprecated
+        baseRegion;
+    const accessKey =
+        process.env.RESULTS_S3_ACCESS_KEY ||
+        process.env.RESULTS_CACHE_S3_ACCESS_KEY || // Deprecated
+        baseAccessKey;
+    const secretKey =
+        process.env.RESULTS_S3_SECRET_KEY ||
+        process.env.RESULTS_CACHE_S3_SECRET_KEY || // Deprecated
+        baseSecretKey;
 
     return {
         endpoint: baseEndpoint, // ! For now we keep reusing the S3_ENDPOINT like we have been so far, we are just going to enforce it
@@ -406,16 +585,15 @@ export type LightdashConfig = {
     };
     logging: LoggingConfig;
     ai: {
-        copilot: {
-            enabled: boolean;
-            requiresFeatureFlag: boolean;
-            embeddingSearchEnabled?: boolean;
-        };
+        copilot: AiCopilotConfigSchemaType;
     };
     embedding: {
         enabled: boolean;
     };
     scim: {
+        enabled: boolean;
+    };
+    serviceAccount: {
         enabled: boolean;
     };
     github: {
@@ -430,6 +608,31 @@ export type LightdashConfig = {
     };
     googleCloudPlatform: {
         projectId?: string;
+    };
+
+    initialSetup?: {
+        organization: {
+            admin: {
+                email: string;
+                name: string;
+            };
+            emailDomain?: string;
+            name: string;
+            defaultRole: OrganizationMemberRole;
+        };
+        apiKey?: {
+            token: string;
+            expirationTime: Date | null;
+        };
+        serviceAccount?: {
+            token: string;
+            expirationTime: Date | null;
+        };
+        project: CreateDatabricksCredentials & {
+            name: string;
+            dbtVersion: DbtVersionOption;
+        };
+        dbt: DbtGithubProjectConfig;
     };
 };
 
@@ -448,6 +651,7 @@ export type HeadlessBrowserConfig = {
     host?: string;
     port?: string;
     internalLightdashHost: string;
+    browserEndpoint: string;
 };
 export type S3Config = {
     region: string;
@@ -550,6 +754,15 @@ type AuthOidcConfig = {
     scopes: string | undefined;
 } & JwtKeySetConfig;
 
+type AuthSnowflakeConfig = {
+    clientId: string | undefined;
+    clientSecret: string | undefined;
+    authorizationEndpoint: string | undefined;
+    tokenEndpoint: string | undefined;
+    callbackPath: string;
+    loginPath: string;
+};
+
 export type AuthConfig = {
     disablePasswordAuthentication: boolean;
     /**
@@ -563,6 +776,7 @@ export type AuthConfig = {
     oneLogin: AuthOneLoginConfig;
     azuread: AuthAzureADConfig;
     oidc: AuthOidcConfig;
+    snowflake: AuthSnowflakeConfig;
     pat: {
         enabled: boolean;
         allowedOrgRoles: OrganizationMemberRole[];
@@ -628,11 +842,68 @@ export const parseConfig = (): LightdashConfig => {
     const iframeEmbeddingEnabled = iframeAllowedDomains.length > 0;
     const corsEnabled = process.env.LIGHTDASH_CORS_ENABLED === 'true';
     const secureCookies = process.env.SECURE_COOKIES === 'true';
+    const useSecureBrowser = process.env.USE_SECURE_BROWSER === 'true';
+    const browserProtocol = useSecureBrowser ? 'wss' : 'ws';
+    const browserEndpoint = useSecureBrowser
+        ? `${browserProtocol}://${process.env.HEADLESS_BROWSER_HOST}`
+        : `${browserProtocol}://${process.env.HEADLESS_BROWSER_HOST}:${process.env.HEADLESS_BROWSER_PORT}`;
 
     if (iframeEmbeddingEnabled && !secureCookies) {
         throw new ParameterError(
             'To enable iframe embedding, SECURE_COOKIES must be set to true',
         );
+    }
+
+    const rawCopilotConfig = {
+        enabled: process.env.AI_COPILOT_ENABLED === 'true',
+        telemetryEnabled: process.env.AI_COPILOT_TELEMETRY_ENABLED === 'true',
+        requiresFeatureFlag:
+            process.env.AI_COPILOT_REQUIRES_FEATURE_FLAG === 'true',
+        embeddingSearchEnabled:
+            process.env.AI_COPILOT_EMBEDDING_SEARCH_ENABLED === 'true',
+        defaultProvider:
+            process.env.AI_DEFAULT_PROVIDER || DEFAULT_DEFAULT_AI_PROVIDER,
+        providers: {
+            azure: process.env.AZURE_AI_API_KEY
+                ? {
+                      endpoint: process.env.AZURE_AI_ENDPOINT,
+                      apiKey: process.env.AZURE_AI_API_KEY,
+                      apiVersion: process.env.AZURE_AI_API_VERSION,
+                      deploymentName: process.env.AZURE_AI_DEPLOYMENT_NAME,
+                  }
+                : undefined,
+            openai: process.env.OPENAI_API_KEY
+                ? {
+                      apiKey: process.env.OPENAI_API_KEY,
+                      modelName:
+                          process.env.OPENAI_MODEL_NAME ||
+                          DEFAULT_OPENAI_MODEL_NAME,
+                      baseUrl: process.env.OPENAI_BASE_URL,
+                  }
+                : undefined,
+            anthropic: process.env.ANTHROPIC_API_KEY
+                ? {
+                      apiKey: process.env.ANTHROPIC_API_KEY,
+                      modelName:
+                          process.env.ANTHROPIC_MODEL_NAME ||
+                          DEFAULT_ANTHROPIC_MODEL_NAME,
+                  }
+                : undefined,
+        },
+    };
+
+    const copilotConfigParse =
+        aiCopilotConfigSchema.safeParse(rawCopilotConfig);
+
+    let copilotConfig: AiCopilotConfigSchemaType;
+    if (!copilotConfigParse.success) {
+        copilotConfig = rawCopilotConfig as AiCopilotConfigSchemaType;
+        Sentry.captureException(copilotConfigParse.error);
+        console.error(
+            `Invalid AI copilot configuration: ${copilotConfigParse.error.message}`,
+        );
+    } else {
+        copilotConfig = copilotConfigParse.data;
     }
 
     return {
@@ -827,6 +1098,15 @@ export const parseConfig = (): LightdashConfig => {
                     'client_secret_basic',
                 scopes: process.env.AUTH_OIDC_SCOPES,
             },
+            snowflake: {
+                clientId: process.env.SNOWFLAKE_OAUTH_CLIENT_ID,
+                clientSecret: process.env.SNOWFLAKE_OAUTH_CLIENT_SECRET,
+                authorizationEndpoint:
+                    process.env.SNOWFLAKE_OAUTH_AUTHORIZATION_ENDPOINT,
+                tokenEndpoint: process.env.SNOWFLAKE_OAUTH_TOKEN_ENDPOINT,
+                loginPath: '/login/snowflake',
+                callbackPath: '/oauth/redirect/snowflake',
+            },
         },
         intercom: {
             appId:
@@ -907,6 +1187,7 @@ export const parseConfig = (): LightdashConfig => {
             host: process.env.HEADLESS_BROWSER_HOST,
             internalLightdashHost:
                 process.env.INTERNAL_LIGHTDASH_HOST || siteUrl,
+            browserEndpoint,
         },
         s3: parseBaseS3Config(),
         results: {
@@ -986,19 +1267,16 @@ export const parseConfig = (): LightdashConfig => {
             filePath: process.env.LIGHTDASH_LOG_FILE_PATH || './logs/all.log',
         },
         ai: {
-            copilot: {
-                enabled: process.env.AI_COPILOT_ENABLED === 'true',
-                requiresFeatureFlag:
-                    process.env.AI_COPILOT_REQUIRES_FEATURE_FLAG === 'true',
-                embeddingSearchEnabled:
-                    process.env.AI_COPILOT_EMBEDDING_SEARCH_ENABLED === 'true',
-            },
+            copilot: copilotConfig,
         },
         embedding: {
             enabled: process.env.EMBEDDING_ENABLED === 'true',
         },
         scim: {
             enabled: process.env.SCIM_ENABLED === 'true',
+        },
+        serviceAccount: {
+            enabled: process.env.SERVICE_ACCOUNT_ENABLED === 'true',
         },
         github: {
             appName: process.env.GITHUB_APP_NAME || 'lightdash-app-dev',
@@ -1024,5 +1302,6 @@ export const parseConfig = (): LightdashConfig => {
         googleCloudPlatform: {
             projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
         },
+        initialSetup: getInitialSetupConfig(),
     };
 };

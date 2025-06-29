@@ -3,6 +3,7 @@ import {
     ChartType,
     FeatureFlags,
     isDimension,
+    type ApiErrorDetail,
     type ChartConfig,
     type DashboardFilters,
     type ItemsMap,
@@ -43,7 +44,7 @@ import VisualizationCustomConfig from './VisualizationCustomConfig';
 import Context from './context';
 import { type useVisualizationContext } from './useVisualizationContext';
 
-type Props = {
+export type VisualizationProviderProps = {
     minimal?: boolean;
     chartConfig: ChartConfig;
     initialPivotDimensions: string[] | undefined;
@@ -68,9 +69,12 @@ type Props = {
     tableCalculationsMetadata?: TableCalculationMetadata[];
     setEchartsRef?: (ref: RefObject<EChartsReact | null>) => void;
     computedSeries?: Series[];
+    apiErrorDetail?: ApiErrorDetail | null;
 };
 
-const VisualizationProvider: FC<React.PropsWithChildren<Props>> = ({
+const VisualizationProvider: FC<
+    React.PropsWithChildren<VisualizationProviderProps>
+> = ({
     minimal = false,
     initialPivotDimensions,
     resultsData,
@@ -90,6 +94,7 @@ const VisualizationProvider: FC<React.PropsWithChildren<Props>> = ({
     tableCalculationsMetadata,
     setEchartsRef,
     computedSeries,
+    apiErrorDetail,
 }) => {
     const itemsMap = useMemo(() => {
         return resultsData?.fields;
@@ -285,6 +290,7 @@ const VisualizationProvider: FC<React.PropsWithChildren<Props>> = ({
         chartRef,
         resultsData: lastValidResultsData,
         isLoading,
+        apiErrorDetail,
         columnOrder,
         itemsMap,
         setStacking,
@@ -295,6 +301,7 @@ const VisualizationProvider: FC<React.PropsWithChildren<Props>> = ({
         colorPalette,
         getGroupColor,
         getSeriesColor,
+        chartConfig,
     };
 
     switch (chartConfig.type) {

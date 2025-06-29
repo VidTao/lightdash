@@ -29,7 +29,10 @@ import {
     type Metric,
     type Source,
 } from '../types/field';
-import { parseFilters } from '../types/filterGrammar';
+import {
+    parseFilters,
+    parseModelRequiredFilters,
+} from '../types/filterGrammar';
 import { type LightdashProjectConfig } from '../types/lightdashProjectConfig';
 import { OrderFieldsByStrategy, type GroupType } from '../types/table';
 import { type TimeFrames } from '../types/timeFrames';
@@ -313,6 +316,15 @@ const convertDbtMetricToLightdashMetric = (
     };
 };
 
+function normalizePrimaryKey(
+    primaryKey: DbtModelNode['meta']['primary_key'],
+): string[] | undefined {
+    if (primaryKey) {
+        return Array.isArray(primaryKey) ? primaryKey : [primaryKey];
+    }
+    return undefined;
+}
+
 export const convertTable = (
     adapterType: SupportedDbtAdapter,
     model: DbtModelNode,
@@ -569,8 +581,12 @@ export const convertTable = (
                 ? (meta.order_fields_by.toUpperCase() as OrderFieldsByStrategy)
                 : OrderFieldsByStrategy.LABEL,
         groupLabel: meta.group_label,
+        primaryKey: normalizePrimaryKey(meta.primary_key),
         sqlWhere: meta.sql_filter || meta.sql_where,
-        requiredFilters: parseFilters(meta.required_filters),
+        requiredFilters: parseModelRequiredFilters({
+            requiredFilters: meta.required_filters,
+            defaultFilters: meta.default_filters,
+        }),
         requiredAttributes: meta.required_attributes,
         groupDetails,
         ...(meta.default_time_dimension
@@ -717,6 +733,7 @@ export const convertExplores = async (
                     fields: join.fields,
                     hidden: join.hidden,
                     always: join.always,
+                    relationship: join.relationship,
                 })),
                 tables: tableLookup,
                 targetDatabase: adapterType,

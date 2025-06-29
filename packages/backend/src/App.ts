@@ -12,6 +12,7 @@ import {
     SessionUser,
     UnexpectedServerError,
     InvalidUser,
+    ServiceAccount,
 } from '@lightdash/common';
 import * as Sentry from '@sentry/node';
 import flash from 'connect-flash';
@@ -68,6 +69,8 @@ import {
 import { UtilProviderMap, UtilRepository } from './utils/UtilRepository';
 import { VERSION } from './version';
 import PrometheusMetrics from './prometheus';
+import { snowflakePassportStrategy } from './controllers/authentication/strategies/snowflakeStrategy';
+
 // We need to override this interface to have our user typing
 declare global {
     namespace Express {
@@ -78,7 +81,7 @@ declare global {
          */
         interface Request {
             services: ServiceRepository;
-            serviceAccount?: SessionServiceAccount;
+            serviceAccount?: Pick<ServiceAccount, 'organizationUuid'>;
             /**
              * @deprecated Clients should be used inside services. This will be removed soon.
              */
@@ -113,11 +116,10 @@ const schedulerWorkerFactory = (context: {
         schedulerClient: context.clients.getSchedulerClient(),
         slackClient: context.clients.getSlackClient(),
         msTeamsClient: context.clients.getMsTeamsClient(),
-        semanticLayerService:
-            context.serviceRepository.getSemanticLayerService(),
         catalogService: context.serviceRepository.getCatalogService(),
         encryptionUtil: context.utils.getEncryptionUtil(),
         renameService: context.serviceRepository.getRenameService(),
+        asyncQueryService: context.serviceRepository.getAsyncQueryService(),
     });
 
 const slackBotFactory = (context: {
@@ -273,6 +275,10 @@ export default class App {
                 this.clients.getSchedulerClient(),
             );
         }
+
+        await this.serviceRepository
+            .getOrganizationService()
+            .initializeInstance();
     }
 
     private async initExpress(expressApp: Express) {
@@ -666,6 +672,10 @@ export default class App {
         if (isGenericOidcPassportStrategyAvailableToUse) {
             passport.use('oidc', await createGenericOidcPassportStrategy());
         }
+        if (snowflakePassportStrategy) {
+            passport.use('snowflake', snowflakePassportStrategy);
+            refresh.use('snowflake', snowflakePassportStrategy);
+        }
 
         passport.serializeUser((user, done) => {
             // On login (user changes), user.userUuid is written to the session store in the `sess.passport.data` field
@@ -745,6 +755,10 @@ export default class App {
 
     getModels() {
         return this.models;
+    }
+
+    getClients() {
+        return this.clients;
     }
 
     getDatabase() {

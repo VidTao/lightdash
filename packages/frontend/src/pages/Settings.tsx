@@ -10,13 +10,13 @@ import {
     IconDatabaseCog,
     IconDatabaseExport,
     IconKey,
-    IconLayersLinked,
     IconLock,
     IconPalette,
     IconPlug,
     IconReportAnalytics,
     IconTableOptions,
     IconUserCircle,
+    IconUserCode,
     IconUserPlus,
     IconUserShield,
     IconUsers,
@@ -46,6 +46,7 @@ import PageBreadcrumbs from '../components/common/PageBreadcrumbs';
 import RouterNavLink from '../components/common/RouterNavLink';
 import { SettingsGridCard } from '../components/common/Settings/SettingsCard';
 import ScimAccessTokensPanel from '../ee/features/scim/components/ScimAccessTokensPanel';
+import { ServiceAccountsPage } from '../ee/features/serviceAccounts';
 import { useOrganization } from '../hooks/organization/useOrganization';
 import { useActiveProjectUuid } from '../hooks/useActiveProject';
 import {
@@ -67,12 +68,12 @@ const Settings: FC = () => {
         FeatureFlags.PassthroughLogin,
     );
 
-    const isSemanticLayerEnabled = useFeatureFlagEnabled(
-        FeatureFlags.SemanticLayerEnabled,
-    );
-
     const { data: isScimTokenManagementEnabled } = useFeatureFlag(
         CommercialFeatureFlags.Scim,
+    );
+
+    const isServiceAccountFeatureFlagEnabled = useFeatureFlagEnabled(
+        CommercialFeatureFlags.ServiceAccounts,
     );
 
     const {
@@ -111,6 +112,9 @@ const Settings: FC = () => {
         health?.auth.oidc.enabled;
 
     const isGroupManagementEnabled = UserGroupFeatureFlag?.enabled;
+    // This allows us to enable service accounts in the UI for on-premise installations
+    const isServiceAccountsEnabled =
+        health?.isServiceAccountEnabled || isServiceAccountFeatureFlagEnabled;
 
     const routes = useMemo<RouteObject[]>(() => {
         const allowedRoutes: RouteObject[] = [
@@ -307,8 +311,19 @@ const Settings: FC = () => {
             });
         }
 
+        if (
+            user?.ability.can('manage', 'Organization') &&
+            isServiceAccountsEnabled
+        ) {
+            allowedRoutes.push({
+                path: '/serviceAccounts',
+                element: <ServiceAccountsPage />,
+            });
+        }
+
         return allowedRoutes;
     }, [
+        isServiceAccountsEnabled,
         isScimTokenManagementEnabled?.enabled,
         isPassthroughLoginFeatureEnabled,
         allowPasswordAuthentication,
@@ -517,6 +532,19 @@ const Settings: FC = () => {
                                             }
                                         />
                                     )}
+                                {user.ability.can('manage', 'Organization') &&
+                                    isServiceAccountsEnabled && (
+                                        <RouterNavLink
+                                            label="Service Accounts"
+                                            exact
+                                            to="/generalSettings/serviceAccounts"
+                                            icon={
+                                                <MantineIcon
+                                                    icon={IconUserCode}
+                                                />
+                                            }
+                                        />
+                                    )}
                             </Box>
 
                             {organization &&
@@ -545,26 +573,6 @@ const Settings: FC = () => {
                                             />
                                         }
                                     />
-
-                                    {user.ability?.can(
-                                        'manage',
-                                        subject('Project', {
-                                            organizationUuid:
-                                                project.organizationUuid,
-                                            projectUuid: project.projectUuid,
-                                        }),
-                                    ) && isSemanticLayerEnabled ? (
-                                        <RouterNavLink
-                                            label="Semantic Layer Integration"
-                                            exact
-                                            to={`/generalSettings/projectManagement/${project.projectUuid}/semanticLayer`}
-                                            icon={
-                                                <MantineIcon
-                                                    icon={IconLayersLinked}
-                                                />
-                                            }
-                                        />
-                                    ) : null}
 
                                     <RouterNavLink
                                         label="Tables configuration"
