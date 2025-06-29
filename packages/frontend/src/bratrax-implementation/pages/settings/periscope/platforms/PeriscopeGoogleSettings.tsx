@@ -13,7 +13,7 @@ import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
-import { googleDeliveryData } from '../data/google';
+import { googleDeliveryData } from '../dataModel/google';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeGoogleSettings: React.FC<PlatformSettingsProps> = ({

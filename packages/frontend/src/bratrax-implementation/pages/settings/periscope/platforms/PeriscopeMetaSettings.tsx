@@ -5,7 +5,7 @@ import { useAdConnections } from '../../../../hooks/useAdConnections';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
-import { metaDeliveryData } from '../data/meta';
+import { metaDeliveryData } from '../dataModel/meta';
 import { PlatformSettingsProps } from '../types';
 
 const PeriscopeMetaSettings: React.FC<PlatformSettingsProps> = ({
