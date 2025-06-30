@@ -86,7 +86,7 @@ CREATE TABLE bratrax_user_platform_credentials (
         REFERENCES bratrax_write_keys(bratrax_write_key_id)
         ON DELETE SET NULL,
 );
-CREATE INDEX idx_bupc_user_platform ON bratrax_user_platform_credentials(user_uuid, platform);
+CREATE INDEX idx_bupc_user_platform ON bratrax_user_platform_credentials(user_id, platform);
 CREATE INDEX idx_bupc_organization_platform ON bratrax_user_platform_credentials(organization_id, platform);
 CREATE INDEX idx_bupc_write_key_platform ON bratrax_user_platform_credentials(bratrax_write_key_id, platform);
 

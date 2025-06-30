@@ -117,7 +117,8 @@ EXPOSE 8080
 # -----------------------------
 
 FROM base AS prod-builder
-# Install development dependencies for all
+
+# Install ALL dependencies (including dev dependencies for build)
 COPY package.json .
 COPY pnpm-workspace.yaml .
 COPY pnpm-lock.yaml .
@@ -129,6 +130,7 @@ COPY packages/warehouses/package.json ./packages/warehouses/
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/frontend/package.json ./packages/frontend/
 
+# Install all dependencies INCLUDING dev dependencies for build
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --prefer-offline
 
@@ -172,8 +174,12 @@ RUN if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY
     pnpm -F backend build; \
     fi
 
-# Build frontend
+# Build frontend - copy all frontend files including configs
 COPY packages/frontend ./packages/frontend
+
+# Add cross-env for Windows compatibility during build
+RUN cd packages/frontend && pnpm add -D cross-env
+
 # Build frontend with sourcemaps (Vite generates them by default)
 RUN if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY_RELEASE_VERSION}" ]; then \
     echo "Building frontend with Sentry integration"; \
@@ -216,7 +222,7 @@ RUN if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY
 RUN rm -rf node_modules \
     && rm -rf packages/*/node_modules
 
-# Install production dependencies
+# Install production dependencies only
 ENV NODE_ENV production
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --prod --frozen-lockfile --prefer-offline
@@ -264,11 +270,11 @@ RUN ln -s /usr/local/dbt1.4/bin/dbt /usr/local/bin/dbt \
     && ln -s /usr/local/dbt1.8/bin/dbt /usr/local/bin/dbt1.8 \
     && ln -s /usr/local/dbt1.9/bin/dbt /usr/local/bin/dbt1.9
 
+# Copy the entrypoint script from the correct location
+COPY docker/prod-entrypoint.sh /usr/bin/prod-entrypoint.sh
+RUN chmod +x /usr/bin/prod-entrypoint.sh
 
-# Run backend
-COPY ./docker/prod-entrypoint.sh /usr/bin/prod-entrypoint.sh
-
-EXPOSE 8080
+EXPOSE 3000
 
 WORKDIR /usr/app/packages/backend
 
