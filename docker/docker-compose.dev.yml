@@ -99,8 +99,8 @@ services:
         ports:
             - '5432:5432'
 
-  headless-browser:
-    image: ghcr.io/browserless/chromium:v2.24.3
-    restart: always
-    expose:
-      - "3000"
+    headless-browser:
+        image: ghcr.io/browserless/chromium:v2.24.3
+        restart: always
+        expose:
+        - "3000"
