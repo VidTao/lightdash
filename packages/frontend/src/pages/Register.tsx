@@ -25,7 +25,7 @@ import useToaster from '../hooks/toaster/useToaster';
 import { useFlashMessages } from '../hooks/useFlashMessages';
 import useApp from '../providers/App/useApp';
 import useTracking from '../providers/Tracking/useTracking';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 
 const registerQuery = async (data: CreateUserArgs) =>
     lightdashApi<LightdashUser>({
@@ -123,8 +123,8 @@ const Register: FC = () => {
         <Page title="Register" withCenteredContent withNavbar={false}>
             <Stack w={400} mt="4xl">
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"

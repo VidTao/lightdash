@@ -37,7 +37,6 @@ import {
     getDimensions,
     getErrorMessage,
     getFieldQuoteChar,
-    getIntrinsicUserAttributes,
     getItemId,
     getItemLabel,
     getItemLabelWithoutTableName,
@@ -1268,18 +1267,10 @@ export class AsyncQueryService extends ProjectService {
         if (!isUserWithOrg(user)) {
             throw new ForbiddenError('User is not part of an organization');
         }
-        const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid: user.organizationUuid,
-                userUuid: user.userUuid,
-            });
-
-        const emailStatus = await this.emailModel.getPrimaryEmailStatus(
-            user.userUuid,
+        const { userAttributes, intrinsicUserAttributes } = await this.getUserAttributes(
+            user,
+            user.organizationUuid,
         );
-        const intrinsicUserAttributes = emailStatus.isVerified
-            ? getIntrinsicUserAttributes(user)
-            : {};
 
         const fullQuery = await ProjectService._compileQuery(
             metricQuery,
@@ -1397,6 +1388,7 @@ export class AsyncQueryService extends ProjectService {
                             await ProjectService.applyPivotToSqlQuery({
                                 warehouseType: warehouseClient.credentials.type,
                                 sql: compiledQuery,
+                                limit: metricQuery.limit,
                                 indexColumn: pivotConfiguration.indexColumn,
                                 valuesColumns: pivotConfiguration.valuesColumns,
                                 groupByColumns:

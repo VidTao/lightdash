@@ -72,6 +72,7 @@ dbt_modules/
 logs/
 /.envrc
 
+/ssl-certs/
 # dangerfile
 dangerfile.development.ts
 

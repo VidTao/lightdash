@@ -21,7 +21,7 @@ import useAllowedOrganizations from '../hooks/user/useAllowedOrganizations';
 import { useJoinOrganizationMutation } from '../hooks/user/useJoinOrganizationMutation';
 import { useDeleteUserMutation } from '../hooks/user/useUserDeleteMutation';
 import useApp from '../providers/App/useApp';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 
 const JoinOrganizationPage: FC = () => {
     const { health, user } = useApp();
@@ -94,8 +94,8 @@ const JoinOrganizationPage: FC = () => {
             ) : (
                 <Stack w={400} mt="4xl">
                     <Image
-                        src={LightdashLogo}
-                        alt="lightdash logo"
+                        src={BratraxLogo}
+                        alt="bratrax logo"
                         width={130}
                         mx="auto"
                         my="lg"

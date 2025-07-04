@@ -91,7 +91,7 @@ const App = () => {
     }, []);
     return (
         <>
-            <title>Lightdash</title>
+            <title>Bratrax</title>
 
             <ReactQueryProvider>
                 <MantineProvider

@@ -84,7 +84,7 @@ CREATE TABLE bratrax_user_platform_credentials (
     CONSTRAINT fk_bupc_bratrax_write_key
         FOREIGN KEY(bratrax_write_key_id)
         REFERENCES bratrax_write_keys(bratrax_write_key_id)
-        ON DELETE SET NULL,
+        ON DELETE SET NULL
 );
 CREATE INDEX idx_bupc_user_platform ON bratrax_user_platform_credentials(user_id, platform);
 CREATE INDEX idx_bupc_organization_platform ON bratrax_user_platform_credentials(organization_id, platform);

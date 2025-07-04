@@ -20,7 +20,7 @@ import {
     usePasswordResetMutation,
 } from '../hooks/usePasswordReset';
 import useApp from '../providers/App/useApp';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 
 type ResetPasswordForm = { password: string };
 
@@ -46,8 +46,8 @@ const PasswordReset: FC = () => {
             {/* FIXME: use Mantine sizes for width */}
             <Stack w={400} mt="4xl">
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"

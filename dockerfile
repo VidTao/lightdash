@@ -255,6 +255,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Lightdash CLI
+RUN npm install -g @lightdash/cli
+
 COPY --from=prod-builder  /usr/local/dbt1.4 /usr/local/dbt1.4
 COPY --from=prod-builder  /usr/local/dbt1.5 /usr/local/dbt1.5
 COPY --from=prod-builder  /usr/local/dbt1.6 /usr/local/dbt1.6
