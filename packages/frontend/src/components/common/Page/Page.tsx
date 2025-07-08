@@ -262,7 +262,7 @@ const Page: FC<React.PropsWithChildren<Props>> = ({
 
     return (
         <>
-            {title ? <title>{`${title} - Lightdash`}</title> : null}
+            {title ? <title>{`${title} - Bratrax`}</title> : null}
 
             {header}
 

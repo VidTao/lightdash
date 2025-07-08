@@ -154,6 +154,7 @@ export class DashboardService
             loomTilesCount: dashboard.tiles.filter(
                 ({ type }) => type === DashboardTileTypes.LOOM,
             ).length,
+            tabsCount: dashboard.tabs.length,
         };
     }
 
@@ -653,27 +654,6 @@ export class DashboardService
             const dashboardTileTypes = Array.from(
                 new Set(dashboard.tiles.map((t) => t.type)),
             );
-
-            // INFO: this should be removed once we have one semantic layer per project.
-            if (
-                dashboardTileTypes.includes(
-                    DashboardTileTypes.SEMANTIC_VIEWER_CHART,
-                )
-            ) {
-                if (
-                    dashboardTileTypes.includes(DashboardTileTypes.SAVED_CHART)
-                ) {
-                    throw new ParameterError(
-                        'Dashboard cannot have both Semantic Viewer and Lightdash Explore charts',
-                    );
-                }
-
-                if (dashboardTileTypes.includes(DashboardTileTypes.SQL_CHART)) {
-                    throw new ParameterError(
-                        'Dashboard cannot have both Semantic Viewer and Sql charts',
-                    );
-                }
-            }
 
             const updatedDashboard = await this.dashboardModel.addVersion(
                 dashboardUuid,

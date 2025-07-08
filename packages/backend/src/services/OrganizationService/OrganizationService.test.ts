@@ -8,16 +8,16 @@ import {
 import { analyticsMock } from '../../analytics/LightdashAnalytics.mock';
 import { lightdashConfigMock } from '../../config/lightdashConfig.mock';
 import { GroupsModel } from '../../models/GroupsModel';
-import { InviteLinkModel } from '../../models/InviteLinkModel';
 import { OnboardingModel } from '../../models/OnboardingModel/OnboardingModel';
 import { OrganizationAllowedEmailDomainsModel } from '../../models/OrganizationAllowedEmailDomainsModel';
 import { OrganizationMemberProfileModel } from '../../models/OrganizationMemberProfileModel';
 import { OrganizationModel } from '../../models/OrganizationModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { UserModel } from '../../models/UserModel';
-import { ServiceRepository } from '../../services/ServiceRepository';
 import { OrganizationService } from './OrganizationService';
 import { organization, user } from './OrganizationService.mock';
+import { ProjectService } from '../ProjectService/ProjectService';
+import { ServiceRepository } from '../ServiceRepository';
 
 const projectModel = {
     hasProjects: jest.fn(async () => true),
@@ -49,13 +49,12 @@ describe('organization service', () => {
         organizationModel: organizationModel as unknown as OrganizationModel,
         projectModel: projectModel as unknown as ProjectModel,
         onboardingModel: {} as OnboardingModel,
-        inviteLinkModel: {} as InviteLinkModel,
         organizationMemberProfileModel: {} as OrganizationMemberProfileModel,
         userModel: userModel as unknown as UserModel,
         organizationAllowedEmailDomainsModel:
             {} as OrganizationAllowedEmailDomainsModel,
         groupsModel: {} as GroupsModel,
-        services: mockServiceRepository,
+        projectService: {} as ProjectService,
     });
 
     afterEach(() => {

@@ -1,7 +1,10 @@
 import {
     AlreadyExistsError,
     AnyType,
+    BigqueryAuthenticationType,
     CreateProject,
+    CreateProjectOptionalCredentials,
+    CreateSnowflakeCredentials,
     CreateVirtualViewPayload,
     CreateWarehouseCredentials,
     DbtProjectConfig,
@@ -19,7 +22,7 @@ import {
     ProjectMemberRole,
     ProjectSummary,
     ProjectType,
-    SemanticLayerType,
+    SnowflakeAuthenticationType,
     SpaceSummary,
     SupportedDbtVersions,
     TablesConfiguration,
@@ -32,15 +35,10 @@ import {
     WarehouseTypes,
     assertUnreachable,
     createVirtualView,
-    generateSlug,
     getLtreePathFromSlug,
     isExploreError,
     sensitiveCredentialsFieldNames,
     sensitiveDbtCredentialsFieldNames,
-    type CubeSemanticLayerConnection,
-    type DbtSemanticLayerConnection,
-    type SemanticLayerConnection,
-    type SemanticLayerConnectionUpdate,
 } from '@lightdash/common';
 import {
     WarehouseCatalog,
@@ -146,7 +144,13 @@ export class ProjectModel {
     static mergeMissingWarehouseSecrets<
         T extends CreateWarehouseCredentials = CreateWarehouseCredentials,
     >(incompleteConfig: T, completeConfig: CreateWarehouseCredentials): T {
-        if (incompleteConfig.type !== completeConfig.type) {
+        if (
+            incompleteConfig.type !== completeConfig.type ||
+            // BigQuery ADC authentication does not require credentials to be set
+            (incompleteConfig.type === WarehouseTypes.BIGQUERY &&
+                incompleteConfig.authenticationType ===
+                    BigqueryAuthenticationType.ADC)
+        ) {
             return incompleteConfig;
         }
         return {
@@ -300,18 +304,26 @@ export class ProjectModel {
                 encrypted_credentials,
             }) => {
                 try {
-                    const warehouseCredentials = JSON.parse(
-                        this.encryptionUtil.decrypt(encrypted_credentials),
-                    ) as CreateWarehouseCredentials;
+                    const warehouseCredentials =
+                        encrypted_credentials !== null
+                            ? (JSON.parse(
+                                  this.encryptionUtil.decrypt(
+                                      encrypted_credentials,
+                                  ),
+                              ) as CreateWarehouseCredentials)
+                            : undefined;
                     return {
                         name,
                         projectUuid: project_uuid,
                         type: project_type,
                         createdByUserUuid: created_by_user_uuid,
                         upstreamProjectUuid: copied_from_project_uuid,
-                        warehouseType: warehouse_type as WarehouseTypes,
+                        warehouseType:
+                            warehouse_type !== null
+                                ? (warehouse_type as WarehouseTypes)
+                                : undefined,
                         requireUserCredentials:
-                            !!warehouseCredentials.requireUserCredentials,
+                            !!warehouseCredentials?.requireUserCredentials,
                     };
                 } catch (e) {
                     throw new UnexpectedServerError(
@@ -335,6 +347,7 @@ export class ProjectModel {
         } catch (e) {
             throw new UnexpectedServerError('Could not save credentials.');
         }
+
         await trx('warehouse_credentials')
             .insert({
                 project_id: projectId,
@@ -343,6 +356,13 @@ export class ProjectModel {
             })
             .onConflict('project_id')
             .merge();
+    }
+
+    async hasAnyProjects(): Promise<boolean> {
+        const results = await this.database('projects')
+            .count('project_uuid as count')
+            .first<{ count: string }>();
+        return parseInt(results.count, 10) > 0;
     }
 
     async hasProjects(organizationUuid: string): Promise<boolean> {
@@ -364,6 +384,18 @@ export class ProjectModel {
         organizationUuid: string,
         data: CreateProject,
     ): Promise<string> {
+        return this.createWithOptionalCredentials(
+            userUuid,
+            organizationUuid,
+            data,
+        );
+    }
+
+    async createWithOptionalCredentials(
+        userUuid: string,
+        organizationUuid: string,
+        data: CreateProjectOptionalCredentials,
+    ): Promise<string> {
         const orgs = await this.database('organizations')
             .where('organization_uuid', organizationUuid)
             .select('*');
@@ -378,19 +410,6 @@ export class ProjectModel {
                 );
             } catch (e) {
                 throw new UnexpectedServerError('Could not save credentials.');
-            }
-
-            let encryptedSemanticLayerConnection: Buffer | null;
-            try {
-                encryptedSemanticLayerConnection = data.semanticLayerConnection
-                    ? this.encryptionUtil.encrypt(
-                          JSON.stringify(data.semanticLayerConnection),
-                      )
-                    : null;
-            } catch (e) {
-                throw new UnexpectedServerError(
-                    'Could not encrypt semantic layer connection credentials.',
-                );
             }
 
             // Make sure the project to copy exists and is owned by the same organization
@@ -411,7 +430,6 @@ export class ProjectModel {
                             ? copiedProjects[0].project_uuid
                             : null,
                     dbt_version: data.dbtVersion,
-                    semantic_layer_connection: encryptedSemanticLayerConnection,
                     ...(copiedProjects.length === 1
                         ? {
                               scheduler_timezone:
@@ -422,11 +440,13 @@ export class ProjectModel {
                 })
                 .returning('*');
 
-            await this.upsertWarehouseConnection(
-                trx,
-                project.project_id,
-                data.warehouseConnection,
-            );
+            if (data.warehouseConnection) {
+                await this.upsertWarehouseConnection(
+                    trx,
+                    project.project_id,
+                    data.warehouseConnection,
+                );
+            }
 
             if (data.type !== ProjectType.PREVIEW) {
                 const slug = await generateUniqueSpaceSlug(
@@ -535,7 +555,6 @@ export class ProjectModel {
                   pinned_list_uuid?: string;
                   dbt_version: SupportedDbtVersions;
                   copied_from_project_uuid?: string;
-                  semantic_layer_connection: Buffer | null;
                   scheduler_timezone: string;
                   created_by_user_uuid: string | null;
               }
@@ -549,7 +568,6 @@ export class ProjectModel {
                   pinned_list_uuid?: string;
                   dbt_version: SupportedDbtVersions;
                   copied_from_project_uuid?: string;
-                  semantic_layer_connection: Buffer | null;
                   scheduler_timezone: string;
                   created_by_user_uuid: string | null;
               }
@@ -601,9 +619,6 @@ export class ProjectModel {
                             .ref('copied_from_project_uuid')
                             .withSchema(ProjectTableName),
                         this.database
-                            .ref('semantic_layer_connection')
-                            .withSchema(ProjectTableName),
-                        this.database
                             .ref('scheduler_timezone')
                             .withSchema(ProjectTableName),
                         this.database
@@ -634,23 +649,6 @@ export class ProjectModel {
                     );
                 }
 
-                let semanticLayerConnection:
-                    | SemanticLayerConnection
-                    | undefined;
-                try {
-                    semanticLayerConnection = project.semantic_layer_connection
-                        ? (JSON.parse(
-                              this.encryptionUtil.decrypt(
-                                  project.semantic_layer_connection,
-                              ),
-                          ) as SemanticLayerConnection)
-                        : undefined;
-                } catch (e) {
-                    throw new UnexpectedServerError(
-                        'Failed to load dbt credentials',
-                    );
-                }
-
                 const result: Omit<Project, 'warehouseConnection'> = {
                     organizationUuid: project.organization_uuid,
                     projectUuid,
@@ -660,7 +658,6 @@ export class ProjectModel {
                     pinnedListUuid: project.pinned_list_uuid,
                     dbtVersion: project.dbt_version,
                     upstreamProjectUuid: project.copied_from_project_uuid,
-                    semanticLayerConnection,
                     schedulerTimezone: project.scheduler_timezone,
                     createdByUserUuid: project.created_by_user_uuid,
                 };
@@ -726,36 +723,55 @@ export class ProjectModel {
         };
     }
 
-    private static getSemanticLayerNonSensitiveCredentials(
-        semanticLayerConnection: SemanticLayerConnection,
-    ) {
-        const { type } = semanticLayerConnection;
+    /* 
+    This method will load default values for backwards compatibility
+    For example, when we introduce a new authentication type, we need to set the default value for the existing projects
+    */
+    static getConnectionWithDefaults(
+        sensitiveCredentials?: CreateWarehouseCredentials,
+        nonSensitiveCredentials?: WarehouseCredentials,
+    ): WarehouseCredentials | undefined {
+        if (!sensitiveCredentials || !nonSensitiveCredentials) {
+            return nonSensitiveCredentials;
+        }
 
-        switch (type) {
-            case SemanticLayerType.CUBE:
+        switch (nonSensitiveCredentials.type) {
+            case WarehouseTypes.BIGQUERY:
                 return {
-                    type,
-                    domain: semanticLayerConnection.domain,
-                } as CubeSemanticLayerConnection;
-            case SemanticLayerType.DBT:
+                    ...nonSensitiveCredentials,
+                    authenticationType:
+                        nonSensitiveCredentials.authenticationType ??
+                        BigqueryAuthenticationType.PRIVATE_KEY,
+                };
+            case WarehouseTypes.SNOWFLAKE: {
+                const rawCredentials =
+                    sensitiveCredentials as CreateSnowflakeCredentials;
+
+                if (nonSensitiveCredentials.authenticationType !== undefined) {
+                    return nonSensitiveCredentials;
+                }
+
+                if (rawCredentials.privateKey === undefined) {
+                    return {
+                        ...nonSensitiveCredentials,
+                        authenticationType:
+                            SnowflakeAuthenticationType.PASSWORD,
+                    };
+                }
+
                 return {
-                    type,
-                    domain: semanticLayerConnection.domain,
-                    environmentId: semanticLayerConnection.environmentId,
-                } as DbtSemanticLayerConnection;
+                    ...nonSensitiveCredentials,
+                    authenticationType: SnowflakeAuthenticationType.PRIVATE_KEY,
+                };
+            }
             default:
-                return assertUnreachable(
-                    type,
-                    `Unknown semantic layer connection type: ${type}`,
-                );
+                return nonSensitiveCredentials;
         }
     }
 
     async get(projectUuid: string): Promise<Project> {
         const project = await this.getWithSensitiveFields(projectUuid);
         const sensitiveCredentials = project.warehouseConnection;
-        const sensitiveSemanticLayerCredentials =
-            project.semanticLayerConnection;
 
         const nonSensitiveDbtCredentials = Object.fromEntries(
             Object.entries(project.dbtConnection).filter(
@@ -775,12 +791,11 @@ export class ProjectModel {
               ) as WarehouseCredentials)
             : undefined;
 
-        const nonSensitiveSemanticLayerCredentials =
-            sensitiveSemanticLayerCredentials
-                ? ProjectModel.getSemanticLayerNonSensitiveCredentials(
-                      sensitiveSemanticLayerCredentials,
-                  )
-                : undefined;
+        const nonSensitiveCredentialsWithDefaults =
+            ProjectModel.getConnectionWithDefaults(
+                sensitiveCredentials,
+                nonSensitiveCredentials,
+            );
 
         return {
             organizationUuid: project.organizationUuid,
@@ -788,11 +803,10 @@ export class ProjectModel {
             name: project.name,
             type: project.type,
             dbtConnection: nonSensitiveDbtCredentials,
-            warehouseConnection: nonSensitiveCredentials,
+            warehouseConnection: nonSensitiveCredentialsWithDefaults,
             pinnedListUuid: project.pinnedListUuid,
             dbtVersion: project.dbtVersion,
             upstreamProjectUuid: project.upstreamProjectUuid || undefined,
-            semanticLayerConnection: nonSensitiveSemanticLayerCredentials,
             schedulerTimezone: project.schedulerTimezone,
             createdByUserUuid: project.createdByUserUuid ?? null,
         };
@@ -1316,6 +1330,7 @@ export class ProjectModel {
 
     async getWarehouseCredentialsForProject(
         projectUuid: string,
+        refreshToken?: string, // TODO make this a fucntion to get the refresh token for the user, and use it if bigquery
     ): Promise<CreateWarehouseCredentials> {
         const [row] = await this.database('warehouse_credentials')
             .innerJoin(
@@ -1470,6 +1485,29 @@ export class ProjectModel {
                           )
                           .returning('*')
                     : [];
+
+            const virtualViews = await trx(CachedExploreTableName)
+                .where('project_uuid', projectUuid)
+                .andWhereJsonPath(
+                    'explore',
+                    '$.type',
+                    '=',
+                    ExploreType.VIRTUAL,
+                );
+
+            if (virtualViews.length > 0) {
+                Logger.info(
+                    `Duplicating ${virtualViews.length} virtual views into ${previewProjectUuid}`,
+                );
+
+                await trx(CachedExploreTableName).insert(
+                    virtualViews.map((v) => ({
+                        ...v,
+                        project_uuid: previewProjectUuid,
+                        cached_explore_uuid: undefined,
+                    })),
+                );
+            }
 
             // .dP"Y8    db    Yb    dP 888888 8888b.      .dP"Y8  dP"Yb  88
             // `Ybo."   dPYb    Yb  dP  88__    8I  Yb     `Ybo." dP   Yb 88
@@ -2301,77 +2339,6 @@ export class ProjectModel {
                     [name],
                 ),
             });
-    }
-
-    private static isSemanticLayerConnectionValid(
-        semanticLayerConnection: SemanticLayerConnectionUpdate,
-    ): boolean {
-        const { type } = semanticLayerConnection;
-        switch (type) {
-            case SemanticLayerType.DBT:
-                return Boolean(
-                    semanticLayerConnection.domain &&
-                        semanticLayerConnection.environmentId &&
-                        semanticLayerConnection.token,
-                );
-            case SemanticLayerType.CUBE:
-                return Boolean(
-                    semanticLayerConnection.domain &&
-                        semanticLayerConnection.token,
-                );
-            default:
-                return assertUnreachable(
-                    type,
-                    `Unknown semantic layer connection type: ${type}`,
-                );
-        }
-    }
-
-    async updateSemanticLayerConnection(
-        projectUuid: string,
-        connectionUpdate: SemanticLayerConnectionUpdate,
-    ) {
-        const { semanticLayerConnection: currentSemanticLayerConnection } =
-            await this.getWithSensitiveFields(projectUuid);
-
-        // ? Merging so the partial update only overwrites the existing properties, even when the current connection is undefined since merge will take ALL properties
-        const shouldMerge =
-            !currentSemanticLayerConnection ||
-            connectionUpdate.type === currentSemanticLayerConnection.type;
-
-        const updatedSemanticLayerConnection = shouldMerge
-            ? merge(currentSemanticLayerConnection, connectionUpdate)
-            : connectionUpdate;
-
-        if (
-            !ProjectModel.isSemanticLayerConnectionValid(
-                updatedSemanticLayerConnection,
-            )
-        ) {
-            throw new ParameterError('Invalid semantic layer connection');
-        }
-
-        const [updatedProject] = await this.database(ProjectTableName)
-            .update({
-                semantic_layer_connection: this.encryptionUtil.encrypt(
-                    JSON.stringify(updatedSemanticLayerConnection),
-                ),
-            })
-            .where('project_uuid', projectUuid)
-            .returning('*');
-
-        return updatedProject;
-    }
-
-    async deleteSemanticLayerConnection(projectUuid: string) {
-        const [updatedProject] = await this.database(ProjectTableName)
-            .update({
-                semantic_layer_connection: null,
-            })
-            .where('project_uuid', projectUuid)
-            .returning('*');
-
-        return updatedProject;
     }
 
     async updateDefaultSchedulerTimezone(

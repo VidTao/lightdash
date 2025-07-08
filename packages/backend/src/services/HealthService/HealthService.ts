@@ -111,6 +111,8 @@ export class HealthService extends BaseService {
                     googleDriveApiKey:
                         this.lightdashConfig.auth.google.googleDriveApiKey,
                     enabled: this.isGoogleSSOEnabled(),
+                    enableGCloudADC:
+                        this.lightdashConfig.auth.google.enableGCloudADC,
                 },
                 okta: {
                     loginPath: this.lightdashConfig.auth.okta.loginPath,
@@ -133,6 +135,11 @@ export class HealthService extends BaseService {
                     maxExpirationTimeInDays:
                         this.lightdashConfig.auth.pat.maxExpirationTimeInDays,
                 },
+                snowflake: {
+                    enabled:
+                        !!this.lightdashConfig.auth.snowflake.clientId &&
+                        !!this.lightdashConfig.license.licenseKey,
+                },
             },
             hasEmailClient: !!this.lightdashConfig.smtp,
             hasHeadlessBrowser:
@@ -150,6 +157,8 @@ export class HealthService extends BaseService {
                     : undefined,
             },
             hasMicrosoftTeams: this.lightdashConfig.microsoftTeams.enabled,
+            isServiceAccountEnabled:
+                this.lightdashConfig.serviceAccount.enabled,
         };
     }
 

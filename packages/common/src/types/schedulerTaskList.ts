@@ -1,8 +1,10 @@
+import { includes } from 'lodash';
 import { type SlackPromptJobPayload } from '../ee';
 import { type SchedulerIndexCatalogJobPayload } from './catalog';
 import { type UploadMetricGsheetPayload } from './gdrive';
 import { type RenameResourcesPayload } from './rename';
 import {
+    type AsyncWarehouseQueryPayload,
     type CompileProjectPayload,
     type DownloadCsvPayload,
     type EmailNotificationPayload,
@@ -16,7 +18,6 @@ import {
     type TraceTaskBase,
     type ValidateProjectPayload,
 } from './scheduler';
-import { type SemanticLayerQueryPayload } from './semanticLayer';
 import {
     type SqlRunnerPayload,
     type SqlRunnerPivotQueryPayload,
@@ -38,7 +39,6 @@ export const SCHEDULER_TASKS = {
     COMPILE_PROJECT: 'compileProject',
     CREATE_PROJECT_WITH_COMPILE: 'createProjectWithCompile',
     TEST_AND_COMPILE_PROJECT: 'testAndCompileProject',
-    SEMANTIC_LAYER_QUERY: 'semanticLayer',
     SQL_RUNNER: 'sqlRunner',
     SQL_RUNNER_PIVOT_QUERY: 'sqlRunnerPivotQuery',
     REPLACE_CUSTOM_FIELDS: 'replaceCustomFields',
@@ -46,8 +46,12 @@ export const SCHEDULER_TASKS = {
     GENERATE_DAILY_JOBS: 'generateDailyJobs',
     EXPORT_CSV_DASHBOARD: 'exportCsvDashboard',
     RENAME_RESOURCES: 'renameResources',
+    RUN_ASYNC_WAREHOUSE_QUERY: 'runAsyncWarehouseQuery',
     ...EE_SCHEDULER_TASKS,
 } as const;
+
+export const ALL_TASK_NAMES: SchedulerTaskName[] =
+    Object.values(SCHEDULER_TASKS);
 
 // Map each task to its payload type
 export interface TaskPayloadMap {
@@ -62,7 +66,6 @@ export interface TaskPayloadMap {
     [SCHEDULER_TASKS.COMPILE_PROJECT]: CompileProjectPayload;
     [SCHEDULER_TASKS.CREATE_PROJECT_WITH_COMPILE]: SchedulerCreateProjectWithCompilePayload;
     [SCHEDULER_TASKS.TEST_AND_COMPILE_PROJECT]: CompileProjectPayload;
-    [SCHEDULER_TASKS.SEMANTIC_LAYER_QUERY]: SemanticLayerQueryPayload;
     [SCHEDULER_TASKS.SQL_RUNNER]: SqlRunnerPayload;
     [SCHEDULER_TASKS.SQL_RUNNER_PIVOT_QUERY]: SqlRunnerPivotQueryPayload;
     [SCHEDULER_TASKS.REPLACE_CUSTOM_FIELDS]: ReplaceCustomFieldsPayload;
@@ -71,6 +74,7 @@ export interface TaskPayloadMap {
     [SCHEDULER_TASKS.EXPORT_CSV_DASHBOARD]: ExportCsvDashboardPayload;
     [SCHEDULER_TASKS.SLACK_AI_PROMPT]: SlackPromptJobPayload;
     [SCHEDULER_TASKS.RENAME_RESOURCES]: RenameResourcesPayload;
+    [SCHEDULER_TASKS.RUN_ASYNC_WAREHOUSE_QUERY]: AsyncWarehouseQueryPayload;
 }
 
 export interface EETaskPayloadMap {
@@ -79,3 +83,6 @@ export interface EETaskPayloadMap {
 
 export type SchedulerTaskName =
     typeof SCHEDULER_TASKS[keyof typeof SCHEDULER_TASKS];
+
+export const isSchedulerTaskName = (task: string): task is SchedulerTaskName =>
+    includes(ALL_TASK_NAMES, task); // Had to use includes to avoid type error from Object.values().includes(string) related to union types https://github.com/microsoft/TypeScript/issues/46186

@@ -1,6 +1,7 @@
 import { subject } from '@casl/ability';
 import {
     AllowedEmailDomains,
+    AllowedEmailDomainsRoles,
     convertProjectRoleToOrganizationRole,
     CreateColorPalette,
     CreateGroup,
@@ -18,6 +19,8 @@ import {
     LightdashMode,
     NotExistsError,
     OnbordingRecord,
+    OpenIdIdentityIssuerType,
+    OpenIdUser,
     Organization,
     OrganizationColorPalette,
     OrganizationColorPaletteWithIsActive,
@@ -29,7 +32,9 @@ import {
     ParameterError,
     ProjectType,
     RequestMethod,
+    ServiceAccountScope,
     SessionUser,
+    UnexpectedServerError,
     UpdateAllowedEmailDomains,
     UpdateColorPalette,
     UpdateOrganization,
@@ -37,10 +42,14 @@ import {
     validateOrganizationNameOrThrow,
     WarehouseTypes,
 } from '@lightdash/common';
+import { Scope } from '@sentry/core';
 import fs from 'fs';
 import { groupBy } from 'lodash';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../../config/parseConfig';
+import { ServiceAccountModel } from '../../ee/models/ServiceAccountModel';
+import { PersonalAccessTokenModel } from '../../models/DashboardModel/PersonalAccessTokenModel';
+import { EmailModel } from '../../models/EmailModel';
 import { GroupsModel } from '../../models/GroupsModel';
 import { InviteLinkModel } from '../../models/InviteLinkModel';
 import { OnboardingModel } from '../../models/OnboardingModel/OnboardingModel';
@@ -50,7 +59,7 @@ import { OrganizationModel } from '../../models/OrganizationModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { UserModel } from '../../models/UserModel';
 import { BaseService } from '../BaseService';
-import { ServiceRepository } from '../ServiceRepository';
+import { ProjectService } from '../ProjectService/ProjectService';
 
 type OrganizationServiceArguments = {
     lightdashConfig: LightdashConfig;
@@ -58,26 +67,25 @@ type OrganizationServiceArguments = {
     organizationModel: OrganizationModel;
     projectModel: ProjectModel;
     onboardingModel: OnboardingModel;
-    inviteLinkModel: InviteLinkModel;
     organizationMemberProfileModel: OrganizationMemberProfileModel;
     userModel: UserModel;
     groupsModel: GroupsModel;
     organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
-    services: ServiceRepository;
+    projectService: ProjectService;
 };
 
 export class OrganizationService extends BaseService {
     private readonly lightdashConfig: LightdashConfig;
-    private readonly services: ServiceRepository;
     private readonly analytics: LightdashAnalytics;
     private readonly organizationModel: OrganizationModel;
     private readonly projectModel: ProjectModel;
     private readonly onboardingModel: OnboardingModel;
-    private readonly inviteLinkModel: InviteLinkModel;
+
     private readonly organizationMemberProfileModel: OrganizationMemberProfileModel;
     private readonly userModel: UserModel;
     private readonly organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
     private readonly groupsModel: GroupsModel;
+    private readonly projectService: ProjectService;
 
     constructor({
         lightdashConfig,
@@ -85,26 +93,24 @@ export class OrganizationService extends BaseService {
         organizationModel,
         projectModel,
         onboardingModel,
-        inviteLinkModel,
         organizationMemberProfileModel,
         userModel,
         groupsModel,
         organizationAllowedEmailDomainsModel,
-        services,
+        projectService,
     }: OrganizationServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
-        this.services = services;
         this.analytics = analytics;
         this.organizationModel = organizationModel;
         this.projectModel = projectModel;
         this.onboardingModel = onboardingModel;
-        this.inviteLinkModel = inviteLinkModel;
         this.organizationMemberProfileModel = organizationMemberProfileModel;
         this.userModel = userModel;
         this.organizationAllowedEmailDomainsModel =
             organizationAllowedEmailDomainsModel;
         this.groupsModel = groupsModel;
+        this.projectService = projectService;
     }
 
     async get(user: SessionUser): Promise<Organization> {
@@ -122,6 +128,12 @@ export class OrganizationService extends BaseService {
             ...organization,
             needsProject,
         };
+    }
+
+    async getOrganizationByUuid(
+        organizationUuid: string,
+    ): Promise<Organization> {
+        return this.organizationModel.get(organizationUuid);
     }
 
     async updateOrg(
@@ -555,7 +567,6 @@ export class OrganizationService extends BaseService {
         });
 
         // Automatically create first project
-        const projectService = this.services.getProjectService();
         const projectData: CreateProject = {
             name: 'My first project',
             type: ProjectType.DEFAULT,
@@ -584,7 +595,7 @@ export class OrganizationService extends BaseService {
             },
             dbtVersion: DbtVersionOptionLatest.LATEST,
         };
-        await projectService.createWithoutCompile(
+        await this.projectService.createWithoutCompile(
             {
                 ...user,
                 organizationUuid: org.organizationUuid,

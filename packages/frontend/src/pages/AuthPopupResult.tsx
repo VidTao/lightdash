@@ -4,7 +4,7 @@ import { type FC } from 'react';
 import { useParams } from 'react-router';
 import { useMount } from 'react-use';
 import SuboptimalState from '../components/common/SuboptimalState/SuboptimalState';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 
 const AuthPopupResult: FC = () => {
     const { status } = useParams<{ status: string }>();
@@ -21,12 +21,12 @@ const AuthPopupResult: FC = () => {
 
     return (
         <>
-            <title>Authentication - Lightdash</title>
+            <title>Authentication - Bratrax</title>
 
             <Stack>
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"
@@ -60,12 +60,12 @@ export const SuccessAuthPopupResult: FC = () => {
 
     return (
         <>
-            <title>Authentication - Lightdash</title>
+            <title>Authentication - Bratrax</title>
 
             <Stack>
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"

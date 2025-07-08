@@ -25,10 +25,9 @@ import {
     dateGranularityToTimeFrameMap,
     type DateGranularity,
 } from '../types/timeFrames';
-import { type WarehouseClient } from '../types/warehouse';
+import { type WarehouseSqlBuilder } from '../types/warehouse';
 import { timeFrameConfigs } from '../utils/timeFrames';
-import { getFieldQuoteChar } from '../utils/warehouse';
-import { renderFilterRuleSql } from './filtersCompiler';
+import { renderFilterRuleSqlFromField } from './filtersCompiler';
 import {
     getCategoriesFromResource,
     getSpotlightConfigurationForResource,
@@ -98,10 +97,11 @@ const getReferencedTable = (
         (table) => table.name === refTable || table.originalName === refTable,
     );
 };
-export class ExploreCompiler {
-    private readonly warehouseClient: WarehouseClient;
 
-    constructor(warehouseClient: WarehouseClient) {
+export class ExploreCompiler {
+    private readonly warehouseClient: WarehouseSqlBuilder;
+
+    constructor(warehouseClient: WarehouseSqlBuilder) {
         this.warehouseClient = warehouseClient;
     }
 
@@ -455,10 +455,10 @@ export class ExploreCompiler {
                         ...compiledDimension.tablesReferences,
                     ]);
                 }
-                return renderFilterRuleSql(
+                return renderFilterRuleSqlFromField(
                     filter,
                     compiledDimension,
-                    getFieldQuoteChar(this.warehouseClient.credentials.type),
+                    this.warehouseClient.getFieldQuoteChar(),
                     this.warehouseClient.getStringQuoteChar(),
                     this.warehouseClient.getEscapeStringQuoteChar(),
                     this.warehouseClient.getStartOfWeek(),
@@ -595,9 +595,7 @@ export class ExploreCompiler {
     ): { sql: string; tablesReferences: Set<string> } {
         // Reference to current table
         if (ref === 'TABLE') {
-            const fieldQuoteChar = getFieldQuoteChar(
-                this.warehouseClient.credentials.type,
-            );
+            const fieldQuoteChar = this.warehouseClient.getFieldQuoteChar();
             return {
                 sql: `${fieldQuoteChar}${currentTable}${fieldQuoteChar}`,
                 tablesReferences: new Set([currentTable]),
@@ -637,9 +635,7 @@ export class ExploreCompiler {
     ): { sql: string; tablesReferences: Set<string> } {
         // Reference to current table
         if (ref === 'TABLE') {
-            const fieldQuoteChar = getFieldQuoteChar(
-                this.warehouseClient.credentials.type,
-            );
+            const fieldQuoteChar = this.warehouseClient.getFieldQuoteChar();
             return {
                 sql: `${fieldQuoteChar}${currentTable}${fieldQuoteChar}`,
                 tablesReferences: new Set([currentTable]),
@@ -673,39 +669,46 @@ export class ExploreCompiler {
     }
 
     compileExploreJoinSql(
-        join: ExploreJoin,
+        join: Pick<ExploreJoin, 'sqlOn' | 'table'>,
         tables: Record<string, Table>,
-    ): string {
+    ): { sql: string; tablesReferences: Set<string> } {
+        const tablesReferences = new Set<string>([]);
         // Sql join contains references to dimensions
-        return join.sqlOn.replace(lightdashVariablePattern, (_, p1) => {
+        const sql = join.sqlOn.replace(lightdashVariablePattern, (_, p1) => {
             const compiledReference = this.compileDimensionReference(
                 p1,
                 tables,
                 join.table,
             );
-
+            // Update table references
+            compiledReference.tablesReferences.forEach((value) =>
+                tablesReferences.add(value),
+            );
             return compiledReference.sql;
         });
+        return { sql, tablesReferences };
     }
 
     compileJoin(
         join: ExploreJoin,
         tables: Record<string, Table>,
     ): CompiledExploreJoin {
+        const { sql, tablesReferences } = this.compileExploreJoinSql(
+            {
+                table: join.alias || join.table,
+                sqlOn: join.sqlOn,
+            },
+            tables,
+        );
         return {
             table: join.alias || join.table,
             sqlOn: join.sqlOn,
             type: join.type,
-            compiledSqlOn: this.compileExploreJoinSql(
-                {
-                    table: join.alias || join.table,
-                    sqlOn: join.sqlOn,
-                    always: join.always,
-                },
-                tables,
-            ),
+            compiledSqlOn: sql,
+            tablesReferences: Array.from(tablesReferences),
             hidden: join.hidden,
             always: join.always,
+            relationship: join.relationship,
         };
     }
 }
@@ -714,11 +717,11 @@ export const createDimensionWithGranularity = (
     dimensionName: string,
     baseTimeDimension: CompiledDimension,
     explore: Explore,
-    warehouseClient: WarehouseClient,
+    warehouseSqlBuilder: WarehouseSqlBuilder,
     granularity: DateGranularity,
 ) => {
     const newTimeInterval = dateGranularityToTimeFrameMap[granularity];
-    const exploreCompiler = new ExploreCompiler(warehouseClient);
+    const exploreCompiler = new ExploreCompiler(warehouseSqlBuilder);
     return exploreCompiler.compileDimension(
         {
             ...baseTimeDimension,
@@ -733,13 +736,13 @@ export const createDimensionWithGranularity = (
                 .getLabel()
                 .toLowerCase()}`,
             sql: timeFrameConfigs[newTimeInterval].getSql(
-                warehouseClient.getAdapterType(),
+                warehouseSqlBuilder.getAdapterType(),
                 newTimeInterval,
                 baseTimeDimension.sql,
                 timeFrameConfigs[newTimeInterval].getDimensionType(
                     baseTimeDimension.type,
                 ),
-                warehouseClient.getStartOfWeek(),
+                warehouseSqlBuilder.getStartOfWeek(),
             ),
         },
         explore.tables,

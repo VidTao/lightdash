@@ -4,9 +4,12 @@ import {
     type SortBy,
     type ValuesColumn,
 } from '../..';
+
 import type { QueryExecutionContext } from '../analytics';
+import type { DownloadFileType } from '../downloadFile';
 import type { DashboardFilters, Filters } from '../filter';
 import type { MetricQueryRequest, SortField } from '../metricQuery';
+import type { PivotConfig } from '../pivot';
 import type { DateGranularity } from '../timeFrames';
 
 type CommonPaginatedQueryRequestParams = {
@@ -29,6 +32,7 @@ export type ExecuteAsyncSavedChartRequestParams =
     CommonPaginatedQueryRequestParams & {
         chartUuid: string;
         versionUuid?: string;
+        limit?: number | null | undefined;
     };
 
 export type ExecuteAsyncDashboardChartRequestParams =
@@ -38,6 +42,7 @@ export type ExecuteAsyncDashboardChartRequestParams =
         dashboardFilters: DashboardFilters;
         dashboardSorts: SortField[];
         dateZoom?: DateZoom;
+        limit?: number | null | undefined;
     };
 
 export type ExecuteAsyncSqlQueryRequestParams =
@@ -58,6 +63,7 @@ export type ExecuteAsyncUnderlyingDataRequestParams =
         underlyingDataItemId?: string;
         filters: Filters;
         dateZoom?: DateZoom;
+        limit?: number;
     };
 
 export type ExecuteAsyncSqlChartByUuidRequestParams =
@@ -84,6 +90,7 @@ export const isExecuteAsyncSqlChartByUuidParams = (
 type ExecuteAsyncDashboardSqlChartCommonParams =
     CommonPaginatedQueryRequestParams & {
         dashboardUuid: string;
+        tileUuid: string;
         dashboardFilters: DashboardFilters;
         dashboardSorts: SortField[];
         limit?: number;
@@ -107,6 +114,18 @@ export const isExecuteAsyncDashboardSqlChartByUuidParams = (
     params: ExecuteAsyncDashboardSqlChartRequestParams,
 ): params is ExecuteAsyncDashboardSqlChartByUuidRequestParams =>
     'savedSqlUuid' in params;
+
+export type DownloadAsyncQueryResultsRequestParams = {
+    queryUuid: string;
+    type?: DownloadFileType;
+    onlyRaw?: boolean;
+    showTableNames?: boolean;
+    customLabels?: Record<string, string>;
+    columnOrder?: string[];
+    hiddenFields?: string[];
+    pivotConfig?: PivotConfig;
+    attachmentDownloadName?: string;
+};
 
 export type ExecuteAsyncQueryRequestParams =
     | ExecuteAsyncMetricQueryRequestParams

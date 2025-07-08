@@ -22,21 +22,25 @@ import {
     DashboardAsCode,
     DbtExposure,
     DbtProjectEnvironmentVariable,
+    LightdashRequestMethodHeader,
     ParameterError,
     RequestMethod,
     UpdateMetadata,
     UpdateProjectMember,
     UserWarehouseCredentials,
+    getRequestMethod,
     isDuplicateDashboardParams,
     type ApiCalculateSubtotalsResponse,
     type ApiCreateDashboardResponse,
+    type ApiCreatePreviewResults,
     type ApiGetDashboardsResponse,
     type ApiGetTagsResponse,
+    type ApiRefreshResults,
+    type ApiSuccess,
     type ApiUpdateDashboardsResponse,
     type CalculateSubtotalsFromQuery,
     type CreateDashboard,
     type DuplicateDashboardParams,
-    type SemanticLayerConnectionUpdate,
     type Tag,
     type UpdateMultipleDashboards,
     type UpdateSchedulerSettings,
@@ -511,55 +515,6 @@ export class ProjectController extends BaseController {
         };
     }
 
-    @Middlewares([
-        allowApiKeyAuthentication,
-        isAuthenticated,
-        unauthorisedInDemo,
-    ])
-    @SuccessResponse('200', 'Success')
-    @Patch('{projectUuid}/semantic-layer-connection')
-    @OperationId('updateProjectSemanticLayerConnection')
-    async updateProjectSemanticLayerConnection(
-        @Path() projectUuid: string,
-        @Body() body: SemanticLayerConnectionUpdate,
-        @Request() req: express.Request,
-    ): Promise<ApiSuccessEmpty> {
-        this.setStatus(200);
-
-        await this.services
-            .getProjectService()
-            .updateSemanticLayerConnection(req.user!, projectUuid, body);
-
-        return {
-            status: 'ok',
-            results: undefined,
-        };
-    }
-
-    @Middlewares([
-        allowApiKeyAuthentication,
-        isAuthenticated,
-        unauthorisedInDemo,
-    ])
-    @SuccessResponse('200', 'Success')
-    @Delete('{projectUuid}/semantic-layer-connection')
-    @OperationId('deleteProjectSemanticLayerConnection')
-    async deleteProjectSemanticLayerConnection(
-        @Path() projectUuid: string,
-        @Request() req: express.Request,
-    ): Promise<ApiSuccessEmpty> {
-        this.setStatus(200);
-
-        await this.services
-            .getProjectService()
-            .deleteSemanticLayerConnection(req.user!, projectUuid);
-
-        return {
-            status: 'ok',
-            results: undefined,
-        };
-    }
-
     @Middlewares([allowApiKeyAuthentication, isAuthenticated])
     @SuccessResponse('200', 'Success')
     @Get('{projectUuid}/dashboards')
@@ -685,7 +640,7 @@ export class ProjectController extends BaseController {
             warehouseConnectionOverrides?: { schema?: string };
         },
         @Request() req: express.Request,
-    ): Promise<{ status: 'ok'; results: string }> {
+    ): Promise<{ status: 'ok'; results: ApiCreatePreviewResults }> {
         this.setStatus(200);
 
         const results = await this.services
@@ -1003,6 +958,31 @@ export class ProjectController extends BaseController {
         this.setStatus(200);
         return {
             status: 'ok',
+        };
+    }
+
+    @Middlewares([
+        allowApiKeyAuthentication,
+        isAuthenticated,
+        unauthorisedInDemo,
+    ])
+    @SuccessResponse('200', 'Success')
+    @Post('{projectUuid}/refresh')
+    @OperationId('refresh')
+    async refresh(
+        @Path() projectUuid: string,
+        @Request() req: express.Request,
+    ): Promise<ApiSuccess<ApiRefreshResults>> {
+        this.setStatus(200);
+        const context = getRequestMethod(
+            req.header(LightdashRequestMethodHeader),
+        );
+        const results = await this.services
+            .getProjectService()
+            .scheduleCompileProject(req.user!, projectUuid, context);
+        return {
+            status: 'ok',
+            results,
         };
     }
 }

@@ -33,6 +33,7 @@ import { Knex } from 'knex';
 import path from 'path';
 import { lightdashConfig } from '../../../config/lightdashConfig';
 import { ProjectModel } from '../../../models/ProjectModel/ProjectModel';
+import { UserAttributesModel } from '../../../models/UserAttributesModel';
 import { projectAdapterFromConfig } from '../../../projectAdapters/projectAdapter';
 import { EncryptionUtil } from '../../../utils/EncryptionUtil/EncryptionUtil';
 import { DbEmailIn } from '../../entities/emails';
@@ -78,7 +79,19 @@ export async function seed(knex: Knex): Promise<void> {
             throw new Error('User was not created');
         }
 
-        await knex('emails').insert({ ...seedEmail, user_id: user.user_id });
+        await knex('emails').insert({
+            ...seedEmail,
+            user_id: user.user_id,
+        });
+
+        await knex('emails')
+            .update({
+                is_verified: true,
+            })
+            .where({
+                user_id: user.user_id,
+                email: seedEmail.email,
+            });
 
         await knex('password_logins').insert({
             user_id: user.user_id,
@@ -105,6 +118,18 @@ export async function seed(knex: Knex): Promise<void> {
 
     const { organizationId, organizationUuid } = await addOrganization(
         SEED_ORG_1,
+    );
+
+    // Add user attribute
+    await new UserAttributesModel({ database: knex }).create(
+        SEED_ORG_1.organization_uuid,
+        {
+            name: 'is_admin_saas_demo',
+            description: 'Provides access to all SAAS and fanout models',
+            attributeDefault: 'true',
+            users: [],
+            groups: [],
+        },
     );
 
     const { user } = await addUser(
@@ -163,8 +188,7 @@ export async function seed(knex: Knex): Promise<void> {
             ...SEED_PROJECT,
             organization_id: organizationId,
             dbt_connection: encryptedProjectSettings,
-            dbt_version: SupportedDbtVersions.V1_4,
-            semantic_layer_connection: null,
+            dbt_version: SupportedDbtVersions.V1_7,
             created_by_user_uuid: user.user_uuid,
         })
         .returning(['project_id', 'project_uuid']);
@@ -236,7 +260,7 @@ export async function seed(knex: Knex): Promise<void> {
                 warehouseCatalog: undefined,
                 onWarehouseCatalogChange: () => {},
             },
-            SupportedDbtVersions.V1_4,
+            SupportedDbtVersions.V1_7,
         );
         const explores = await adapter.compileAllExplores({
             userUuid: user.user_uuid,

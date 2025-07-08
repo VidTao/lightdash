@@ -20,8 +20,7 @@ import ErrorState from '../components/common/ErrorState';
 import MantineIcon from '../components/common/MantineIcon';
 import Page from '../components/common/Page/Page';
 import { ChartDownload } from '../features/sqlRunner/components/Download/ChartDownload';
-import { ResultsDownloadFromData } from '../features/sqlRunner/components/Download/ResultsDownloadFromData';
-import { ResultsDownloadFromUrl } from '../features/sqlRunner/components/Download/ResultsDownloadFromUrl';
+import ResultsDownloadButton from '../features/sqlRunner/components/Download/ResultsDownloadButton';
 import { Header } from '../features/sqlRunner/components/Header';
 import { useSavedSqlChartResults } from '../features/sqlRunner/hooks/useSavedSqlChartResults';
 import { store } from '../features/sqlRunner/store';
@@ -56,6 +55,7 @@ const ViewSqlChart = () => {
             error: chartResultsError,
             isFetching: isChartResultsFetching,
         },
+        getDownloadQueryUuid,
     } = useSavedSqlChartResults({
         projectUuid: params.projectUuid,
         slug: params.slug,
@@ -129,47 +129,46 @@ const ViewSqlChart = () => {
                         {(activeTab === TabOption.RESULTS ||
                             (activeTab === TabOption.CHART &&
                                 isVizTableConfig(chartData?.config))) &&
-                            chartResultsData &&
-                            // Table charts don't have a fileUrl,
-                            // So we will download the file directly from the resultsData
-                            (chartResultsData?.fileUrl ? (
-                                <ResultsDownloadFromUrl
-                                    fileUrl={chartResultsData.fileUrl}
-                                    columnNames={
-                                        chartResultsData.chartUnderlyingData
-                                            ?.columns ?? []
+                            params.projectUuid && (
+                                <ResultsDownloadButton
+                                    projectUuid={params.projectUuid}
+                                    disabled={!chartResultsData}
+                                    vizTableConfig={
+                                        isVizTableConfig(chartData?.config)
+                                            ? chartData.config
+                                            : undefined
                                     }
                                     chartName={chartData?.name}
-                                />
-                            ) : (
-                                <ResultsDownloadFromData
-                                    rows={
-                                        chartResultsData.chartUnderlyingData
-                                            ?.rows ?? []
+                                    totalResults={
+                                        chartResultsData?.chartUnderlyingData
+                                            ?.rows.length ?? 0
                                     }
-                                    columns={
-                                        // visible columns are sorted and filtered, we need to respect this order
-                                        chartResultsData.chartSpec.spec
-                                            ?.visibleColumns ?? []
-                                    }
-                                    columnsConfig={
-                                        chartResultsData.chartSpec.spec
+                                    columnOrder={
+                                        chartResultsData?.chartUnderlyingData
                                             ?.columns ?? []
                                     }
-                                    chartName={chartData?.name}
+                                    getDownloadQueryUuid={getDownloadQueryUuid}
                                 />
-                            ))}
-                        {activeTab === TabOption.CHART && echartsInstance && (
-                            <ChartDownload
-                                echartsInstance={echartsInstance}
-                                fileUrl={chartResultsData?.fileUrl}
-                                columnNames={
-                                    chartResultsData?.chartUnderlyingData
-                                        ?.columns ?? []
-                                }
-                                chartName={chartData?.name}
-                            />
-                        )}
+                            )}
+                        {activeTab === TabOption.CHART &&
+                            echartsInstance &&
+                            params.projectUuid && (
+                                <ChartDownload
+                                    echartsInstance={echartsInstance}
+                                    chartName={chartData?.name}
+                                    projectUuid={params.projectUuid}
+                                    disabled={!chartResultsData}
+                                    totalResults={
+                                        chartResultsData?.chartUnderlyingData
+                                            ?.rows.length ?? 0
+                                    }
+                                    columnOrder={
+                                        chartResultsData?.chartUnderlyingData
+                                            ?.columns ?? []
+                                    }
+                                    getDownloadQueryUuid={getDownloadQueryUuid}
+                                />
+                            )}
                     </Group>
 
                     {chartError && <ErrorState error={chartError.error} />}

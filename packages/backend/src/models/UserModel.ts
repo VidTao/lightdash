@@ -76,6 +76,7 @@ export const mapDbUserDetailsToLightdashUser = (
     hasAuthentication: boolean,
 ): LightdashUser => ({
     userUuid: user.user_uuid,
+    userId: user.user_id,
     email: user.email,
     firstName: user.first_name,
     lastName: user.last_name,
@@ -214,6 +215,7 @@ export class UserModel {
         trx: Transaction,
         createUser: (Omit<CreateUserWithRole, 'role'> | OpenIdUser) & {
             isActive: boolean;
+            isVerified?: boolean;
         },
     ) {
         const userIn: DbUserIn = isOpenIdUser(createUser)
@@ -561,7 +563,6 @@ export class UserModel {
         });
 
         return {
-            userId: user.user_id,
             abilityRules: abilityBuilder.rules,
             ability: abilityBuilder.build(),
             ...lightdashUser,
@@ -578,7 +579,6 @@ export class UserModel {
         if (!org) {
             throw new NotExistsError('Cannot find organization');
         }
-
         const email = isOpenIdUser(createUser)
             ? createUser.openId.email
             : createUser.email;
@@ -815,7 +815,7 @@ export class UserModel {
     static lightdashUserFromSession(
         sessionUser: SessionUser,
     ): LightdashUserWithAbilityRules {
-        const { userId, ability, ...lightdashUser } = sessionUser;
+        const { ability, ...lightdashUser } = sessionUser;
         return lightdashUser;
     }
 
@@ -836,6 +836,11 @@ export class UserModel {
             throw new ParameterError("Password doesn't meet requirements");
         }
         const user = await this.findSessionUserByUUID(userUuid);
+
+        if (!user?.userId) {
+            throw new NotExistsError('User is missing user_id');
+        }
+
         await this.database(PasswordLoginTableName)
             .insert({
                 user_id: user.userId,
@@ -1001,7 +1006,10 @@ export class UserModel {
         return this.getUserDetailsByUuid(userUuid);
     }
 
-    async getRefreshToken(userUuid: string): Promise<string> {
+    async getRefreshToken(
+        userUuid: string,
+        issuerType: OpenIdIdentityIssuerType = OpenIdIdentityIssuerType.GOOGLE,
+    ): Promise<string> {
         const [row] = await this.database(UserTableName)
             .leftJoin(
                 'openid_identities',
@@ -1010,6 +1018,7 @@ export class UserModel {
             )
             .where('user_uuid', userUuid)
             .whereNotNull('refresh_token')
+            .where('issuer_type', issuerType)
             .select('refresh_token');
 
         if (!row) {
@@ -1035,5 +1044,24 @@ export class UserModel {
             .andWhere('emails.is_primary', true)
             .select('openid_identities.issuer_type');
         return rows.map((row) => row.issuer_type);
+    }
+
+    async getOpenIdByIssuerType(
+        userUuid: string,
+        issuerType: OpenIdIdentityIssuerType,
+    ) {
+        const rows = await this.database(OpenIdIdentitiesTableName)
+            .leftJoin('users', 'openid_identities.user_id', 'users.user_id')
+            .where('users.user_uuid', userUuid)
+            .where('issuer_type', issuerType)
+            .select('*');
+
+        if (rows.length === 0) {
+            throw new NotFoundError('OpenID identity not found');
+        }
+        if (rows.length > 1) {
+            throw new Error('Multiple OpenID identities found');
+        }
+        return rows[0];
     }
 }

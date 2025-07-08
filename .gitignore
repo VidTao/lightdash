@@ -1,7 +1,10 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# version control
+.git
+
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 
@@ -52,6 +55,8 @@ package-lock.json
 
 # examples
 /examples/full-jaffle-shop-demo/dbt/target
+/examples/full-jaffle-shop-demo/dbt/dbt_packages
+/examples/full-jaffle-shop-demo/dbt/dbt_internal_packages/
 /dbt
 /profile*
 
@@ -63,10 +68,20 @@ credentials.json
 /target
 packages/backend/target/
 venv/
+.venv/
+.venvs/
 dbt_modules/
 logs/
-/.envrc
 
+# direnv
+/.envrc
+.direnv/
+
+# nix flakes
+flake.nix
+flake.lock
+
+/ssl-certs/
 # dangerfile
 dangerfile.development.ts
 
@@ -78,6 +93,5 @@ lightdash
 prometheus.yml
 data/
 
-# Custom ignored files
+# environment
 .env
-credentials/

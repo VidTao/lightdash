@@ -1,4 +1,5 @@
 import { LightdashConfig, SmtpConfig } from '../../config/parseConfig';
+import { SMTP_CONNECTION_CONFIG } from './EmailClient';
 
 export const passwordResetLinkMock = {
     code: 'code',
@@ -108,6 +109,12 @@ export const expectedTransporterArgs = [
         },
         requireTLS: true,
         tls: undefined,
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 100,
+        connectionTimeout: SMTP_CONNECTION_CONFIG.connectionTimeout,
+        greetingTimeout: SMTP_CONNECTION_CONFIG.greetingTimeout,
+        socketTimeout: SMTP_CONNECTION_CONFIG.socketTimeout,
     },
     {
         from: `"${smtpBase.sender.name}" <${smtpBase.sender.email}>`,

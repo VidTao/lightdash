@@ -499,6 +499,8 @@ const InfiniteResourceTable = ({
             },
         },
         mantineTableBodyRowProps: ({ row }) => {
+            const isTableSelectionActive =
+                table.getIsSomeRowsSelected() || table.getIsAllRowsSelected();
             const isSelected = row.getIsSelected();
 
             return {
@@ -525,9 +527,13 @@ const InfiniteResourceTable = ({
                 },
 
                 onClick: () => {
-                    void navigate(
-                        getResourceUrl(filters.projectUuid, row.original),
-                    );
+                    if (isTableSelectionActive) {
+                        row.toggleSelected();
+                    } else {
+                        void navigate(
+                            getResourceUrl(filters.projectUuid, row.original),
+                        );
+                    }
                 },
             };
         },
@@ -778,7 +784,7 @@ const InfiniteResourceTable = ({
     } = useContentBulkAction(filters.projectUuid);
 
     const handleBulkMoveContent = useCallback(
-        async (selectedItems: ResourceViewItem[], spaceUuid: string) => {
+        async (selectedItems: ResourceViewItem[], spaceUuid: string | null) => {
             await contentBulkAction({
                 action: {
                     type: 'move',
@@ -837,12 +843,6 @@ const InfiniteResourceTable = ({
                     spaces={spaces}
                     isLoading={isFetching || isContentBulkActionLoading}
                     onConfirm={async (spaceUuid) => {
-                        if (!spaceUuid) {
-                            throw new Error(
-                                'Space UUID is required to move items',
-                            );
-                        }
-
                         await handleBulkMoveContent(selectedItems, spaceUuid);
                     }}
                 />

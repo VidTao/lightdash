@@ -1,10 +1,10 @@
-import type { PivotIndexColum } from '..';
+import type { PivotIndexColum, ResultColumns } from '..';
 import type { PivotValuesColumn } from '../visualizations/types';
 import type { QueryExecutionContext } from './analytics';
 import type { ExecuteAsyncQueryRequestParams } from './api/paginatedQuery';
 import type { ItemsMap } from './field';
 import type { MetricQuery } from './metricQuery';
-import { WarehouseTypes } from './projects';
+import type { WarehouseTypes } from './projects';
 import type { GroupByColumn, SortBy, ValuesColumn } from './sqlRunner';
 
 export interface IWarehouseQueryMetadata {
@@ -18,12 +18,6 @@ export interface BigQueryWarehouseQueryMetadata
 }
 
 export type WarehouseQueryMetadata = BigQueryWarehouseQueryMetadata;
-
-export function isBigQueryWarehouseQueryMetadata(
-    metadata: WarehouseQueryMetadata | null,
-): metadata is BigQueryWarehouseQueryMetadata {
-    return !!metadata && metadata.type === WarehouseTypes.BIGQUERY;
-}
 
 export enum QueryHistoryStatus {
     PENDING = 'pending',
@@ -50,7 +44,7 @@ export type QueryHistory = {
     totalRowCount: number | null;
     warehouseExecutionTimeMs: number | null;
     error: string | null;
-    cacheKey: string | null;
+    cacheKey: string;
     pivotConfiguration: {
         indexColumn: PivotIndexColum;
         valuesColumns: ValuesColumn[];
@@ -59,4 +53,10 @@ export type QueryHistory = {
     } | null;
     pivotValuesColumns: PivotValuesColumn[] | null;
     pivotTotalColumnCount: number | null;
+    resultsFileName: string | null; // S3 file name
+    resultsCreatedAt: Date | null;
+    resultsUpdatedAt: Date | null;
+    resultsExpiresAt: Date | null;
+    columns: ResultColumns | null; // result columns with or without pivoting
+    originalColumns: ResultColumns | null; // columns from original SQL, before pivoting
 };

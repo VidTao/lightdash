@@ -10,8 +10,8 @@ const axios = axiosInstance;
 
 // const googleAdsApiUrl = "https://googleads.googleapis.com/v12";
 // const apiUrl = "http://192.168.100.219:5000";
-// const apiUrl = "https://api.bratrax.com";
-const apiUrl = 'https://127.0.0.1:5000';
+const apiUrl = "https://api.bratrax.com";
+// const apiUrl = 'https://127.0.0.1:5000';
 // const apiUrl = "/api"; // This will use the Vite proxy
 
 export class ApiService {

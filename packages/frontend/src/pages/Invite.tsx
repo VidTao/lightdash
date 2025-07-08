@@ -29,7 +29,7 @@ import { useFlashMessages } from '../hooks/useFlashMessages';
 import { useInviteLink } from '../hooks/useInviteLink';
 import useApp from '../providers/App/useApp';
 import useTracking from '../providers/Tracking/useTracking';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 
 interface WelcomeCardProps {
     email: string | undefined;
@@ -209,8 +209,8 @@ const Invite: FC = () => {
         <Page title="Register" withCenteredContent withNavbar={false}>
             <Stack w={400} mt="4xl">
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"

@@ -11,8 +11,11 @@ import {
     WarehouseConnectionError,
     WarehouseQueryError,
     WarehouseResults,
+    WarehouseTypes,
     type WarehouseExecuteAsyncQuery,
     type WarehouseExecuteAsyncQueryArgs,
+    type WarehouseGetAsyncQueryResults,
+    type WarehouseGetAsyncQueryResultsArgs,
 } from '@lightdash/common';
 import * as crypto from 'crypto';
 import {
@@ -22,13 +25,17 @@ import {
     createConnection,
     SnowflakeError,
     type FileAndStageBindStatement,
-    type QueryStatus,
     type RowStatement,
 } from 'snowflake-sdk';
 import { pipeline, Transform, Writable } from 'stream';
 import * as Util from 'util';
 import { WarehouseCatalog } from '../types';
+import {
+    DEFAULT_BATCH_SIZE,
+    processPromisesInBatches,
+} from '../utils/processPromisesInBatches';
 import WarehouseBaseClient from './WarehouseBaseClient';
+import WarehouseBaseSqlBuilder from './WarehouseBaseSqlBuilder';
 
 const assertIsSnowflakeLoggingLevel = (
     x: string | undefined,
@@ -132,13 +139,34 @@ const parseRow = (row: Record<string, AnyType>) =>
     );
 const parseRows = (rows: Record<string, AnyType>[]) => rows.map(parseRow);
 
+export class SnowflakeSqlBuilder extends WarehouseBaseSqlBuilder {
+    readonly type = WarehouseTypes.SNOWFLAKE;
+
+    getAdapterType(): SupportedDbtAdapter {
+        return SupportedDbtAdapter.SNOWFLAKE;
+    }
+
+    getMetricSql(sql: string, metric: Metric): string {
+        switch (metric.type) {
+            case MetricType.PERCENTILE:
+                return `PERCENTILE_CONT(${
+                    (metric.percentile ?? 50) / 100
+                }) WITHIN GROUP (ORDER BY ${sql})`;
+            case MetricType.MEDIAN:
+                return `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${sql})`;
+            default:
+                return super.getMetricSql(sql, metric);
+        }
+    }
+}
+
 export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflakeCredentials> {
     connectionOptions: ConnectionOptions;
 
     quotedIdentifiersIgnoreCase?: boolean;
 
     constructor(credentials: CreateSnowflakeCredentials) {
-        super(credentials);
+        super(credentials, new SnowflakeSqlBuilder(credentials.startOfWeek));
 
         if (typeof credentials.quotedIdentifiersIgnoreCase !== 'undefined') {
             this.quotedIdentifiersIgnoreCase =
@@ -148,9 +176,15 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
         let authenticationOptions: Partial<ConnectionOptions> = {};
 
         // if authenticationType is undefined, we assume it is a password authentication, for backwards compatibility
-        if (
+        if (credentials.authenticationType === 'sso') {
+            authenticationOptions = {
+                token: credentials.token,
+                authenticator: 'OAUTH',
+            };
+        } else if (
             credentials.privateKey &&
-            credentials.authenticationType === 'private_key'
+            (!credentials.password ||
+                credentials.authenticationType === 'private_key')
         ) {
             if (!credentials.privateKeyPass) {
                 authenticationOptions = {
@@ -187,12 +221,17 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
 
         this.connectionOptions = {
             account: credentials.account,
-            username: credentials.user,
+            // When using SSO, username and role can cause conflict
+            ...(credentials.authenticationType !== 'sso'
+                ? {
+                      username: credentials.user,
+                      role: credentials.role,
+                  }
+                : {}),
             ...authenticationOptions,
             database: credentials.database,
             schema: credentials.schema,
             warehouse: credentials.warehouse,
-            role: credentials.role,
             ...(credentials.accessUrl?.length
                 ? { accessUrl: credentials.accessUrl }
                 : {}),
@@ -236,8 +275,9 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
             );
         }
 
-        if (isWeekDay(this.startOfWeek)) {
-            const snowflakeStartOfWeekIndex = this.startOfWeek + 1; // 1 (Monday) to 7 (Sunday):
+        const startOfWeek = this.getStartOfWeek();
+        if (isWeekDay(startOfWeek)) {
+            const snowflakeStartOfWeekIndex = startOfWeek + 1; // 1 (Monday) to 7 (Sunday):
             sqlStatements.push(
                 `ALTER SESSION SET WEEK_START = ${snowflakeStartOfWeekIndex};`,
             );
@@ -290,113 +330,6 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
             : {};
     }
 
-    async executeAsyncQuery(
-        { sql, values, tags, timezone }: WarehouseExecuteAsyncQueryArgs,
-        resultsStreamCallback?: (rows: WarehouseResults['rows']) => void,
-    ): Promise<WarehouseExecuteAsyncQuery> {
-        const connection = await this.getConnection();
-        await this.prepareWarehouse(connection, {
-            timezone,
-            tags,
-        });
-
-        const { queryId, durationMs, totalRows } =
-            await this.executeAsyncStatement(
-                connection,
-                sql,
-                {
-                    values,
-                },
-                resultsStreamCallback,
-            );
-
-        return {
-            queryId,
-            queryMetadata: null,
-            totalRows,
-            durationMs,
-        };
-    }
-
-    private async executeAsyncStatement(
-        connection: Connection,
-        sql: string,
-        options?: {
-            values?: AnyType[];
-        },
-        resultsStreamCallback?: (rows: WarehouseResults['rows']) => void,
-    ) {
-        const startTime = performance.now();
-        const { queryId, totalRows, durationMs } = await new Promise<{
-            queryId: string;
-            totalRows: number;
-            durationMs: number;
-        }>((resolve, reject) => {
-            connection.execute({
-                sqlText: sql,
-                binds: options?.values,
-                asyncExec: true,
-                complete: (err, stmt) => {
-                    if (err) {
-                        reject(this.parseError(err, sql));
-                        return;
-                    }
-
-                    // Calling `getNumRows` from current statement returns undefined
-                    void connection
-                        .getResultsFromQueryId({
-                            sqlText: '',
-                            queryId: stmt.getQueryId(),
-                            complete: (err2, stmt2) => {
-                                if (err2) {
-                                    reject(this.parseError(err2, sql));
-                                    return;
-                                }
-
-                                resolve({
-                                    queryId: stmt.getQueryId(),
-                                    totalRows: stmt2.getNumRows(),
-                                    durationMs: performance.now() - startTime,
-                                });
-                            },
-                        })
-                        .catch((err3) => {
-                            reject(this.parseError(err3, sql));
-                        });
-                },
-            });
-        });
-
-        // If we have a callback, stream the rows to the callback.
-        // This is used when writing to the results cache.
-        if (resultsStreamCallback) {
-            const completedStatement = await connection.getResultsFromQueryId({
-                sqlText: '',
-                queryId,
-            });
-            await new Promise<void>((resolve, reject) => {
-                completedStatement
-                    .streamRows()
-                    .on('error', (e) => {
-                        reject(e);
-                    })
-                    .on('data', (row) => {
-                        resultsStreamCallback([row]);
-                    })
-                    .on('end', () => {
-                        resolve();
-                    });
-            });
-        }
-
-        return {
-            queryId,
-            queryMetadata: null,
-            totalRows,
-            durationMs,
-        };
-    }
-
     private async getAsyncStatementResults<
         TFormattedRow extends Record<string, unknown>,
     >(
@@ -443,6 +376,165 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
             rows,
             fields: this.getFieldsFromStatement(statement),
             numRows: statement.getNumRows(),
+        };
+    }
+
+    async getAsyncQueryResults<TFormattedRow extends Record<string, unknown>>(
+        { sql, page, pageSize, queryId }: WarehouseGetAsyncQueryResultsArgs,
+        rowFormatter?: (row: Record<string, unknown>) => TFormattedRow,
+    ): Promise<WarehouseGetAsyncQueryResults<TFormattedRow>> {
+        if (queryId === null) {
+            throw new WarehouseQueryError('Query ID is required');
+        }
+
+        const connection = await this.getConnection();
+
+        try {
+            const start = (page - 1) * pageSize;
+            const end = start + pageSize - 1;
+
+            const results = await this.getAsyncStatementResults(
+                connection,
+                queryId,
+                start,
+                end,
+                rowFormatter,
+            );
+
+            return {
+                fields: results.fields,
+                rows: results.rows,
+                queryId,
+                pageCount: Math.ceil(results.numRows / pageSize),
+                totalRows: results.numRows,
+            };
+        } catch (e) {
+            const error = e as SnowflakeError;
+            throw this.parseError(error, sql);
+        } finally {
+            await new Promise((resolve, reject) => {
+                connection.destroy((err, conn) => {
+                    if (err) {
+                        reject(new WarehouseConnectionError(err.message));
+                    }
+                    resolve(conn);
+                });
+            });
+        }
+    }
+
+    async executeAsyncQuery(
+        { sql, values, tags, timezone }: WarehouseExecuteAsyncQueryArgs,
+        resultsStreamCallback: (
+            rows: WarehouseResults['rows'],
+            fields: WarehouseResults['fields'],
+        ) => void,
+    ): Promise<WarehouseExecuteAsyncQuery> {
+        const connection = await this.getConnection();
+        await this.prepareWarehouse(connection, {
+            timezone,
+            tags,
+        });
+
+        const { queryId, durationMs, totalRows } =
+            await this.executeAsyncStatement(
+                connection,
+                sql,
+                resultsStreamCallback,
+                {
+                    values,
+                },
+            );
+
+        return {
+            queryId,
+            queryMetadata: null,
+            totalRows,
+            durationMs,
+        };
+    }
+
+    private async executeAsyncStatement(
+        connection: Connection,
+        sql: string,
+        resultsStreamCallback?: (
+            rows: WarehouseResults['rows'],
+            fields: WarehouseResults['fields'],
+        ) => void,
+        options?: {
+            values?: AnyType[];
+        },
+    ) {
+        const startTime = performance.now();
+        const { queryId, totalRows, durationMs, fields } = await new Promise<{
+            queryId: string;
+            totalRows: number;
+            durationMs: number;
+            fields: WarehouseResults['fields'];
+        }>((resolve, reject) => {
+            connection.execute({
+                sqlText: sql,
+                binds: options?.values,
+                asyncExec: true,
+                complete: (err, stmt) => {
+                    if (err) {
+                        reject(this.parseError(err, sql));
+                        return;
+                    }
+
+                    // Calling `getNumRows` from current statement returns undefined
+                    void connection
+                        .getResultsFromQueryId({
+                            sqlText: '',
+                            queryId: stmt.getQueryId(),
+                            complete: (err2, stmt2) => {
+                                if (err2) {
+                                    reject(this.parseError(err2, sql));
+                                    return;
+                                }
+
+                                resolve({
+                                    queryId: stmt.getQueryId(),
+                                    totalRows: stmt2.getNumRows(),
+                                    durationMs: performance.now() - startTime,
+                                    fields: this.getFieldsFromStatement(stmt2),
+                                });
+                            },
+                        })
+                        .catch((err3) => {
+                            reject(this.parseError(err3, sql));
+                        });
+                },
+            });
+        });
+
+        // If we have a callback, stream the rows to the callback.
+        // This is used when writing to the results cache.
+        if (resultsStreamCallback) {
+            const completedStatement = await connection.getResultsFromQueryId({
+                sqlText: '',
+                queryId,
+            });
+            await new Promise<void>((resolve, reject) => {
+                completedStatement
+                    .streamRows()
+                    .on('error', (e) => {
+                        reject(e);
+                    })
+                    .on('data', (row) => {
+                        resultsStreamCallback([row], fields);
+                    })
+                    .on('end', () => {
+                        resolve();
+                    });
+            });
+        }
+
+        return {
+            queryId,
+            queryMetadata: null,
+            totalRows,
+            durationMs,
         };
     }
 
@@ -613,12 +705,12 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
             table: string;
         }[],
     ) {
-        const tablesMetadataPromises = config.map(
-            ({ database, schema, table }) =>
+        const tablesMetadata = await processPromisesInBatches(
+            config,
+            DEFAULT_BATCH_SIZE,
+            async ({ database, schema, table }) =>
                 this.runTableCatalogQuery(database, schema, table),
         );
-
-        const tablesMetadata = await Promise.all(tablesMetadataPromises);
 
         return tablesMetadata.reduce<WarehouseCatalog>((acc, tableMetadata) => {
             if (tableMetadata) {
@@ -648,31 +740,6 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
             }
             return acc;
         }, {});
-    }
-
-    getStringQuoteChar() {
-        return "'";
-    }
-
-    getEscapeStringQuoteChar() {
-        return '\\';
-    }
-
-    getAdapterType(): SupportedDbtAdapter {
-        return SupportedDbtAdapter.SNOWFLAKE;
-    }
-
-    getMetricSql(sql: string, metric: Metric) {
-        switch (metric.type) {
-            case MetricType.PERCENTILE:
-                return `PERCENTILE_CONT(${
-                    (metric.percentile ?? 50) / 100
-                }) WITHIN GROUP (ORDER BY ${sql})`;
-            case MetricType.MEDIAN:
-                return `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${sql})`;
-            default:
-                return super.getMetricSql(sql, metric);
-        }
     }
 
     async getAllTables() {

@@ -48,7 +48,7 @@ const CollapsableCard: FC<React.PropsWithChildren<CollapsableCardProps>> = ({
     headingRef,
     headerElement,
     rightHeaderElement,
-    minHeight = 300,
+    minHeight = 500,
 }) => {
     const { classes } = useStyles();
     const handleToggle = useCallback(
@@ -154,14 +154,18 @@ const CollapsableCard: FC<React.PropsWithChildren<CollapsableCardProps>> = ({
             {isOpen && (
                 <Flex
                     direction="column"
-                    style={shouldExpand ? { minHeight, flex: 1 } : undefined}
+                    style={
+                        shouldExpand
+                            ? { minHeight, flex: 1, display: 'flex' }
+                            : undefined
+                    }
                 >
                     {isVisualizationCard ? (
                         <div
                             style={{
                                 position: 'relative',
                                 width: '100%',
-                                height: '100%',
+                                flex: 1,
                             }}
                         >
                             <div

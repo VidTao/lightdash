@@ -3,7 +3,7 @@ import { type FC } from 'react';
 import { Link } from 'react-router';
 import { useHasMetricsInCatalog } from '../../features/metricsCatalog/hooks/useMetricsCatalog';
 import Omnibar from '../../features/omnibar';
-import Logo from '../../svgs/logo-icon.svg?react';
+import { AiAgentsButton } from './AiAgentsButton';
 import BrowseMenu from './BrowseMenu';
 import ExploreMenu from './ExploreMenu';
 import HeadwayMenuItem from './HeadwayMenuItem';
@@ -39,8 +39,17 @@ export const MainNavBarContent: FC<Props> = ({
                     to={homeUrl}
                     title="Home"
                     size="lg"
+                    sx={{ padding: 4 }}
                 >
-                    <Logo />
+                    <img 
+                        src="/images/logo.png" 
+                        alt="Bratrax Logo" 
+                        style={{ 
+                            height: '32px', 
+                            width: '32px',
+                            borderRadius: '4px',
+                        }} 
+                    />
                 </ActionIcon>
 
                 {!isLoadingActiveProject && activeProjectUuid && (
@@ -51,6 +60,7 @@ export const MainNavBarContent: FC<Props> = ({
                             {hasMetrics && (
                                 <MetricsLink projectUuid={activeProjectUuid} />
                             )}
+                            <AiAgentsButton />
                         </Button.Group>
                         <Omnibar projectUuid={activeProjectUuid} />
                     </>
@@ -67,11 +77,11 @@ export const MainNavBarContent: FC<Props> = ({
                         <NotificationsMenu projectUuid={activeProjectUuid} />
                     )}
 
-                    <HelpMenu />
+                    {/* <HelpMenu />
 
                     {!isLoadingActiveProject && activeProjectUuid && (
                         <HeadwayMenuItem projectUuid={activeProjectUuid} />
-                    )}
+                    )} */}
 
                     <ProjectSwitcher />
                 </Button.Group>

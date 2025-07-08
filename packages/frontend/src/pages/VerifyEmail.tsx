@@ -20,7 +20,7 @@ import VerifyEmailForm from '../components/RegisterForms/VerifyEmailForm';
 import Page from '../components/common/Page/Page';
 import { useEmailStatus } from '../hooks/useEmailVerification';
 import useApp from '../providers/App/useApp';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 
 const VerificationSuccess: FC<{
     isOpen: boolean;
@@ -67,8 +67,8 @@ const VerifyEmailPage: FC = () => {
         <Page title="Verify your email" withCenteredContent withNavbar={false}>
             <Stack w={400} mt="4xl">
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"
