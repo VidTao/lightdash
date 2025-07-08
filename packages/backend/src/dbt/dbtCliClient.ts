@@ -119,13 +119,15 @@ export class DbtCliClient implements DbtClient {
         this.target = target;
         this.targetDirectory = undefined;
         this.dbtVersion = dbtVersion;
-        this.useDbtLs = useDbtLs ?? false;
+        this.useDbtLs = !!useDbtLs;
         this.selector = selector;
     }
 
     getSelector(): string | undefined {
         return this.selector;
     }
+
+
 
     private async _getTargetDirectory(): Promise<string> {
         if (!this.targetDirectory) {
@@ -192,6 +194,8 @@ export class DbtCliClient implements DbtClient {
         if (this.profileName) {
             dbtArgs.push('--profile', this.profileName);
         }
+
+
 
         try {
             Logger.debug(

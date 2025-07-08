@@ -35,12 +35,12 @@ import useToaster from '../../../hooks/toaster/useToaster';
 import { useFlashMessages } from '../../../hooks/useFlashMessages';
 import useApp from '../../../providers/App/useApp';
 import useTracking from '../../../providers/Tracking/useTracking';
-import LightdashLogo from '../../../svgs/lightdash-black.svg';
 import {
     useFetchLoginOptions,
     useLoginWithEmailMutation,
     type LoginParams,
 } from '../hooks/useLogin';
+const BratraxLogo = '/images/logo-text.png';
 
 const Login: FC<{}> = () => {
     const { health } = useApp();
@@ -57,6 +57,8 @@ const Login: FC<{}> = () => {
             });
         }
     }, [flashMessages.data, showToastError]);
+    const queryParams = new URLSearchParams(location.search);
+    const redirectParam = queryParams.get('redirect');
 
     const [preCheckEmail, setPreCheckEmail] = useState<string>();
     const [isLoginOptionsLoadingDebounced, setIsLoginOptionsLoadingDebounced] =
@@ -64,6 +66,8 @@ const Login: FC<{}> = () => {
 
     const redirectUrl = location.state?.from
         ? `${location.state.from.pathname}${location.state.from.search}`
+        : redirectParam
+        ? redirectParam
         : '/';
 
     const form = useForm<LoginParams>({
@@ -197,8 +201,8 @@ const Login: FC<{}> = () => {
     return (
         <>
             <Image
-                src={LightdashLogo}
-                alt="lightdash logo"
+                src={BratraxLogo}
+                alt="bratrax logo"
                 width={130}
                 mx="auto"
                 my="lg"

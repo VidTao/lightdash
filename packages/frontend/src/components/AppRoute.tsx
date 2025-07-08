@@ -1,5 +1,6 @@
-import { type FC } from 'react';
+import { useEffect, type FC } from 'react';
 import { Navigate, useLocation } from 'react-router';
+import { setupAxiosInterceptor } from '../bratrax-implementation/interceptors';
 import { useOrganization } from '../hooks/organization/useOrganization';
 import useApp from '../providers/App/useApp';
 import PageSpinner from './PageSpinner';
@@ -32,7 +33,6 @@ const AppRoute: FC<React.PropsWithChildren> = ({ children }) => {
             />
         );
     }
-
     return <>{children}</>;
 };
 

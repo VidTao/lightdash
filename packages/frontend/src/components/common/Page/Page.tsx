@@ -43,6 +43,7 @@ type StyleProps = {
     noSidebarPadding?: boolean;
     isSidebarResizing?: boolean;
     backgroundColor?: string;
+    noContentMaxWidth?: boolean;
 };
 
 const usePageStyles = createStyles<string, StyleProps>((theme, params) => {
@@ -66,7 +67,6 @@ const usePageStyles = createStyles<string, StyleProps>((theme, params) => {
                   }
                 : {
                       height: containerHeight,
-
                       overflowY: 'auto',
                   }),
 
@@ -99,7 +99,10 @@ const usePageStyles = createStyles<string, StyleProps>((theme, params) => {
 
         content: {
             width: '100%',
-            minWidth: PAGE_CONTENT_WIDTH,
+            minWidth: params.noContentMaxWidth ? 0 : PAGE_CONTENT_WIDTH,
+            maxWidth: params.noContentMaxWidth ? '100%' : undefined,
+            height: '100%',
+            overflow: 'auto',
 
             ...(params.flexContent ? { display: 'flex' } : {}),
             ...(params.noContentPadding
@@ -113,25 +116,15 @@ const usePageStyles = createStyles<string, StyleProps>((theme, params) => {
 
             ...(params.withSidebar || params.withRightSidebar
                 ? {
-                      minWidth: PAGE_MIN_CONTENT_WIDTH,
+                      minWidth: params.noContentMaxWidth
+                          ? 0
+                          : PAGE_MIN_CONTENT_WIDTH,
                   }
                 : {}),
 
             ...(params.withFooter
                 ? {
                       minHeight: `calc(100% - ${FOOTER_HEIGHT}px - ${theme.spacing[FOOTER_MARGIN]} - 1px)`,
-                  }
-                : {}),
-
-            ...(params.withFullHeight
-                ? {
-                      display: 'flex',
-                      flexDirection: 'column',
-
-                      height: '100%',
-                      maxHeight: '100%',
-
-                      overflowY: 'auto',
                   }
                 : {}),
 
@@ -180,7 +173,6 @@ const usePageStyles = createStyles<string, StyleProps>((theme, params) => {
         fixedContainer: {
             marginLeft: 'auto',
             marginRight: 'auto',
-
             width: PAGE_CONTENT_WIDTH,
             flexShrink: 0,
         },
@@ -195,6 +187,7 @@ type Props = {
     isRightSidebarOpen?: boolean;
     rightSidebarWidthProps?: SidebarWidthProps;
     header?: React.ReactNode;
+    noContentMaxWidth?: boolean;
 } & Omit<StyleProps, 'withSidebar' | 'withHeader'>;
 
 const Page: FC<React.PropsWithChildren<Props>> = ({
@@ -222,6 +215,7 @@ const Page: FC<React.PropsWithChildren<Props>> = ({
     noSidebarPadding = false,
     flexContent = false,
     backgroundColor,
+    noContentMaxWidth = false,
     children,
 }) => {
     const { ref: mainRef, width: mainWidth } = useElementSize();
@@ -261,13 +255,14 @@ const Page: FC<React.PropsWithChildren<Props>> = ({
             flexContent,
             isSidebarResizing,
             backgroundColor,
+            noContentMaxWidth,
         },
         { name: 'Page' },
     );
 
     return (
         <>
-            {title ? <title>{`${title} - Lightdash`}</title> : null}
+            {title ? <title>{`${title} - Bratrax`}</title> : null}
 
             {header}
 

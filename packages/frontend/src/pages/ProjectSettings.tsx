@@ -82,7 +82,7 @@ const ProjectSettings: FC = () => {
 
     return (
         <>
-            <title>Project Settings - Lightdash</title>
+            <title>Project Settings - Bratrax</title>
 
             <Stack spacing="xl">
                 <PageBreadcrumbs

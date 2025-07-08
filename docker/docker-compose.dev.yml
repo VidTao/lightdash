@@ -1,6 +1,7 @@
-version: '3.8'
+version: "3.8"
 volumes:
-    node_modules:
+  node_modules:
+  ssl-certs:
 
 services:
     minio:
@@ -47,6 +48,8 @@ services:
             - INTERNAL_LIGHTDASH_HOST=${INTERNAL_LIGHTDASH_HOST}
             - USE_SECURE_BROWSER=${USE_SECURE_BROWSER}
             - SCHEDULER_ENABLED=${SCHEDULER_ENABLED}
+            - SCHEDULER_INCLUDE_TASKS=${SCHEDULER_INCLUDE_TASKS}
+            - SCHEDULER_EXCLUDE_TASKS=${SCHEDULER_EXCLUDE_TASKS}
             - GROUPS_ENABLED=${GROUPS_ENABLED}
             - POSTHOG_PROJECT_API_KEY=${POSTHOG_PROJECT_API_KEY}
             - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -103,5 +106,5 @@ services:
     headless-browser:
         image: ghcr.io/browserless/chromium:v2.24.3
         restart: always
-        ports:
-            - '3001:3000'
+        expose:
+        - "3000"

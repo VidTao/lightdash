@@ -1,6 +1,5 @@
 import { subject } from '@casl/ability';
 import {
-    Account,
     addDashboardFiltersToMetricQuery,
     AndFilterGroup,
     CommercialFeatureFlags,
@@ -14,17 +13,16 @@ import {
     DateGranularity,
     DecodedEmbed,
     Embed,
-    EmbedJwt,
     EmbedUrl,
     Explore,
     ExploreError,
+    ExternalAccount,
     FieldValueSearchResult,
     FilterableDimension,
     ForbiddenError,
     formatRows,
     getDashboardFiltersForTileAndTables,
     getDimensions,
-    getEmbeddedAuth,
     getFilterInteractivityValue,
     getItemId,
     InteractivityOptions,
@@ -39,6 +37,7 @@ import {
     NotFoundError,
     ParameterError,
     QueryExecutionContext,
+    RunQueryTags,
     SavedChartsInfoForDashboardAvailableFilters,
     SessionUser,
     SortField,
@@ -289,7 +288,7 @@ export class EmbedService extends BaseService {
         if (!isEnabled.enabled) throw new ForbiddenError('Feature not enabled');
     }
 
-    private async getDashboardUuidFromContent(
+    async getDashboardUuidFromJwt(
         decodedToken: CreateEmbedJwt,
         projectUuid: string,
     ) {
@@ -315,15 +314,15 @@ export class EmbedService extends BaseService {
 
     async getDashboard(
         projectUuid: string,
-        account: Account,
+        account: ExternalAccount,
         // TODO: WHY IS THIS OPTIONAL??
         checkPermissions: boolean = true,
     ): Promise<Dashboard & InteractivityOptions> {
         const { data: decodedToken, source: embedToken } =
-            getEmbeddedAuth(account);
+            account.authentication;
         const { dashboardUuids, allowAllDashboards, user } =
             await this.embedModel.get(projectUuid);
-        const dashboardUuid = await this.getDashboardUuidFromContent(
+        const dashboardUuid = await this.getDashboardUuidFromJwt(
             decodedToken,
             projectUuid,
         );
@@ -398,11 +397,11 @@ export class EmbedService extends BaseService {
 
     async getAvailableFiltersForSavedQueries(
         projectUuid: string,
-        account: Account,
+        account: ExternalAccount,
         savedChartUuidsAndTileUuids: SavedChartsInfoForDashboardAvailableFilters,
         checkPermissions: boolean = true,
     ): Promise<DashboardAvailableFilters> {
-        const { data: decodedToken } = getEmbeddedAuth(account);
+        const { data: decodedToken } = account.authentication;
         const { dashboardUuids, allowAllDashboards } =
             await this.embedModel.get(projectUuid);
 
@@ -423,7 +422,7 @@ export class EmbedService extends BaseService {
             filters: CompiledDimension[];
         }[] = [];
 
-        const dashboardUuid = await this.getDashboardUuidFromContent(
+        const dashboardUuid = await this.getDashboardUuidFromJwt(
             decodedToken,
             projectUuid,
         );
@@ -639,7 +638,11 @@ export class EmbedService extends BaseService {
         projectUuid: string;
         metricQuery: MetricQuery;
         explore: Explore;
-        queryTags: Record<string, string>;
+        queryTags: Omit<Required<RunQueryTags>, 'user_uuid' | 'chart_uuid'> & {
+            embed: 'true';
+            external_id: string;
+            chart_uuid?: string; // optional because query for filter autocomplete doesn't have chart uuid
+        };
         embedJwt: CreateEmbedJwt;
         dateZoomGranularity?: DateGranularity;
     }) {
@@ -739,7 +742,7 @@ export class EmbedService extends BaseService {
 
     async getChartAndResults(
         projectUuid: string,
-        account: Account,
+        account: ExternalAccount,
         tileUuid: string,
         dashboardFilters?: DashboardFilters,
         dateZoomGranularity?: DateGranularity,
@@ -747,11 +750,11 @@ export class EmbedService extends BaseService {
         checkPermissions: boolean = true,
     ) {
         const { data: decodedToken, source: embedToken } =
-            getEmbeddedAuth(account);
+            account.authentication;
         const { dashboardUuids, allowAllDashboards, user } =
             await this.embedModel.get(projectUuid);
 
-        const dashboardUuid = await this.getDashboardUuidFromContent(
+        const dashboardUuid = await this.getDashboardUuidFromJwt(
             decodedToken,
             projectUuid,
         );
@@ -825,18 +828,22 @@ export class EmbedService extends BaseService {
                 externalId,
             },
         });
-        // Bigquery keys and values can contain only lowercase letters, numeric characters, underscores, and dashes
-        const queryTags: Record<string, string> = {
-            embed: 'true',
-            external_id: externalId,
-        };
 
         const { rows, cacheMetadata, fields } = await this._runEmbedQuery({
             organizationUuid,
             projectUuid,
             metricQuery: metricQueryWithDashboardOverrides,
             explore,
-            queryTags,
+            queryTags: {
+                embed: 'true',
+                external_id: externalId,
+                project_uuid: projectUuid,
+                organization_uuid: organizationUuid,
+                chart_uuid: chart.uuid,
+                dashboard_uuid: dashboardUuid,
+                explore_name: chart.tableName,
+                query_context: QueryExecutionContext.EMBED,
+            },
             embedJwt: decodedToken,
             dateZoomGranularity,
         });
@@ -857,15 +864,15 @@ export class EmbedService extends BaseService {
     }
 
     async calculateTotalFromSavedChart(
-        account: Account,
+        account: ExternalAccount,
         projectUuid: string,
         savedChartUuid: string,
         dashboardFilters?: DashboardFilters,
         invalidateCache?: boolean,
     ) {
-        const { data: decodedToken } = getEmbeddedAuth(account);
+        const { data: decodedToken } = account.authentication;
 
-        const dashboardUuid = await this.getDashboardUuidFromContent(
+        const dashboardUuid = await this.getDashboardUuidFromJwt(
             decodedToken,
             projectUuid,
         );
@@ -946,7 +953,16 @@ export class EmbedService extends BaseService {
             projectUuid,
             metricQuery: totalMetricQuery,
             explore,
-            queryTags: {},
+            queryTags: {
+                embed: 'true',
+                external_id: account.user.id,
+                project_uuid: projectUuid,
+                organization_uuid: chart.organizationUuid,
+                chart_uuid: chart.uuid,
+                dashboard_uuid: dashboardUuid,
+                explore_name: chart.tableName,
+                query_context: QueryExecutionContext.CALCULATE_TOTAL,
+            },
             embedJwt: decodedToken,
         });
 
@@ -968,7 +984,7 @@ export class EmbedService extends BaseService {
         filters,
         forceRefresh,
     }: {
-        account: Account;
+        account: ExternalAccount;
         projectUuid: string;
         filterUuid: string;
         search: string;
@@ -977,10 +993,10 @@ export class EmbedService extends BaseService {
         forceRefresh: boolean;
     }): Promise<FieldValueSearchResult> {
         const { data: decodedToken, source: embedToken } =
-            getEmbeddedAuth(account);
+            account.authentication;
         const { dashboardUuids, allowAllDashboards } =
             await this.embedModel.get(projectUuid);
-        const dashboardUuid = await this.getDashboardUuidFromContent(
+        const dashboardUuid = await this.getDashboardUuidFromJwt(
             decodedToken,
             projectUuid,
         );
@@ -1020,6 +1036,11 @@ export class EmbedService extends BaseService {
                     decodedToken,
                     embedToken,
                 ),
+                project_uuid: projectUuid,
+                organization_uuid: dashboard.organizationUuid,
+                dashboard_uuid: dashboardUuid,
+                explore_name: explore.name,
+                query_context: QueryExecutionContext.FILTER_AUTOCOMPLETE,
             },
             embedJwt: decodedToken,
         });

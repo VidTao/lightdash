@@ -106,13 +106,22 @@ export default defineConfig({
     server: {
         port: 3000,
         host: true,
+        watch: {
+            usePolling: true,
+            interval: 1000,
+        },
         hmr: {
             overlay: true,
+            clientPort: 3000,
+            host: '0.0.0.0',
         },
         allowedHosts: [
             'lightdash-dev', // for local development with docker
             '.lightdash.dev', // for cloudflared tunnels
         ],
+        watch: {
+            ignored: ['!**/node_modules/@lightdash/common/**'],
+        },
         proxy: {
             '/api': {
                 target: 'http://localhost:8080',

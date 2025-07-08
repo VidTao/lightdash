@@ -16,6 +16,7 @@ export type AppProviderMockProps = {
     mocks?: {
         health?: Partial<HealthState>;
         user?: Partial<LightdashUserWithAbilityRules>;
+        isAuthSet?: boolean;
     };
 };
 
@@ -48,6 +49,7 @@ const AppProviderMock: FC<PropsWithChildren<AppProviderMockProps>> = ({
             value={{
                 health,
                 user,
+                isAuthSet: mocks?.isAuthSet ?? true,
             }}
         >
             {children}

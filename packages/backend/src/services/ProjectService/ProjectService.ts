@@ -556,7 +556,7 @@ export class ProjectService extends BaseService {
         }
     }
 
-    private async getUserAttributes(
+    public async getUserAttributes(
         user: SessionUser,
         organizationUuid: string,
     ) {
@@ -566,6 +566,20 @@ export class ProjectService extends BaseService {
                 userUuid: user.userUuid,
             });
 
+        // Inject organizationUuid into user attributes for filtering
+        const userAttributesWithOrg = {
+            ...userAttributes,
+            organizationUuid: [organizationUuid], // User attributes are arrays
+        };
+
+        // DEBUG: Log what we're injecting
+        console.log('🔍 DEBUG getUserAttributes:', {
+            originalUserAttributes: userAttributes,
+            injectedUserAttributes: userAttributesWithOrg,
+            organizationUuid,
+            userUuid: user.userUuid
+        });
+
         const emailStatus = await this.emailModel.getPrimaryEmailStatus(
             user.userUuid,
         );
@@ -573,7 +587,7 @@ export class ProjectService extends BaseService {
             ? getIntrinsicUserAttributes(user)
             : {};
 
-        return { userAttributes, intrinsicUserAttributes };
+        return { userAttributes: userAttributesWithOrg, intrinsicUserAttributes };
     }
 
     /*
@@ -892,11 +906,12 @@ export class ProjectService extends BaseService {
         method: RequestMethod,
     ): Promise<ApiCreateProjectResults> {
         if (!isUserWithOrg(user)) {
-            throw new ForbiddenError('User is not part of an organization');
+            throw new ForbiddenError(
+                'User is not part of an organization - createWithoutCompile',
+            );
         }
 
         await this.validateProjectCreationPermissions(user, data);
-
         const newProjectData = data;
         if (
             newProjectData.type === ProjectType.PREVIEW &&

@@ -83,6 +83,7 @@ export class UserController extends BaseController {
                 'Password must contain at least 8 characters, 1 letter and 1 number or 1 special character',
             );
         }
+        console.log('registerUser', body);
         const sessionUser = await this.services
             .getUserService()
             .registerOrActivateUser(body);
@@ -91,7 +92,7 @@ export class UserController extends BaseController {
                 if (err) {
                     reject(err);
                 }
-                this.setStatus(200);
+                this.setStatus(201);
                 resolve({
                     status: 'ok',
                     results: sessionUser,

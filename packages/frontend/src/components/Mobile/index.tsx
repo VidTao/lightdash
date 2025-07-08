@@ -1,11 +1,12 @@
 import { Box, Image, Stack, Text, Title } from '@mantine/core';
-import LightdashLogo from '../../svgs/lightdash-black.svg';
 import MantineLinkButton from '../common/MantineLinkButton';
+
+const BratraxLogo = '/images/logo-text.png';
 
 const MobileView = () => (
     <Box w="100vw" h="100vh" sx={{ background: '#ebf1f5' }}>
         <Stack align="center" spacing="xl" justify="start" p="5xl">
-            <Image src={LightdashLogo} alt="lightdash logo" maw="8xl" my="lg" />
+            <Image src={BratraxLogo} alt="bratrax logo" maw="8xl" my="lg" />
             <Box
                 component="span"
                 sx={{

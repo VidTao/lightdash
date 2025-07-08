@@ -4,7 +4,7 @@ import { Navigate } from 'react-router';
 import PageSpinner from '../components/PageSpinner';
 import Page from '../components/common/Page/Page';
 import useApp from '../providers/App/useApp';
-import LightdashLogo from '../svgs/lightdash-black.svg';
+const BratraxLogo = '/images/logo-text.png';
 import { PasswordRecoveryForm } from './PasswordRecoveryForm';
 
 const PasswordRecovery: FC = () => {
@@ -23,8 +23,8 @@ const PasswordRecovery: FC = () => {
             {/* FIXME: use Mantine sizes for width */}
             <Stack w={400} mt="4xl">
                 <Image
-                    src={LightdashLogo}
-                    alt="lightdash logo"
+                    src={BratraxLogo}
+                    alt="bratrax logo"
                     width={130}
                     mx="auto"
                     my="lg"

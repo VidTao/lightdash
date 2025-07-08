@@ -77,7 +77,6 @@ export const mapDbUserDetailsToLightdashUser = (
 ): LightdashUser => ({
     userUuid: user.user_uuid,
     userId: user.user_id,
-    type: 'lightdash',
     email: user.email,
     firstName: user.first_name,
     lastName: user.last_name,
@@ -1045,5 +1044,24 @@ export class UserModel {
             .andWhere('emails.is_primary', true)
             .select('openid_identities.issuer_type');
         return rows.map((row) => row.issuer_type);
+    }
+
+    async getOpenIdByIssuerType(
+        userUuid: string,
+        issuerType: OpenIdIdentityIssuerType,
+    ) {
+        const rows = await this.database(OpenIdIdentitiesTableName)
+            .leftJoin('users', 'openid_identities.user_id', 'users.user_id')
+            .where('users.user_uuid', userUuid)
+            .where('issuer_type', issuerType)
+            .select('*');
+
+        if (rows.length === 0) {
+            throw new NotFoundError('OpenID identity not found');
+        }
+        if (rows.length > 1) {
+            throw new Error('Multiple OpenID identities found');
+        }
+        return rows[0];
     }
 }
