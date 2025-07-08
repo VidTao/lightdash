@@ -1,5 +1,5 @@
 import {
-    AiChartType,
+    AiResultType,
     assertUnreachable,
     ChartType,
     ECHARTS_DEFAULT_COLORS,
@@ -10,6 +10,7 @@ import {
 import { Box, Group, SegmentedControl, Stack } from '@mantine-8/core';
 import { type QueryObserverSuccessResult } from '@tanstack/react-query';
 import { useMemo, useState, type FC } from 'react';
+import { useParams } from 'react-router';
 import { z } from 'zod';
 import { SeriesContextMenu } from '../../../../../components/Explorer/VisualizationCard/SeriesContextMenu';
 import LightdashVisualization from '../../../../../components/LightdashVisualization';
@@ -22,8 +23,12 @@ import ErrorBoundary from '../../../../../features/errorBoundary/ErrorBoundary';
 import { type EChartSeries } from '../../../../../hooks/echarts/useEchartsCartesianConfig';
 import useHealth from '../../../../../hooks/health/useHealth';
 import { useOrganization } from '../../../../../hooks/organization/useOrganization';
+import { useCompiledSqlFromMetricQuery } from '../../../../../hooks/useCompiledSql';
 import { useExplore } from '../../../../../hooks/useExplore';
 import { type InfiniteQueryResults } from '../../../../../hooks/useQueryResults';
+import useApp from '../../../../../providers/App/useApp';
+import useTracking from '../../../../../providers/Tracking/useTracking';
+import { EventName } from '../../../../../types/Events';
 import { getChartConfigFromAiAgentVizConfig } from '../../utils/echarts';
 import AgentVisualizationFilters from './AgentVisualizationFilters';
 import AgentVisualizationMetricsAndDimensions from './AgentVisualizationMetricsAndDimensions';
@@ -59,6 +64,9 @@ export const AiChartVisualization: FC<Props> = ({
     projectUuid,
     message,
 }) => {
+    const { track } = useTracking();
+    const { user } = useApp();
+    const { agentUuid } = useParams();
     const { data: health } = useHealth();
     const { data: organization } = useOrganization();
     const { metricQuery, fields } = queryExecutionHandle.data.query;
@@ -73,6 +81,12 @@ export const AiChartVisualization: FC<Props> = ({
 
     const toolCalls = message.toolCalls;
 
+    const { data: compiledSql } = useCompiledSqlFromMetricQuery({
+        tableName,
+        projectUuid,
+        metricQuery,
+    });
+
     const resultsData = useMemo(
         () => ({
             ...results,
@@ -82,21 +96,45 @@ export const AiChartVisualization: FC<Props> = ({
         [results, metricQuery, fields],
     );
 
-    const chartConfig = useMemo(
-        () =>
-            getChartConfigFromAiAgentVizConfig({
-                config: message.vizConfigOutput as any,
-                rows: results.rows,
-                type: queryExecutionHandle.data.type,
-                metricQuery,
-            }),
-        [
-            message.vizConfigOutput,
-            results.rows,
-            queryExecutionHandle.data.type,
+    const chartConfig = useMemo(() => {
+        return getChartConfigFromAiAgentVizConfig({
+            vizConfigOutput: message.vizConfigOutput,
             metricQuery,
-        ],
-    );
+            rows: results.rows,
+            maxQueryLimit: health?.query.maxLimit,
+        });
+    }, [
+        message.vizConfigOutput,
+        metricQuery,
+        results.rows,
+        health?.query.maxLimit,
+    ]);
+
+    const onActiveTabChange = (value: string) => {
+        setActiveTab(activeTabsSchema.parse(value));
+
+        if (
+            value === 'calculation' &&
+            user?.data?.userUuid &&
+            user?.data?.organizationUuid &&
+            agentUuid &&
+            message.threadUuid &&
+            message.uuid
+        ) {
+            track({
+                name: EventName.AI_AGENT_CHART_HOW_ITS_CALCULATED_CLICKED,
+                properties: {
+                    userId: user.data.userUuid,
+                    organizationId: user.data.organizationUuid,
+                    projectId: projectUuid,
+                    aiAgentId: agentUuid,
+                    threadId: message.threadUuid,
+                    messageId: message.uuid,
+                    chartType: chartConfig.type,
+                },
+            });
+        }
+    };
 
     return (
         <MetricQueryDataProvider
@@ -107,7 +145,7 @@ export const AiChartVisualization: FC<Props> = ({
         >
             <VisualizationProvider
                 resultsData={resultsData}
-                chartConfig={chartConfig}
+                chartConfig={chartConfig.echartsConfig}
                 columnOrder={[
                     ...metricQuery.dimensions,
                     ...metricQuery.metrics,
@@ -116,12 +154,12 @@ export const AiChartVisualization: FC<Props> = ({
                     health?.pivotTable.maxColumnLimit ?? 60
                 }
                 initialPivotDimensions={
-                    // TODO :: fix this using schema
-                    message.vizConfigOutput &&
-                    'breakdownByDimension' in message.vizConfigOutput
-                        ? // TODO :: fix this using schema
-                          [
-                              message.vizConfigOutput
+                    (chartConfig.type === AiResultType.VERTICAL_BAR_RESULT ||
+                        chartConfig.type === AiResultType.TIME_SERIES_RESULT) &&
+                    chartConfig.echartsConfig.type === ChartType.CARTESIAN &&
+                    chartConfig.vizTool.vizConfig.breakdownByDimension
+                        ? [
+                              chartConfig.vizTool.vizConfig
                                   .breakdownByDimension as string,
                           ]
                         : undefined
@@ -138,13 +176,15 @@ export const AiChartVisualization: FC<Props> = ({
                     setEchartSeries(series);
                 }}
             >
-                <Stack gap="md" h="100%" mih={400}>
+                <Stack gap="md" h="100%">
                     <Group justify="space-between" align="start">
                         <SegmentedControl
+                            style={{
+                                visibility:
+                                    toolCalls.length > 0 ? 'visible' : 'hidden',
+                            }}
                             value={activeTab}
-                            onChange={(value) =>
-                                setActiveTab(activeTabsSchema.parse(value))
-                            }
+                            onChange={onActiveTabChange}
                             data={activeTabsData}
                             size="xs"
                             radius="md"
@@ -153,6 +193,7 @@ export const AiChartVisualization: FC<Props> = ({
 
                         {activeTab === 'chart' && (
                             <AiChartQuickOptions
+                                message={message}
                                 projectUuid={projectUuid}
                                 saveChartOptions={{
                                     name: queryExecutionHandle.data.metadata
@@ -165,7 +206,13 @@ export const AiChartVisualization: FC<Props> = ({
                         )}
                     </Group>
 
-                    <Box flex="1 0 0">
+                    <Box
+                        flex="1 0 0"
+                        style={{
+                            // Scrolling for tables
+                            overflow: 'auto',
+                        }}
+                    >
                         {activeTab === 'chart' ? (
                             <>
                                 <LightdashVisualization
@@ -173,7 +220,8 @@ export const AiChartVisualization: FC<Props> = ({
                                     data-testid="ai-visualization"
                                 />
 
-                                {chartConfig.type === ChartType.CARTESIAN && (
+                                {chartConfig.echartsConfig.type ===
+                                    ChartType.CARTESIAN && (
                                     <SeriesContextMenu
                                         echartSeriesClickEvent={
                                             echartsClickEvent ?? undefined
@@ -187,7 +235,11 @@ export const AiChartVisualization: FC<Props> = ({
                                 <DrillDownModal />
                             </>
                         ) : activeTab === 'calculation' ? (
-                            <AiChartToolCalls toolCalls={toolCalls} />
+                            <AiChartToolCalls
+                                toolCalls={toolCalls}
+                                compiledSql={compiledSql}
+                                type="persisted"
+                            />
                         ) : (
                             assertUnreachable(activeTab, 'Invalid active tab')
                         )}
@@ -198,7 +250,7 @@ export const AiChartVisualization: FC<Props> = ({
                             <ErrorBoundary>
                                 {queryExecutionHandle.data &&
                                     queryExecutionHandle.data.type !==
-                                        AiChartType.CSV && (
+                                        AiResultType.TABLE_RESULT && (
                                         <AgentVisualizationMetricsAndDimensions
                                             metricQuery={
                                                 queryExecutionHandle.data.query
@@ -211,12 +263,16 @@ export const AiChartVisualization: FC<Props> = ({
                                         />
                                     )}
 
-                                {message.filtersOutput && (
+                                {message.vizConfigOutput &&
+                                'filters' in message.vizConfigOutput &&
+                                message.vizConfigOutput.filters ? (
                                     <AgentVisualizationFilters
-                                        // TODO: fix this using schema
-                                        filters={message.filtersOutput}
+                                        filters={
+                                            queryExecutionHandle.data.query
+                                                .metricQuery.filters
+                                        }
                                     />
-                                )}
+                                ) : null}
                             </ErrorBoundary>
                         </Stack>
                     )}

@@ -61,8 +61,11 @@ export type DbtModelNode = DbtRawModelNode & {
     };
 };
 export type DbtModelColumn = ColumnInfo & {
-    meta: DbtColumnMetadata;
+    meta?: DbtColumnMetadata;
     data_type?: DimensionType;
+    config?: {
+        meta?: DbtColumnMetadata;
+    };
 };
 
 type DbtLightdashFieldTags = {
@@ -71,9 +74,14 @@ type DbtLightdashFieldTags = {
 
 export type DbtModelMetadata = DbtModelLightdashConfig & {};
 
-type DbtModelLightdashConfig = {
+type ExploreConfig = {
     label?: string;
+    description?: string;
+    group_label?: string;
     joins?: DbtModelJoin[];
+};
+
+type DbtModelLightdashConfig = ExploreConfig & {
     metrics?: Record<string, DbtModelLightdashMetric>;
     order_fields_by?: OrderFieldsByStrategy;
     group_label?: string;
@@ -94,6 +102,7 @@ type DbtModelLightdashConfig = {
         >['default_visibility'];
         categories?: string[]; // yaml_reference
     };
+    explores?: Record<string, ExploreConfig>;
 };
 
 export type DbtModelGroup = {

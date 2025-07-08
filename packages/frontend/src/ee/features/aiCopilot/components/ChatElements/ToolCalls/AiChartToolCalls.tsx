@@ -1,102 +1,142 @@
 import {
+    AgentToolCallArgsSchema,
     type AiAgentToolCall,
+    AiResultType,
+    type ApiCompiledQueryResults,
     assertUnreachable,
-    isFindFieldsToolArgs,
+    TOOL_DISPLAY_MESSAGES,
     TOOL_DISPLAY_MESSAGES_AFTER_TOOL_CALL,
+    type ToolName,
     ToolNameSchema,
 } from '@lightdash/common';
-import { Badge, Group, Stack, Text, Timeline } from '@mantine-8/core';
+import { Badge, Stack, Text, Timeline } from '@mantine-8/core';
 import {
     IconChartHistogram,
     IconChartLine,
-    IconFileText,
-    IconFilter,
+    IconDatabase,
     IconSearch,
-    IconSparkles,
+    IconTable,
+    type TablerIconsProps,
 } from '@tabler/icons-react';
-import { type FC } from 'react';
+import { type FC, type JSX } from 'react';
 import MantineIcon from '../../../../../../components/common/MantineIcon';
+import { AiChartGenerationToolCallDescription } from './AiChartGenerationToolCallDescription';
 
-const getToolIcon = (toolName: string) => {
-    const iconMap = {
-        findFields: IconSearch,
-        generateBarVizConfig: IconChartHistogram,
-        generateTimeSeriesVizConfig: IconChartLine,
-        generateQueryFilters: IconFilter,
-        generateCsv: IconFileText,
-    } as const;
+const getToolIcon = (toolName: ToolName) => {
+    const iconMap: Record<ToolName, (props: TablerIconsProps) => JSX.Element> =
+        {
+            findExplores: IconDatabase,
+            findFields: IconSearch,
+            generateBarVizConfig: IconChartHistogram,
+            generateTimeSeriesVizConfig: IconChartLine,
+            generateTableVizConfig: IconTable,
+        };
 
-    return iconMap[toolName as keyof typeof iconMap] || IconSparkles;
+    return iconMap[toolName];
 };
 
-const getToolDescription = (toolCall: AiAgentToolCall) => {
-    const toolName = ToolNameSchema.parse(toolCall.toolName);
+type ToolCallDisplayType = 'streaming' | 'persisted';
+type ToolCallSummary = Omit<
+    AiAgentToolCall,
+    'createdAt' | 'uuid' | 'promptUuid'
+>;
 
-    switch (toolName) {
-        case 'findFields':
-            if (!isFindFieldsToolArgs(toolCall.toolArgs)) {
-                return null;
-            }
-            const fields = toolCall.toolArgs.embeddingSearchQueries || [];
-            const exploreName = toolCall.toolArgs.exploreName;
+const ToolCallDescription: FC<{
+    toolCall: ToolCallSummary;
+    compiledSql: ApiCompiledQueryResults | undefined;
+}> = ({ toolCall, compiledSql }) => {
+    const toolName = ToolNameSchema.parse(toolCall.toolName);
+    const toolArgs = AgentToolCallArgsSchema.parse(toolCall.toolArgs);
+
+    switch (toolArgs.type) {
+        case 'find_explores':
+            return null;
+        case 'find_fields':
+            const { exploreName } = toolArgs;
 
             return (
                 <>
                     <Text c="dimmed" size="xs">
-                        Found {fields.length} relevant field
-                        {fields.length !== 1 ? 's' : ''} in{' '}
-                        <Text
-                            variant="link"
-                            component="span"
-                            inherit
-                            c="dark.6"
-                            fw={500}
+                        Found relevant fields in{' '}
+                        <Badge
+                            color="gray"
+                            variant="light"
+                            size="xs"
+                            radius="sm"
+                            style={{
+                                textTransform: 'none',
+                                fontWeight: 400,
+                            }}
                         >
                             {exploreName}
-                        </Text>{' '}
-                        table
+                        </Badge>
                     </Text>
-                    {fields.length > 0 && (
-                        <Text size="xs" mt={4} c="dimmed">
-                            <Group gap="xs">
-                                Fields:
-                                {fields.map((field) => (
-                                    <Badge
-                                        key={field.name}
-                                        color="gray"
-                                        variant="light"
-                                        size="xs"
-                                        radius="sm"
-                                        style={{
-                                            textTransform: 'none',
-                                            fontWeight: 400,
-                                        }}
-                                    >
-                                        {field.name}
-                                    </Badge>
-                                ))}
-                            </Group>
-                        </Text>
-                    )}
                 </>
             );
-        case 'generateBarVizConfig':
-        case 'generateCsv':
-        case 'generateQueryFilters':
-        case 'generateTimeSeriesVizConfig':
-            return null;
+        case AiResultType.VERTICAL_BAR_RESULT:
+            const barVizConfigToolArgs = toolArgs;
 
+            return (
+                <AiChartGenerationToolCallDescription
+                    title={barVizConfigToolArgs.title}
+                    dimensions={[barVizConfigToolArgs.vizConfig.xDimension]}
+                    metrics={barVizConfigToolArgs.vizConfig.yMetrics}
+                    breakdownByDimension={
+                        barVizConfigToolArgs.vizConfig.breakdownByDimension
+                    }
+                    sql={compiledSql}
+                />
+            );
+
+        case AiResultType.TABLE_RESULT:
+            const tableVizConfigToolArgs = toolArgs;
+            return (
+                <AiChartGenerationToolCallDescription
+                    title={tableVizConfigToolArgs.title}
+                    dimensions={
+                        tableVizConfigToolArgs.vizConfig.dimensions ?? []
+                    }
+                    metrics={tableVizConfigToolArgs.vizConfig.metrics}
+                    sql={compiledSql}
+                />
+            );
+        case AiResultType.TIME_SERIES_RESULT:
+            const timeSeriesToolCallArgs = toolArgs;
+            return (
+                <AiChartGenerationToolCallDescription
+                    title={timeSeriesToolCallArgs.title}
+                    dimensions={[timeSeriesToolCallArgs.vizConfig.xDimension]}
+                    metrics={timeSeriesToolCallArgs.vizConfig.yMetrics}
+                    breakdownByDimension={
+                        timeSeriesToolCallArgs.vizConfig.breakdownByDimension
+                    }
+                    sql={compiledSql}
+                />
+            );
+        case AiResultType.ONE_LINE_RESULT:
+            return null;
         default:
-            return assertUnreachable(toolName, `Unknown tool name ${toolName}`);
+            return assertUnreachable(toolArgs, `Unknown tool name ${toolName}`);
     }
 };
 
 type AiChartToolCallsProps = {
-    toolCalls: AiAgentToolCall[] | undefined;
+    toolCalls: ToolCallSummary[] | undefined;
+    compiledSql?: ApiCompiledQueryResults;
+    type: ToolCallDisplayType;
 };
 
-export const AiChartToolCalls: FC<AiChartToolCallsProps> = ({ toolCalls }) => {
+export const AiChartToolCalls: FC<AiChartToolCallsProps> = ({
+    toolCalls,
+    compiledSql,
+    type,
+}) => {
     if (!toolCalls || toolCalls.length === 0) return null;
+
+    const texts =
+        type === 'streaming'
+            ? TOOL_DISPLAY_MESSAGES
+            : TOOL_DISPLAY_MESSAGES_AFTER_TOOL_CALL;
 
     return (
         <Stack>
@@ -107,12 +147,19 @@ export const AiChartToolCalls: FC<AiChartToolCallsProps> = ({ toolCalls }) => {
                 color="indigo.6"
             >
                 {toolCalls.map((toolCall) => {
-                    const IconComponent = getToolIcon(toolCall.toolName);
-                    const toolName = ToolNameSchema.parse(toolCall.toolName);
+                    const toolNameParsed = ToolNameSchema.safeParse(
+                        toolCall.toolName,
+                    );
+                    if (!toolNameParsed.success) {
+                        return null;
+                    }
+
+                    const toolName = toolNameParsed.data;
+                    const IconComponent = getToolIcon(toolName);
 
                     return (
                         <Timeline.Item
-                            key={toolCall.uuid}
+                            key={toolCall.toolCallId}
                             radius="md"
                             bullet={
                                 <MantineIcon
@@ -123,16 +170,19 @@ export const AiChartToolCalls: FC<AiChartToolCallsProps> = ({ toolCalls }) => {
                             }
                             title={
                                 <Text fw={500} size="sm">
-                                    {
-                                        TOOL_DISPLAY_MESSAGES_AFTER_TOOL_CALL[
-                                            toolName
-                                        ]
-                                    }
+                                    {texts[toolName]}
                                 </Text>
                             }
                             lineVariant={'solid'}
                         >
-                            {getToolDescription(toolCall)}
+                            <ToolCallDescription
+                                toolCall={toolCall}
+                                compiledSql={
+                                    type === 'persisted'
+                                        ? compiledSql
+                                        : undefined
+                                }
+                            />
                         </Timeline.Item>
                     );
                 })}

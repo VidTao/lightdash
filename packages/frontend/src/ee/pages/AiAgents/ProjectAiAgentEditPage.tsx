@@ -35,6 +35,7 @@ import MantineModal from '../../../components/common/MantineModal';
 import Page from '../../../components/common/Page/Page';
 import { useGetSlack, useSlackChannels } from '../../../hooks/slack/useSlack';
 import { useProject } from '../../../hooks/useProject';
+import useApp from '../../../providers/App/useApp';
 import { ConversationsList } from '../../features/aiCopilot/components/ConversationsList';
 import { SlackIntegrationSteps } from '../../features/aiCopilot/components/SlackIntegrationSteps';
 import { useAiAgentPermission } from '../../features/aiCopilot/hooks/useAiAgentPermission';
@@ -79,6 +80,7 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     });
 
     const navigate = useNavigate();
+    const { user } = useApp();
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
@@ -165,7 +167,7 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     };
 
     const handleSubmit = form.onSubmit(async (values) => {
-        if (!projectUuid) {
+        if (!projectUuid || !user?.data) {
             return;
         }
 
@@ -188,13 +190,14 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     }, []);
 
     const handleDelete = useCallback(async () => {
-        if (!actualAgentUuid) {
+        if (!actualAgentUuid || !user?.data || !projectUuid || !agent) {
             return;
         }
 
         await deleteAgent(actualAgentUuid);
+
         setDeleteModalOpen(false);
-    }, [actualAgentUuid, deleteAgent]);
+    }, [actualAgentUuid, deleteAgent, user?.data, projectUuid, agent]);
 
     const handleCancelDelete = useCallback(() => {
         setDeleteModalOpen(false);

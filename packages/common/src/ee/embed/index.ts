@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { type Organization } from '../../types/organization';
 import { type LightdashUser } from '../../types/user';
 import assertUnreachable from '../../utils/assertUnreachable';
 
 export type Embed = {
     projectUuid: string;
+    organization: Pick<Organization, 'organizationUuid' | 'name'>;
     encodedSecret: string;
     dashboardUuids: string[];
     allowAllDashboards: boolean;
@@ -39,7 +41,8 @@ export const FilterInteractivityValuesSchema = z.enum([
 
 export const DashboardFilterInteractivityOptionsSchema = z.object({
     enabled: z.union([z.boolean(), FilterInteractivityValuesSchema]),
-    allowedFilters: z.array(z.string()).optional(),
+    // Nullish because we have python clients that serialize None to null
+    allowedFilters: z.array(z.string()).nullish(),
 });
 
 export type DashboardFilterInteractivityOptions = z.infer<
@@ -94,14 +97,13 @@ export const EmbedJwtSchema = z
 export type EmbedJwt = z.infer<typeof EmbedJwtSchema>;
 
 // Note: we can't extend zod types since tsoa doesn't support it
-
 type CommonEmbedJwtContent = {
     type: 'dashboard';
     projectUuid?: string;
     isPreview?: boolean;
     dashboardFiltersInteractivity?: {
         enabled: FilterInteractivityValues | boolean;
-        allowedFilters?: string[];
+        allowedFilters?: string[] | null;
     };
     canExportCsv?: boolean;
     canExportImages?: boolean;
@@ -125,6 +127,8 @@ export type CreateEmbedJwt = {
         externalId?: string;
     };
     expiresIn?: string;
+    iat?: number;
+    exp?: number;
 };
 
 export function isDashboardUuidContent(

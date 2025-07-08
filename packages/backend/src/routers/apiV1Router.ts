@@ -16,7 +16,6 @@ import { organizationRouter } from './organizationRouter';
 import { passwordResetLinksRouter } from './passwordResetLinksRouter';
 import { projectRouter } from './projectRouter';
 import { savedChartRouter } from './savedChartRouter';
-import { slackRouter } from './slackRouter';
 import { userRouter } from './userRouter';
 
 export const apiV1Router = express.Router();
@@ -166,6 +165,26 @@ apiV1Router.get(
     }),
 );
 
+// path to start the OAuth flow
+apiV1Router.get(
+    '/auth/slack',
+    (req, res, next) => {
+        // If the user is not already authenticated in Lightdash, force them to login on lightdash first
+        if (req.user?.userUuid) {
+            return next();
+        }
+        return res.redirect('/login?redirect=/api/v1/auth/slack');
+    },
+    passport.authenticate('slack'),
+);
+
+// OAuth callback url
+apiV1Router.get(
+    '/auth/slack/callback',
+    passport.authenticate('slack', { failureRedirect: '/login' }),
+    (req, res) => res.redirect('/'),
+);
+
 apiV1Router.get(lightdashConfig.auth.google.callbackPath, (req, res, next) => {
     passport.authenticate('google', {
         failureRedirect: getOidcRedirectURL(false)(req),
@@ -216,5 +235,4 @@ apiV1Router.use('/projects/:projectUuid', projectRouter);
 apiV1Router.use('/dashboards', dashboardRouter);
 apiV1Router.use('/password-reset', passwordResetLinksRouter);
 apiV1Router.use('/jobs', jobsRouter);
-apiV1Router.use('/slack', slackRouter);
 apiV1Router.use('/headless-browser', headlessBrowserRouter);
