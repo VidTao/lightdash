@@ -15,6 +15,7 @@ import {
     type useGetComments,
 } from '../../features/comments';
 
+
 export type SqlChartTileMetadata = {
     columns: ResultColumn[];
 };
@@ -93,4 +94,5 @@ export type DashboardContextType = {
     requiredDashboardFilters: Pick<DashboardFilterRule, 'id' | 'label'>[];
     isDateZoomDisabled: boolean;
     setIsDateZoomDisabled: Dispatch<SetStateAction<boolean>>;
+
 };

@@ -23,6 +23,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { lightdashApi } from '../api';
+import { queuedLightdashApi } from '../api/queuedApi';
 import { pollForResults } from '../features/queryRunner/executeQuery';
 import { convertDateFilters } from '../utils/dateFilter';
 import useQueryError from './useQueryError';
@@ -214,13 +215,12 @@ const getResultsPage = async (
     }
 
     const urlQueryParams = searchParams.toString();
-    return lightdashApi<ApiGetAsyncQueryResults>({
+    return queuedLightdashApi<ApiGetAsyncQueryResults>({
         url: `/projects/${projectUuid}/query/${queryUuid}${
             urlQueryParams ? `?${urlQueryParams}` : ''
         }`,
         version: 'v2',
         method: 'GET',
-        body: undefined,
     });
 };
 
@@ -258,6 +258,8 @@ export const useInfiniteQueryResults = (
             : 'Error running query',
         chartName,
     });
+
+
     const [fetchArgs, setFetchArgs] = useState<{
         queryUuid?: string;
         projectUuid?: string;

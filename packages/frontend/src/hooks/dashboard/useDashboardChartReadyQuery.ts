@@ -12,6 +12,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { lightdashApi } from '../../api';
+import { queuedLightdashApi } from '../../api/queuedApi';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
 import { convertDateDashboardFilters } from '../../utils/dateFilter';
 import { useExplore } from '../useExplore';
@@ -23,7 +24,7 @@ const executeAsyncDashboardChartQuery = async (
     projectUuid: string,
     data: ExecuteAsyncDashboardChartRequestParams,
 ): Promise<ApiExecuteAsyncDashboardChartQueryResults> =>
-    lightdashApi<ApiExecuteAsyncDashboardChartQueryResults>({
+    queuedLightdashApi<ApiExecuteAsyncDashboardChartQueryResults>({
         url: `/projects/${projectUuid}/query/dashboard-chart`,
         version: 'v2',
         method: 'POST',
@@ -55,6 +56,8 @@ export const useDashboardChartReadyQuery = (
     const setChartsWithDateZoomApplied = useDashboardContext(
         (c) => c.setChartsWithDateZoomApplied,
     );
+
+
 
     const sortKey =
         dashboardSorts
