@@ -85,4 +85,4 @@ prometheus.yml
 data/
 
 # environment
-.env*
+.env
