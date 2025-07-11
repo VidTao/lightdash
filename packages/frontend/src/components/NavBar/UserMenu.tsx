@@ -39,14 +39,14 @@ const UserMenu: FC = () => {
                 >
                     User settings
                 </Menu.Item>
-                <Menu.Item
+                {/* <Menu.Item
                     role="menuitem"
                     component={Link}
                     to="/storeSettings"
                     icon={<MantineIcon icon={IconUserCircle} />}
                 >
                     Store settings
-                </Menu.Item>
+                </Menu.Item> */}
                 {user.data?.ability?.can('create', 'InviteLink') ? (
                     <Menu.Item
                         role="menuitem"
