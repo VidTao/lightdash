@@ -82,7 +82,7 @@ const ExploreMenu: FC<Props> = memo(({ projectUuid }) => {
                             icon={IconTable}
                         />
 
-                        <Can
+                        {/* <Can
                             I="manage"
                             this={subject('SqlRunner', {
                                 organizationUuid: user.data?.organizationUuid,
@@ -111,7 +111,7 @@ const ExploreMenu: FC<Props> = memo(({ projectUuid }) => {
                                 }}
                                 icon={IconTerminal2}
                             />
-                        </Can>
+                        </Can> */}
 
                         {userCanCreateDashboards && (
                             <LargeMenuItem

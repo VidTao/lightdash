@@ -21,6 +21,7 @@ import { lightdashApi } from '../api';
 import { convertDateFilters } from '../utils/dateFilter';
 import useToaster from './toaster/useToaster';
 import useSearchParams from './useSearchParams';
+import { queuedLightdashApi } from '../api/queuedApi';
 
 const createSavedQuery = async (
     projectUuid: string,
@@ -74,7 +75,7 @@ const updateSavedQuery = async (
 };
 
 const getSavedQuery = async (id: string): Promise<SavedChart> =>
-    lightdashApi<SavedChart>({
+    queuedLightdashApi<SavedChart>({
         url: `/saved/${id}`,
         method: 'GET',
         body: undefined,

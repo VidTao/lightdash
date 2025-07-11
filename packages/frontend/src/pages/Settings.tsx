@@ -397,15 +397,15 @@ const Settings: FC = () => {
                                     />
                                 )}
 
-                                <RouterNavLink
+                                {/* <RouterNavLink
                                     label="My warehouse connections"
                                     exact
                                     to="/generalSettings/myWarehouseConnections"
                                     icon={
                                         <MantineIcon icon={IconDatabaseCog} />
                                     }
-                                />
-                                {user.ability.can(
+                                /> */}
+                                {/* {user.ability.can(
                                     'manage',
                                     'PersonalAccessToken',
                                 ) && (
@@ -415,7 +415,7 @@ const Settings: FC = () => {
                                         to="/generalSettings/personalAccessTokens"
                                         icon={<MantineIcon icon={IconKey} />}
                                     />
-                                )}
+                                )} */}
                             </Box>
 
                             <Box>
@@ -423,7 +423,7 @@ const Settings: FC = () => {
                                     Organization settings
                                 </Title>
 
-                                {user.ability.can('manage', 'Organization') && (
+                                {/* {user.ability.can('manage', 'Organization') && (
                                     <RouterNavLink
                                         label="General"
                                         to="/generalSettings/organization"
@@ -434,7 +434,7 @@ const Settings: FC = () => {
                                             />
                                         }
                                     />
-                                )}
+                                )} */}
 
                                 {user.ability.can(
                                     'update',
@@ -487,14 +487,14 @@ const Settings: FC = () => {
                                     />
                                 )}
 
-                                {user.ability.can('manage', 'Organization') && (
+                                {/* {user.ability.can('manage', 'Organization') && (
                                     <RouterNavLink
                                         label="Integrations"
                                         exact
                                         to="/generalSettings/integrations"
                                         icon={<MantineIcon icon={IconPlug} />}
                                     />
-                                )}
+                                )} */}
 
                                 {organization &&
                                     !organization.needsProject &&
@@ -553,7 +553,7 @@ const Settings: FC = () => {
                                         Current project ({project?.name})
                                     </Title>
 
-                                    <RouterNavLink
+                                    {/* <RouterNavLink
                                         label="Connection settings"
                                         exact
                                         to={`/generalSettings/projectManagement/${project.projectUuid}/settings`}
@@ -562,9 +562,9 @@ const Settings: FC = () => {
                                                 icon={IconDatabaseCog}
                                             />
                                         }
-                                    />
+                                    /> */}
 
-                                    <RouterNavLink
+                                    {/* <RouterNavLink
                                         label="Tables configuration"
                                         exact
                                         to={`/generalSettings/projectManagement/${project.projectUuid}/tablesConfiguration`}
@@ -573,7 +573,7 @@ const Settings: FC = () => {
                                                 icon={IconTableOptions}
                                             />
                                         }
-                                    />
+                                    /> */}
 
                                     <RouterNavLink
                                         label="Project access"
@@ -607,7 +607,7 @@ const Settings: FC = () => {
                                         />
                                     ) : null}
 
-                                    <RouterNavLink
+                                    {/* <RouterNavLink
                                         label="Syncs & Scheduled deliveries"
                                         exact
                                         to={`/generalSettings/projectManagement/${project.projectUuid}/scheduledDeliveries`}
@@ -616,7 +616,7 @@ const Settings: FC = () => {
                                                 icon={IconCalendarStats}
                                             />
                                         }
-                                    />
+                                    /> */}
 
                                     {user.ability?.can(
                                         'update',
@@ -638,7 +638,7 @@ const Settings: FC = () => {
                                         />
                                     ) : null}
 
-                                    {user.ability?.can(
+                                    {/* {user.ability?.can(
                                         'manage',
                                         subject('Validation', {
                                             organizationUuid:
@@ -656,8 +656,8 @@ const Settings: FC = () => {
                                                 />
                                             }
                                         />
-                                    ) : null}
-
+                                    ) : null} */}
+{/* 
                                     {user.ability?.can(
                                         'promote',
                                         subject('SavedChart', {
@@ -676,7 +676,7 @@ const Settings: FC = () => {
                                                 />
                                             }
                                         />
-                                    ) : null}
+                                    ) : null} */}
                                 </Box>
                             ) : null}
                         </Stack>

@@ -74,19 +74,19 @@ const SqlCard: FC<SqlCardProps> = memo(({ projectUuid }) => {
                     </CopyButton>
                 ) : undefined
             }
-            rightHeaderElement={
-                sqlIsOpen && (
-                    <Can
-                        I="manage"
-                        this={subject('SqlRunner', {
-                            organizationUuid: user.data?.organizationUuid,
-                            projectUuid,
-                        })}
-                    >
-                        <OpenInSqlRunnerButton projectUuid={projectUuid} />
-                    </Can>
-                )
-            }
+            // rightHeaderElement={
+            //     sqlIsOpen && (
+            //         <Can
+            //             I="manage"
+            //             this={subject('SqlRunner', {
+            //                 organizationUuid: user.data?.organizationUuid,
+            //                 projectUuid,
+            //             })}
+            //         >
+            //             <OpenInSqlRunnerButton projectUuid={projectUuid} />
+            //         </Can>
+            //     )
+            // }
         >
             <RenderedSql />
         </CollapsableCard>

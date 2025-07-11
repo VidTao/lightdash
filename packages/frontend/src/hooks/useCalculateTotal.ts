@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useParams } from 'react-router';
 import { lightdashApi } from '../api';
+import { queuedLightdashApi } from '../api/queuedApi';
 import {
     convertDateDashboardFilters,
     convertDateFilters,
@@ -52,7 +53,7 @@ const calculateTotalFromSavedChart = async (
     const timezoneFixFilters =
         dashboardFilters && convertDateDashboardFilters(dashboardFilters);
 
-    return lightdashApi<ApiCalculateTotalResponse['results']>({
+    return queuedLightdashApi<ApiCalculateTotalResponse['results']>({
         url: `/saved/${savedChartUuid}/calculate-total`,
         method: 'POST',
         body: JSON.stringify({
