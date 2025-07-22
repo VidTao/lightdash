@@ -71,6 +71,7 @@ import { WarehouseAvailableTablesModel } from '../models/WarehouseAvailableTable
 import { postHogClient } from '../postHog';
 import { wrapSentryTransaction } from '../utils';
 import { BaseService } from './BaseService';
+import { LibreChatIntegrationService } from './LibrechatIntegrationService';
 
 type UserServiceArguments = {
     lightdashConfig: LightdashConfig;
@@ -89,6 +90,7 @@ type UserServiceArguments = {
     organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
     userWarehouseCredentialsModel: UserWarehouseCredentialsModel;
     warehouseAvailableTablesModel: WarehouseAvailableTablesModel;
+    libreChatIntegrationService?: LibreChatIntegrationService; // Optional to avoid breaking changes
 };
 
 export class UserService extends BaseService {
@@ -128,6 +130,17 @@ export class UserService extends BaseService {
 
     private readonly emailOneTimePasscodeMaxAttempts = 5;
 
+    private _libreChatIntegrationService?: LibreChatIntegrationService;
+
+    private get libreChatIntegrationService(): LibreChatIntegrationService {
+        if (!this._libreChatIntegrationService) {
+            this._libreChatIntegrationService = new LibreChatIntegrationService({
+                lightdashConfig: this.lightdashConfig,
+            });
+        }
+        return this._libreChatIntegrationService;
+    }
+
     constructor({
         lightdashConfig,
         analytics,
@@ -145,6 +158,7 @@ export class UserService extends BaseService {
         organizationAllowedEmailDomainsModel,
         userWarehouseCredentialsModel,
         warehouseAvailableTablesModel,
+        libreChatIntegrationService,
     }: UserServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
@@ -164,6 +178,7 @@ export class UserService extends BaseService {
             organizationAllowedEmailDomainsModel;
         this.userWarehouseCredentialsModel = userWarehouseCredentialsModel;
         this.warehouseAvailableTablesModel = warehouseAvailableTablesModel;
+        this._libreChatIntegrationService = libreChatIntegrationService;
     }
 
     private identifyUser(
@@ -1228,7 +1243,28 @@ export class UserService extends BaseService {
         } else {
             await this.sendOneTimePasscodeToPrimaryEmail(user);
         }
+
+        // Sync user to LibreChat if integration is enabled
+        this.syncUserToLibreChat(user).catch((error) => {
+            Logger.warn('Failed to sync user to LibreChat:', error);
+        });
+
         return user;
+    }
+
+    /**
+     * Sync user to LibreChat - called asynchronously after user creation
+     */
+    private async syncUserToLibreChat(user: LightdashUser): Promise<void> {
+        try {
+            const libreChatService = new LibreChatIntegrationService({
+                lightdashConfig: this.lightdashConfig,
+            });
+            
+            await libreChatService.syncUserToLibreChat(user);
+        } catch (error) {
+            Logger.error('Error syncing user to LibreChat:', error);
+        }
     }
 
     async verifyPasswordResetLink(code: string): Promise<void> {
@@ -1531,7 +1567,7 @@ export class UserService extends BaseService {
             refresh.requestNewAccessToken(
                 'google',
                 refreshToken,
-                (err: AnyType, accessToken: string, _refreshToken, result) => {
+                (err: AnyType, accessToken: string, _refreshToken: string, result: any) => {
                     if (err || !accessToken) {
                         // Make sure you are passing a google's refresh token, and not a snowflake refresh token by mistake
                         // othwerise this will throw a `invalid_grant` error
@@ -1641,7 +1677,7 @@ export class UserService extends BaseService {
             refresh.requestNewAccessToken(
                 'snowflake',
                 refreshToken,
-                (err: AnyType, accessToken: string, _refreshToken, result) => {
+                (err: AnyType, accessToken: string, _refreshToken: string, result: any) => {
                     if (err || !accessToken) {
                         reject(err);
                         return;

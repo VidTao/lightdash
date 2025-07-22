@@ -21,6 +21,7 @@ import { GitIntegrationService } from './GitIntegrationService/GitIntegrationSer
 import { GroupsService } from './GroupService';
 import { HealthService } from './HealthService/HealthService';
 import { LightdashAnalyticsService } from './LightdashAnalyticsService/LightdashAnalyticsService';
+import { LibreChatIntegrationService } from './LibreChatIntegrationService';
 import { MetricsExplorerService } from './MetricsExplorerService/MetricsExplorerService';
 import { NotificationsService } from './NotificationsService/NotificationsService';
 import { OrganizationService } from './OrganizationService/OrganizationService';
@@ -94,6 +95,7 @@ interface ServiceManifest {
     cacheService: unknown;
     serviceAccountService: unknown;
     instanceConfigurationService: unknown;
+    libreChatIntegrationService: LibreChatIntegrationService;
 }
 
 /**
@@ -871,6 +873,16 @@ export class ServiceRepository
         InstanceConfigurationServiceImplT,
     >(): InstanceConfigurationServiceImplT {
         return this.getService('instanceConfigurationService');
+    }
+
+    public getLibreChatIntegrationService(): LibreChatIntegrationService {
+        return this.getService(
+            'libreChatIntegrationService',
+            () =>
+                new LibreChatIntegrationService({
+                    lightdashConfig: this.context.lightdashConfig,
+                }),
+        );
     }
 
     /**

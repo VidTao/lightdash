@@ -7,6 +7,9 @@ networks:
   default:
     name: lightdash_default
     driver: bridge
+  shared_network:
+    name: lightdash_librechat_network
+    driver: bridge
 
 services:
   minio:
@@ -90,6 +93,10 @@ services:
       - RESULTS_S3_BUCKET=${RESULTS_S3_BUCKET:-${RESULTS_CACHE_S3_BUCKET}}
       - RESULTS_S3_SECRET_KEY=${RESULTS_S3_SECRET_KEY:-${RESULTS_CACHE_S3_SECRET_KEY}}
       - RESULTS_S3_ACCESS_KEY=${RESULTS_S3_ACCESS_KEY:-${RESULTS_CACHE_S3_ACCESS_KEY}}
+      # LibreChat Integration Variables
+      - LIBRECHAT_INTEGRATION_ENABLED=${LIBRECHAT_INTEGRATION_ENABLED:-false}
+      - LIBRECHAT_URL=${LIBRECHAT_URL:-http://librechat:3080}
+      - LIBRECHAT_API_KEY=${LIBRECHAT_API_KEY:-}
     volumes:
       - "../:/usr/app"
       - "../examples/full-jaffle-shop-demo/dbt:/usr/app/dbt"
@@ -104,6 +111,7 @@ services:
     working_dir: /usr/app
     networks:
       - default
+      - shared_network
   db-dev:
     image: pgvector/pgvector:pg16
     restart: always
