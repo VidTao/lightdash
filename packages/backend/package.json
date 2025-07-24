@@ -7,6 +7,7 @@
     "devDependencies": {
         "@tsoa/cli": "^6.6.0",
         "@types/archiver": "^6.0.2",
+        "@types/axios": "^0.14.4",
         "@types/bcrypt": "^5.0.0",
         "@types/connect-flash": "^0.0.37",
         "@types/cookie-signature": "^1.1.2",
@@ -70,6 +71,7 @@
         "ajv-formats": "^2.1.0",
         "apache-arrow": "^16.1.0",
         "archiver": "^7.0.1",
+        "axios": "^1.9.0",
         "bcrypt": "^5.1.1",
         "canvas": "^3.1.2",
         "chokidar": "^4.0.2",

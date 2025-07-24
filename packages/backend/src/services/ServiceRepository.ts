@@ -21,7 +21,7 @@ import { GitIntegrationService } from './GitIntegrationService/GitIntegrationSer
 import { GroupsService } from './GroupService';
 import { HealthService } from './HealthService/HealthService';
 import { LightdashAnalyticsService } from './LightdashAnalyticsService/LightdashAnalyticsService';
-import { LibreChatIntegrationService } from './LibreChatIntegrationService';
+import { LibreChatIntegrationService } from './LibrechatIntegrationService';
 import { MetricsExplorerService } from './MetricsExplorerService/MetricsExplorerService';
 import { NotificationsService } from './NotificationsService/NotificationsService';
 import { OrganizationService } from './OrganizationService/OrganizationService';
