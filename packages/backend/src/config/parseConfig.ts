@@ -565,6 +565,7 @@ export type LightdashConfig = {
     lightdashSecret: string;
     secureCookies: boolean;
     cookieSameSite?: 'lax' | 'none';
+    cookieDomain?: string;
     security: {
         contentSecurityPolicy: {
             reportOnly: boolean;
@@ -984,6 +985,7 @@ export const parseConfig = (): LightdashConfig => {
     return {
         mode,
         cookieSameSite: iframeEmbeddingEnabled ? 'none' : 'lax',
+        cookieDomain: process.env.COOKIE_DOMAIN,
         license: {
             licenseKey: process.env.LIGHTDASH_LICENSE_KEY || null,
         },

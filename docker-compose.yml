@@ -1,4 +1,14 @@
 version: "3.8"
+
+networks:
+  default:
+    name: lightdash_default
+    driver: bridge
+  lightdash_librechat_network:
+    name: lightdash_librechat_network
+    driver: bridge
+    external: false
+
 services:
   # Add nginx reverse proxy
   nginx:
@@ -11,9 +21,13 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf
       - ./ssl-certs:/etc/nginx/ssl
       - /var/log/nginx:/var/log/nginx
+      - /var/www/letsencrypt:/var/www/letsencrypt:ro  # Add :ro for read-only
     depends_on:
       - lightdash
     restart: unless-stopped
+    networks:
+      - default
+      - lightdash_librechat_network
 
   lightdash:
     platform: linux/amd64
@@ -38,6 +52,7 @@ services:
       - SECURE_COOKIES=${SECURE_COOKIES:-true}
       - TRUST_PROXY=${TRUST_PROXY:-true}
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET:-your-secret-key-here-change-this}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN}
       - PORT=${PORT}
       - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL:-info}
       - LIGHTDASH_INSTALL_ID=${LIGHTDASH_INSTALL_ID}
@@ -98,6 +113,12 @@ services:
       - RESULTS_S3_SECRET_KEY=${RESULTS_S3_SECRET_KEY}
       - RESULTS_S3_ACCESS_KEY=${RESULTS_S3_ACCESS_KEY}
       - LIGHTDASH_API_TOKEN=${LIGHTDASH_API_TOKEN}
+      
+      # LibreChat Integration Variables
+      - LIBRECHAT_INTEGRATION_ENABLED=${LIBRECHAT_INTEGRATION_ENABLED:-true}
+      - LIBRECHAT_URL=${LIBRECHAT_URL:-http://librechat:3080}
+      - LIBRECHAT_API_KEY=${LIBRECHAT_API_KEY}
+      
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
       - "./dbt/bratrax/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
@@ -110,8 +131,11 @@ services:
       [
         "sh",
         "-c",
-        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt/bratrax && dbt clean && dbt deps && dbt run && cd /usr/app/packages/backend && node dist/index.js"
+        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt/bratrax && dbt clean && dbt deps && dbt run --models geo_reports_table --target dev && dbt run --models ads orders pixel_joined --target dev_no_flat && cd /usr/app/packages/backend && node dist/index.js"
       ]
+    networks:
+      - default
+      - lightdash_librechat_network
 
   db:
     image: postgres:15.4

@@ -499,6 +499,7 @@ export default class App {
                     secure: this.lightdashConfig.secureCookies,
                     httpOnly: true,
                     sameSite: this.lightdashConfig.cookieSameSite,
+                    domain: this.lightdashConfig.cookieDomain,
                 },
                 resave: false,
                 saveUninitialized: false,

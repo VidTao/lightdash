@@ -59,7 +59,7 @@ export class LibreChatIntegrationService extends BaseService {
                 email: lightdashUser.email || '',
                 emailVerified: true, // Assume verified if they're in Lightdash
                 provider: 'lightdash',
-                role: 'USER',
+                role: 'ADMIN',
                 lightdashUuid: lightdashUser.userUuid,
                 termsAccepted: true // Assume accepted if they're using Lightdash
             };
