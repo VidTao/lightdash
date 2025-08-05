@@ -44,7 +44,7 @@ services:
       - AUTH_GOOGLE_ENABLED=${AUTH_GOOGLE_ENABLED:-false}
       - AUTH_GOOGLE_OAUTH2_CLIENT_ID=${AUTH_GOOGLE_OAUTH2_CLIENT_ID}
       - AUTH_GOOGLE_OAUTH2_CLIENT_SECRET=${AUTH_GOOGLE_OAUTH2_CLIENT_SECRET}
-      - SITE_URL=${SITE_URL:-https://v2.bratrax.com}
+      - SITE_URL=${SITE_URL:-https://bratrax.com}
       - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST}
       - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT}
       - EMAIL_SMTP_SECURE=${EMAIL_SMTP_SECURE}
@@ -111,7 +111,7 @@ services:
       [
         "sh",
         "-c",
-        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt/bratrax && dbt clean && dbt deps && dbt run --models geo_reports_table --target dev && dbt run --models ads orders pixel_joined --target dev_no_flat && cd /usr/app/packages/backend && node dist/index.js"
+        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt/bratrax && dbt clean && dbt deps && dbt run --target dev && cd /usr/app/packages/backend && node dist/index.js"
       ]
     networks:
       - default
