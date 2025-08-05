@@ -405,7 +405,7 @@ const Settings: FC = () => {
                                         <MantineIcon icon={IconDatabaseCog} />
                                     }
                                 /> */}
-                                {/* {user.ability.can(
+                                {user.ability.can(
                                     'manage',
                                     'PersonalAccessToken',
                                 ) && (
@@ -415,7 +415,7 @@ const Settings: FC = () => {
                                         to="/generalSettings/personalAccessTokens"
                                         icon={<MantineIcon icon={IconKey} />}
                                     />
-                                )} */}
+                                )}
                             </Box>
 
                             <Box>
