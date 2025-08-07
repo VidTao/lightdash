@@ -30,6 +30,7 @@ services:
       - PGUSER=${PGUSER}
       - PGPASSWORD=${PGPASSWORD}
       - PGDATABASE=${PGDATABASE}
+      - PGCONNECTIONURI=${PGCONNECTIONURI:-}
       - SECURE_COOKIES=${SECURE_COOKIES:-true}
       - TRUST_PROXY=${TRUST_PROXY:-true}
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET:-your-secret-key-here-change-this}
@@ -100,9 +101,14 @@ services:
       - LIBRECHAT_URL=${LIBRECHAT_URL:-http://librechat:3080}
       - LIBRECHAT_API_KEY=${LIBRECHAT_API_KEY}
       
+      # PostgreSQL SSL Configuration
+      # - PGSSLMODE=${PGSSLMODE:-verify-ca}
+      # - PGSSLROOTCERT=/usr/app/ssl/server.crt  # Use server cert as trusted CA
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
       - "./dbt/bratrax/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
+      - "/data/postgres-ssl:/usr/app/ssl:ro"  # This mounts all certificates including postgres.crt
+      - "./startup.sh:/usr/app/startup.sh:ro"
     ports:
       - "3000:3000"  # Expose Lightdash directly
     restart: unless-stopped
@@ -111,7 +117,7 @@ services:
       [
         "sh",
         "-c",
-        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt/bratrax && dbt clean && dbt deps && dbt run --target dev && cd /usr/app/packages/backend && node dist/index.js"
+        "echo 'Waiting for database...' && sleep 20 && export PGSSLMODE=verify-full && export PGSSLCERT=/usr/app/ssl/client.crt && export PGSSLKEY=/usr/app/ssl/client.key && export PGSSLROOTCERT=/usr/app/ssl/ca.crt && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt/bratrax && dbt clean && dbt deps && dbt run --target dev && cd /usr/app/packages/backend && node dist/index.js"
       ]
     networks:
       - default
@@ -127,8 +133,18 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=md5 --auth-local=md5"
     volumes:
       - db-data:/var/lib/postgresql/data
+      - /data/postgres-ssl:/var/lib/postgresql/ssl:ro
+      - /data/postgres-config/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     ports:
       - "5433:5432"
+    command: >
+      postgres
+      -c ssl=on
+      -c ssl_cert_file=/var/lib/postgresql/ssl/server.crt
+      -c ssl_key_file=/var/lib/postgresql/ssl/server.key
+      -c ssl_ca_file=/var/lib/postgresql/ssl/ca.crt
+      -c ssl_prefer_server_ciphers=on
+      -c ssl_min_protocol_version=TLSv1.2
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-postgres}"]
       interval: 10s
