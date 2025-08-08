@@ -399,51 +399,55 @@ export default class App {
             'https://vega.github.io',
             'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/',
             'https://*.lightdash.cloud',
+            'https://*.bratrax.com',
+            'https://connect.facebook.net',  // Add this line for Facebook SDK
             ...this.lightdashConfig.security.contentSecurityPolicy
                 .allowedDomains,
         ];
 
         const helmetConfig = {
-            contentSecurityPolicy: {
-                directives: {
-                    'default-src': [
-                        "'self'",
-                        ...contentSecurityPolicyAllowedDomains,
-                    ],
-                    'img-src': ["'self'", 'data:', 'https://*'],
-                    'frame-src': ["'self'", 'https://*'],
-                    'frame-ancestors': [
-                        "'self'",
-                        ...this.lightdashConfig.security.contentSecurityPolicy
-                            .frameAncestors,
-                    ],
-                    'worker-src': [
-                        "'self'",
-                        'blob:',
-                        ...contentSecurityPolicyAllowedDomains,
-                    ],
-                    'child-src': [
-                        // Fallback of worker-src for safari older than 15.5
-                        "'self'",
-                        'blob:',
-                        ...contentSecurityPolicyAllowedDomains,
-                    ],
-                    'script-src': [
-                        "'self'",
-                        "'unsafe-eval'",
-                        ...contentSecurityPolicyAllowedDomains,
-                    ],
-                    'script-src-elem': [
-                        "'self'",
-                        "'unsafe-inline'",
-                        ...contentSecurityPolicyAllowedDomains,
-                    ],
-                    'report-uri': reportUris.map((uri) => uri.href),
-                },
-                reportOnly:
-                    this.lightdashConfig.security.contentSecurityPolicy
-                        .reportOnly,
-            },
+            // contentSecurityPolicy: {
+            //     directives: {
+            //         'default-src': [
+            //             "'self'",
+            //             ...contentSecurityPolicyAllowedDomains,
+            //         ],
+            //         'img-src': ["'self'", 'data:', 'https://*'],
+            //         'frame-src': ["'self'", 'https://*'],
+            //         'frame-ancestors': [
+            //             "'self'",
+            //             ...this.lightdashConfig.security.contentSecurityPolicy
+            //                 .frameAncestors,
+            //         ],
+            //         'worker-src': [
+            //             "'self'",
+            //             'blob:',
+            //             ...contentSecurityPolicyAllowedDomains,
+            //         ],
+            //         'child-src': [
+            //             // Fallback of worker-src for safari older than 15.5
+            //             "'self'",
+            //             'blob:',
+            //             ...contentSecurityPolicyAllowedDomains,
+            //         ],
+            //         'script-src': [
+            //             "'self'",
+            //             "'unsafe-eval'",
+            //             ...contentSecurityPolicyAllowedDomains,
+            //         ],
+            //         'script-src-elem': [
+            //             "'self'",
+            //             "'unsafe-inline'",
+            //             ...contentSecurityPolicyAllowedDomains,
+            //         ],
+            //         'report-uri': reportUris.map((uri) => uri.href),
+            //         'upgrade-insecure-requests': [],
+            //     },
+            //     reportOnly:
+            //         this.lightdashConfig.security.contentSecurityPolicy
+            //             .reportOnly,
+            // },
+            contentSecurityPolicy: false,
             strictTransportSecurity: {
                 maxAge: 31536000,
                 includeSubDomains: true,
@@ -454,23 +458,21 @@ export default class App {
             },
             noSniff: true,
             xFrameOptions: false,
-            crossOriginOpenerPolicy: {
-                policy: [LightdashMode.DEMO, LightdashMode.PR].includes(
-                    this.lightdashConfig.mode,
-                )
-                    ? 'unsafe-none'
-                    : 'same-origin',
-            },
+            // crossOriginOpenerPolicy: {
+            //     policy: 'unsafe-none', // Changed from 'same-origin'
+            // },
+            crossOriginOpenerPolicy: false,
         } as const;
 
         expressApp.use(helmet(helmetConfig));
 
         const helmetConfigForEmbeds = produce(helmetConfig, (draft) => {
+            // Since CSP is disabled, no need to modify directives
             // eslint-disable-next-line no-param-reassign
-            draft.contentSecurityPolicy.directives['frame-ancestors'] = [
-                "'self'",
-                'https://*',
-            ];
+            // draft.contentSecurityPolicy.directives['frame-ancestors'] = [
+            //     "'self'",
+            //     'https://*',
+            // ];
         });
 
         expressApp.use('/embed/*', helmet(helmetConfigForEmbeds));
