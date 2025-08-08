@@ -34,6 +34,7 @@ services:
       - SECURE_COOKIES=${SECURE_COOKIES:-true}
       - TRUST_PROXY=${TRUST_PROXY:-true}
       - LIGHTDASH_SECRET=${LIGHTDASH_SECRET:-your-secret-key-here-change-this}
+      - LIGHTDASH_CSP_REPORT_ONLY=${LIGHTDASH_CSP_REPORT_ONLY:-false}
       - COOKIE_DOMAIN=${COOKIE_DOMAIN}
       - PORT=${PORT}
       - LIGHTDASH_LOG_LEVEL=${LIGHTDASH_LOG_LEVEL:-info}
