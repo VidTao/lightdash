@@ -119,6 +119,23 @@ export class CatalogService<
         this.tagsModel = tagsModel;
     }
 
+    private async getUserAttributesWithOrgUuid(
+        user: SessionUser,
+        organizationUuid: string,
+    ): Promise<UserAttributeValueMap> {
+        const userAttributes =
+            await this.userAttributesModel.getAttributeValuesForOrgMember({
+                organizationUuid,
+                userUuid: user.userUuid,
+            });
+
+        // Inject organizationUuid into user attributes for filtering
+        return {
+            ...userAttributes,
+            organizationUuid: [organizationUuid], // User attributes are arrays
+        };
+    }
+
     private static async getCatalogFields(
         explores: (Explore | ExploreError)[],
         userAttributes: UserAttributeValueMap,
@@ -277,10 +294,7 @@ export class CatalogService<
         const explores = Object.values(cachedExplores);
 
         const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            });
+            await this.getUserAttributesWithOrgUuid(user, organizationUuid);
 
         // We keep errors in the list of explores
         const filteredExplores = explores.reduce<(Explore | ExploreError)[]>(
@@ -564,10 +578,7 @@ export class CatalogService<
         );
 
         const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            });
+            await this.getUserAttributesWithOrgUuid(user, organizationUuid);
 
         if (catalogSearch.searchQuery) {
             // On search we don't show explore errors, because they are not indexed
@@ -616,10 +627,7 @@ export class CatalogService<
         const explore = await this.catalogModel.getMetadata(projectUuid, table);
 
         const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            });
+            await this.getUserAttributesWithOrgUuid(user, organizationUuid);
 
         if (!doesExploreMatchRequiredAttributes(explore, userAttributes)) {
             throw new ForbiddenError(
@@ -775,10 +783,7 @@ export class CatalogService<
         }
 
         const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            });
+            await this.getUserAttributesWithOrgUuid(user, organizationUuid);
 
         const paginatedCatalog = await this.searchCatalog(
             projectUuid,
@@ -995,10 +1000,7 @@ export class CatalogService<
 
         const userAttributesForOrgMember =
             userAttributes ??
-            (await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            }));
+            (await this.getUserAttributesWithOrgUuid(user, organizationUuid));
 
         const explores = await this.projectModel.findExploresFromCache(
             projectUuid,
@@ -1236,10 +1238,7 @@ export class CatalogService<
         }
 
         const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            });
+            await this.getUserAttributesWithOrgUuid(user, organizationUuid);
 
         const allCatalogMetrics = await this.catalogModel.search({
             projectUuid,
@@ -1297,10 +1296,7 @@ export class CatalogService<
         );
 
         const userAttributes =
-            await this.userAttributesModel.getAttributeValuesForOrgMember({
-                organizationUuid,
-                userUuid: user.userUuid,
-            });
+            await this.getUserAttributesWithOrgUuid(user, organizationUuid);
 
         const catalogDimensions = await this.catalogModel.search({
             projectUuid,
