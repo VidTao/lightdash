@@ -2585,21 +2585,8 @@ export class ProjectService extends BaseService {
                             },
                         );
 
-                    const userAttributes =
-                        await this.userAttributesModel.getAttributeValuesForOrgMember(
-                            {
-                                organizationUuid,
-                                userUuid: user.userUuid,
-                            },
-                        );
-
-                    const emailStatus =
-                        await this.emailModel.getPrimaryEmailStatus(
-                            user.userUuid,
-                        );
-                    const intrinsicUserAttributes = emailStatus.isVerified
-                        ? getIntrinsicUserAttributes(user)
-                        : {};
+                    const { userAttributes, intrinsicUserAttributes } =
+                        await this.getUserAttributes(user, organizationUuid);
 
                     const fullQuery = await ProjectService._compileQuery(
                         metricQueryWithLimit,

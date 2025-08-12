@@ -40,23 +40,28 @@ type EnterpriseAppArguments = Pick<
 >;
 
 export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArguments> {
-    if (!lightdashConfig.license.licenseKey) {
-        return {};
+    // Check for valid license (but don't block embedService)
+    let hasValidLicense = false;
+    if (lightdashConfig.license.licenseKey) {
+        const licenseClient = new LicenseClient({});
+        try {
+            const license = await licenseClient.get(lightdashConfig.license.licenseKey);
+            if (license.isValid) {
+                hasValidLicense = true;
+                Logger.info(
+                    `Enterprise license for ${lightdashConfig.siteUrl} is valid.`,
+                );
+            } else {
+                Logger.warn(
+                    `Enterprise license for ${lightdashConfig.siteUrl} ${license.detail} [${license.code}]`,
+                );
+            }
+        } catch (e) {
+            Logger.warn('Failed to validate enterprise license', e);
+        }
     }
 
-    const licenseClient = new LicenseClient({});
-
-    const license = await licenseClient.get(lightdashConfig.license.licenseKey);
-    if (license.isValid) {
-        Logger.info(
-            `Enterprise license for ${lightdashConfig.siteUrl} is valid.`,
-        );
-    } else {
-        throw new ForbiddenError(
-            `Enterprise license for ${lightdashConfig.siteUrl} ${license.detail} [${license.code}]`,
-        );
-    }
-
+    // Always return embedService configuration
     return {
         serviceProviders: {
             embedService: ({ repository, context, models }) =>

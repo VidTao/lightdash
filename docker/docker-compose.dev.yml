@@ -37,6 +37,7 @@ services:
       - PGHOST=${PGHOST}
       - PGPORT=${PGPORT}
       - PGUSER=${PGUSER}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN}
       - PGPASSWORD=${PGPASSWORD}
       - PGDATABASE=${PGDATABASE}
       - RUDDERSTACK_WRITE_KEY=${RUDDERSTACK_WRITE_KEY}
@@ -97,9 +98,11 @@ services:
       - LIBRECHAT_INTEGRATION_ENABLED=${LIBRECHAT_INTEGRATION_ENABLED:-false}
       - LIBRECHAT_URL=${LIBRECHAT_URL:-http://librechat:3080}
       - LIBRECHAT_API_KEY=${LIBRECHAT_API_KEY:-}
+      # Enable embedding feature
+      - EMBEDDING_ENABLED=true
     volumes:
       - "../:/usr/app"
-      - "../examples/full-jaffle-shop-demo/dbt:/usr/app/dbt"
+      - "../dbt/bratrax:/usr/app/dbt/bratrax"
       - "node_modules:/usr/app/node_modules/" # clears the node_modules directory so it doesn't sync (v.slow on MacOS)
       - "../dbt/bratrax/bratrax-78c5b6786fc2.json:/usr/app/dbt/bratrax/bratrax-78c5b6786fc2.json"
     ports:
@@ -107,7 +110,7 @@ services:
       - "9090:9090"
       - "3000:3000"
       - "6006:6006"
-    command: ["sh", "-c", "pnpm install && pnpm -F backend migrate && pnpm run dev"]
+    command: ["sh", "-c", "pnpm install && pnpm -F common build && pnpm -F backend migrate && pnpm run dev"]
     working_dir: /usr/app
     networks:
       - default

@@ -120,6 +120,58 @@ pnpm generate-api        # Generate OpenAPI specs from TSOA controllers
 
 - Never use duck typing, don't have parameters that can have different types, make types intentional
 
+## Spotlight Feature Setup
+
+Spotlight is Lightdash's metrics-focused suite including Metrics Catalog, Metrics Explorer, and Canvas View (alpha).
+
+### Enabling Spotlight:
+
+1. **Define metrics in your dbt project** - Add metrics to your model columns in `.yml` files
+2. **CRITICAL: Add time_intervals to date fields** - Date/timestamp fields used as default time dimensions MUST have time_intervals defined:
+   ```yaml
+   - name: event_date
+     meta:
+       dimension:
+         type: date
+         time_intervals:  # Required for Spotlight!
+           - DAY
+           - WEEK
+           - MONTH
+           - YEAR
+   ```
+3. **Set default time dimensions** on models for Metrics Explorer:
+   ```yaml
+   models:
+     - name: events
+       meta:
+         default_time_dimension:
+           field: event_date  # Must have time_intervals defined
+           interval: DAY
+   ```
+4. **Optional: Create `lightdash.config.yml`** in dbt project root for categories:
+   ```yaml
+   spotlight:
+     default_visibility: show  # or 'hide'
+     categories:
+       revenue:
+         label: Revenue
+         color: orange
+   ```
+5. **Refresh dbt in Lightdash** to sync metrics and populate catalog
+6. **Navigate to** `/projects/{projectUuid}/metrics` or click Metrics in navigation (appears when metrics exist)
+
+### Common Issues:
+- **"Date ()" error in Metrics Explorer**: The date field used in `default_time_dimension` is missing `time_intervals` configuration
+- **Can't compare metrics**: Metrics need a default_time_dimension defined at model or metric level
+- **Canvas relationships not saving**: Works best with <30 metrics, use categories to filter
+
+### Technical Details:
+- Spotlight checks for metrics in `catalog_search` table (`field_type = 'METRIC'`)
+- No feature flag or enterprise license required
+- Metrics link in nav only shows when `hasMetricsInCatalog` returns true
+- Only supports time intervals: DAY, WEEK, MONTH, YEAR
+- Canvas View for metric trees is in alpha, accessed via `/projects/{projectUuid}/metrics/canvas`
+
 ## Development Troubleshooting
 
 - If there are issues running dbt, make sure there is a python3 venv in the root of the repo, which has dbt-core and dbt-postgres installed

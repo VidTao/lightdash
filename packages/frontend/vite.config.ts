@@ -109,6 +109,7 @@ export default defineConfig({
         watch: {
             usePolling: true,
             interval: 1000,
+            ignored: ['!**/node_modules/@lightdash/common/**'],
         },
         hmr: {
             overlay: true,
@@ -118,10 +119,8 @@ export default defineConfig({
         allowedHosts: [
             'lightdash-dev', // for local development with docker
             '.lightdash.dev', // for cloudflared tunnels
+            'host.docker.internal', // for Docker containers on macOS/Windows
         ],
-        watch: {
-            ignored: ['!**/node_modules/@lightdash/common/**'],
-        },
         proxy: {
             '/api': {
                 target: 'http://localhost:8080',
