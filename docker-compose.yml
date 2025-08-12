@@ -164,7 +164,6 @@ services:
 
   minio:
     image: bitnami/minio:latest
-    image: bitnami/minio:latest
     expose:
       - "9000"
       - "9001"
