@@ -44,7 +44,7 @@ import {
 } from './authentication';
 import { BaseController } from './baseController';
 import { UserService } from '../services/UserService';
-
+import { getPlatformCredential } from '../helpers/bratrax-api';
 @Route('/api/v1/user')
 @Response<ApiErrorPayload>('default', 'Error')
 @Tags('My Account')
@@ -546,4 +546,50 @@ export class UserController extends BaseController {
             throw new UnexpectedServerError('Failed to get MCP credentials');
         }
     }
+
+    /**
+     * Get user credentials
+     */
+    @Middlewares([isAuthenticated])
+    @Get('/get-credential')
+    @OperationId('Get user credentials')
+    async getCredentials(
+        @Request() req: express.Request,
+        @Query() platform?: string,
+        @Query() fieldName?: string
+    ): Promise<{
+        status: 'ok';
+        results: any;
+    }> {
+        if (!req.user) {
+            throw new UnexpectedServerError('User not authenticated');
+        }
+
+        if (!platform) {
+            throw new ParameterError('platform query parameter is required');
+        }
+
+        if (!fieldName) {
+            throw new ParameterError('fieldName query parameter is required');
+        }
+
+        try {
+            const credentialData = await getPlatformCredential(
+                req.user.userUuid,
+                platform,
+                fieldName
+            );
+
+            this.setStatus(200);
+            return {
+                status: 'ok',
+                results: credentialData,
+            };
+        } catch (error) {
+            console.error('Error getting platform credential:', error);
+            throw new UnexpectedServerError('Failed to retrieve platform credential');
+        }
+    }
+
+    
 }

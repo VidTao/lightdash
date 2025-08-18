@@ -43,6 +43,8 @@ import VerifyEmailPage from './pages/VerifyEmail';
 import ViewSqlChart from './pages/ViewSqlChart';
 import { TrackPage } from './providers/Tracking/TrackingProvider';
 import { PageName } from './types/Events';
+import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
+import TermsOfService from './bratrax-implementation/pages/TermsOfService';
 
 const DashboardPageWrapper: FC = () => {
     const { dashboardUuid } = useParams<{ dashboardUuid: string }>();
@@ -122,6 +124,14 @@ const PUBLIC_ROUTES: RouteObject[] = [
                 <JoinOrganization />
             </TrackPage>
         ),
+    },
+    {
+        path: '/privacy-policy',
+        element: <PrivacyPolicy />,
+    },
+    {
+        path: '/terms-of-service',
+        element: <TermsOfService />,
     },
 ];
 
