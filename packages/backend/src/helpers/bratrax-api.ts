@@ -11,18 +11,12 @@ const BRATRAX_API_URL =
  * @param {string} fieldName - The field name to retrieve
  * @returns {Promise<Object>} Response containing fieldName and fieldValue
  */
-export const getPlatformCredential = async (
+export const getPlatformCredentials = async (
     userId: string,
-    platform: string,
-    fieldName: string,
 ) => {
     try {
-        const response = await axios.post(
-            `${BRATRAX_API_URL}/connectors/platform-credential`,
-            {
-                field_name: fieldName,
-                platform: platform,
-            },
+        const response = await axios.get(
+            `${BRATRAX_API_URL}/connectors/platform-credentials`,
             {
                 headers: {
                     'user-id': userId,

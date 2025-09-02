@@ -19918,7 +19918,7 @@
 						}
 					}
 				},
-				"description": "Validate content inside a project. This will start a validation job and return the job id.\r\n\r\nValidation jobs scan all charts and dashboards inside a project to find any broken references\r\nto metrics or dimensions that aren't available. Results are available after the job is completed.",
+				"description": "Validate content inside a project. This will start a validation job and return the job id.\n\nValidation jobs scan all charts and dashboards inside a project to find any broken references\nto metrics or dimensions that aren't available. Results are available after the job is completed.",
 				"tags": [
 					"Projects"
 				],
@@ -20172,7 +20172,7 @@
 						}
 					}
 				},
-				"description": "Create a new one-time passcode for the current user's primary email.\r\nThe user will receive an email with the passcode.",
+				"description": "Create a new one-time passcode for the current user's primary email.\nThe user will receive an email with the passcode.",
 				"tags": [
 					"My Account"
 				],
@@ -20248,7 +20248,7 @@
 						}
 					}
 				},
-				"description": "List the organizations that the current user can join.\r\nThis is based on the user's primary email domain and the organization's allowed email domains.",
+				"description": "List the organizations that the current user can join.\nThis is based on the user's primary email domain and the organization's allowed email domains.",
 				"tags": [
 					"My Account"
 				],
@@ -20281,7 +20281,7 @@
 						}
 					}
 				},
-				"description": "Add the current user to an organization that accepts users with a verified email domain.\r\nThis will fail if the organization email domain does not match the user's primary email domain.",
+				"description": "Add the current user to an organization that accepts users with a verified email domain.\nThis will fail if the organization email domain does not match the user's primary email domain.",
 				"tags": [
 					"My Account"
 				],
@@ -20942,7 +20942,7 @@
 				"parameters": []
 			}
 		},
-		"/api/v1/user/get-credential": {
+		"/api/v1/user/get-credentials": {
 			"get": {
 				"operationId": "Get user credentials",
 				"responses": {
@@ -20986,24 +20986,7 @@
 					"My Account"
 				],
 				"security": [],
-				"parameters": [
-					{
-						"in": "query",
-						"name": "platform",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"in": "query",
-						"name": "fieldName",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					}
-				]
+				"parameters": []
 			}
 		},
 		"/api/v1/org/attributes": {
@@ -23549,7 +23532,7 @@
 						}
 					}
 				},
-				"description": "Get a generic job status\r\nThis method can be used when polling from the frontend",
+				"description": "Get a generic job status\nThis method can be used when polling from the frontend",
 				"tags": [
 					"Schedulers"
 				],
@@ -24647,7 +24630,7 @@
 						}
 					}
 				},
-				"description": "Get access list for a project. This is a list of users that have been explictly granted access to the project.\r\nThere may be other users that have access to the project via their organization membership.",
+				"description": "Get access list for a project. This is a list of users that have been explictly granted access to the project.\nThere may be other users that have access to the project via their organization membership.",
 				"tags": [
 					"Roles & Permissions",
 					"Projects"
@@ -24741,7 +24724,7 @@
 						}
 					}
 				},
-				"description": "Get a project explicit member's access.\r\nThere may be users that have access to the project via their organization membership.\r\n\r\nNOTE:\r\nWe don't use the API on the frontend. Instead, we can call the API\r\nso that we make sure of the user's access to the project.",
+				"description": "Get a project explicit member's access.\nThere may be users that have access to the project via their organization membership.\n\nNOTE:\nWe don't use the API on the frontend. Instead, we can call the API\nso that we make sure of the user's access to the project.",
 				"tags": [
 					"Roles & Permissions",
 					"Projects"
@@ -25324,7 +25307,7 @@
 						}
 					}
 				},
-				"description": "Update project metadata like upstreamProjectUuid\r\nwe don't trigger a compile, so not for updating warehouse or credentials",
+				"description": "Update project metadata like upstreamProjectUuid\nwe don't trigger a compile, so not for updating warehouse or credentials",
 				"tags": [
 					"Projects"
 				],
@@ -26487,7 +26470,7 @@
 						}
 					}
 				},
-				"description": "Creates a new organization, the current user becomes the Admin of the new organization.\r\nThis is only available to users that are not already in an organization.",
+				"description": "Creates a new organization, the current user becomes the Admin of the new organization.\nThis is only available to users that are not already in an organization.",
 				"tags": [
 					"Organizations"
 				],
@@ -28163,6 +28146,161 @@
 				}
 			}
 		},
+		"/api/v1/github/install": {
+			"get": {
+				"operationId": "installGithubAppForOrganization",
+				"responses": {
+					"302": {
+						"description": "Not found"
+					}
+				},
+				"description": "Install the Lightdash GitHub App and link to an organization",
+				"security": [],
+				"parameters": []
+			}
+		},
+		"/api/v1/github/config": {
+			"get": {
+				"operationId": "configurationGithubAppForOrganization",
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"properties": {
+										"results": {
+											"$ref": "#/components/schemas/GitIntegrationConfiguration"
+										},
+										"status": {
+											"type": "string",
+											"enum": [
+												"ok"
+											],
+											"nullable": false
+										}
+									},
+									"required": [
+										"results",
+										"status"
+									],
+									"type": "object"
+								}
+							}
+						}
+					}
+				},
+				"security": [],
+				"parameters": []
+			}
+		},
+		"/api/v1/github/oauth/callback": {
+			"get": {
+				"operationId": "githubOauthCallback",
+				"responses": {
+					"204": {
+						"description": "No content"
+					}
+				},
+				"description": "Callback URL for GitHub App Authorization also used for GitHub App Installation with combined Authorization",
+				"security": [],
+				"parameters": [
+					{
+						"description": "authorization code from GitHub",
+						"in": "query",
+						"name": "code",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"description": "oauth state parameter",
+						"in": "query",
+						"name": "state",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"description": "installation id from GitHub",
+						"in": "query",
+						"name": "installation_id",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"description": "setup action from GitHub",
+						"in": "query",
+						"name": "setup_action",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/api/v1/github/uninstall": {
+			"delete": {
+				"operationId": "uninstallGithubAppForOrganization",
+				"responses": {
+					"200": {
+						"description": "Ok",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiSuccessEmpty"
+								}
+							}
+						}
+					}
+				},
+				"security": [],
+				"parameters": []
+			}
+		},
+		"/api/v1/github/repos/list": {
+			"get": {
+				"operationId": "getGithubListRepositories",
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"properties": {
+										"results": {
+											"items": {
+												"$ref": "#/components/schemas/GitRepo"
+											},
+											"type": "array"
+										},
+										"status": {
+											"type": "string",
+											"enum": [
+												"ok"
+											],
+											"nullable": false
+										}
+									},
+									"required": [
+										"results",
+										"status"
+									],
+									"type": "object"
+								}
+							}
+						}
+					}
+				},
+				"security": [],
+				"parameters": []
+			}
+		},
 		"/api/v1/projects/{projectUuid}/git-integration/pull-requests/custom-metrics": {
 			"post": {
 				"operationId": "CreatePullRequestForCustomMetrics",
@@ -28331,161 +28469,6 @@
 						}
 					}
 				}
-			}
-		},
-		"/api/v1/github/install": {
-			"get": {
-				"operationId": "installGithubAppForOrganization",
-				"responses": {
-					"302": {
-						"description": "Not found"
-					}
-				},
-				"description": "Install the Lightdash GitHub App and link to an organization",
-				"security": [],
-				"parameters": []
-			}
-		},
-		"/api/v1/github/config": {
-			"get": {
-				"operationId": "configurationGithubAppForOrganization",
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"properties": {
-										"results": {
-											"$ref": "#/components/schemas/GitIntegrationConfiguration"
-										},
-										"status": {
-											"type": "string",
-											"enum": [
-												"ok"
-											],
-											"nullable": false
-										}
-									},
-									"required": [
-										"results",
-										"status"
-									],
-									"type": "object"
-								}
-							}
-						}
-					}
-				},
-				"security": [],
-				"parameters": []
-			}
-		},
-		"/api/v1/github/oauth/callback": {
-			"get": {
-				"operationId": "githubOauthCallback",
-				"responses": {
-					"204": {
-						"description": "No content"
-					}
-				},
-				"description": "Callback URL for GitHub App Authorization also used for GitHub App Installation with combined Authorization",
-				"security": [],
-				"parameters": [
-					{
-						"description": "authorization code from GitHub",
-						"in": "query",
-						"name": "code",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"description": "oauth state parameter",
-						"in": "query",
-						"name": "state",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"description": "installation id from GitHub",
-						"in": "query",
-						"name": "installation_id",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"description": "setup action from GitHub",
-						"in": "query",
-						"name": "setup_action",
-						"required": false,
-						"schema": {
-							"type": "string"
-						}
-					}
-				]
-			}
-		},
-		"/api/v1/github/uninstall": {
-			"delete": {
-				"operationId": "uninstallGithubAppForOrganization",
-				"responses": {
-					"200": {
-						"description": "Ok",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ApiSuccessEmpty"
-								}
-							}
-						}
-					}
-				},
-				"security": [],
-				"parameters": []
-			}
-		},
-		"/api/v1/github/repos/list": {
-			"get": {
-				"operationId": "getGithubListRepositories",
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"properties": {
-										"results": {
-											"items": {
-												"$ref": "#/components/schemas/GitRepo"
-											},
-											"type": "array"
-										},
-										"status": {
-											"type": "string",
-											"enum": [
-												"ok"
-											],
-											"nullable": false
-										}
-									},
-									"required": [
-										"results",
-										"status"
-									],
-									"type": "object"
-								}
-							}
-						}
-					}
-				},
-				"security": [],
-				"parameters": []
 			}
 		},
 		"/api/v1/projects/{projectUuid}/explores": {

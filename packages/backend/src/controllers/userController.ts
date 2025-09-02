@@ -44,7 +44,7 @@ import {
 } from './authentication';
 import { BaseController } from './baseController';
 import { UserService } from '../services/UserService';
-import { getPlatformCredential } from '../helpers/bratrax-api';
+import { getPlatformCredentials } from '../helpers/bratrax-api';
 @Route('/api/v1/user')
 @Response<ApiErrorPayload>('default', 'Error')
 @Tags('My Account')
@@ -551,12 +551,10 @@ export class UserController extends BaseController {
      * Get user credentials
      */
     @Middlewares([isAuthenticated])
-    @Get('/get-credential')
+    @Get('/get-credentials')
     @OperationId('Get user credentials')
     async getCredentials(
         @Request() req: express.Request,
-        @Query() platform?: string,
-        @Query() fieldName?: string
     ): Promise<{
         status: 'ok';
         results: any;
@@ -565,19 +563,9 @@ export class UserController extends BaseController {
             throw new UnexpectedServerError('User not authenticated');
         }
 
-        if (!platform) {
-            throw new ParameterError('platform query parameter is required');
-        }
-
-        if (!fieldName) {
-            throw new ParameterError('fieldName query parameter is required');
-        }
-
         try {
-            const credentialData = await getPlatformCredential(
+            const credentialData = await getPlatformCredentials(
                 req.user.userUuid,
-                platform,
-                fieldName
             );
 
             this.setStatus(200);
