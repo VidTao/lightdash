@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import PageSpinner from '../../components/PageSpinner';
 import { useActiveProjectUuid } from '../../hooks/useActiveProject';
@@ -15,9 +15,17 @@ const ShopifySuccessCallback = () => {
     const { isLoading: isActiveProjectLoading, activeProjectUuid } =
         useActiveProjectUuid();
 
+    // Use ref to track if callback has already been processed
+    const hasProcessedCallback = useRef(false);
+
     useEffect(() => {
         const handleCallback = async () => {
             try {
+                // Prevent double execution
+                if (hasProcessedCallback.current) {
+                    return;
+                }
+
                 if (code.length === 0 || shop.length === 0) {
                     // If incomplete data, navigate to projects
                     if (activeProjectUuid) {
@@ -39,6 +47,9 @@ const ShopifySuccessCallback = () => {
                         // Wait for project data to load
                         return;
                     }
+
+                    // Mark as processing to prevent double execution
+                    hasProcessedCallback.current = true;
 
                     await apiService.generateShopifyTokensDataAndSaveinBQ(
                         code,
@@ -65,20 +76,13 @@ const ShopifySuccessCallback = () => {
                 }
             } catch (err) {
                 console.error('Error in Shopify Success callback:', err);
+                // Reset the flag on error so user can retry
+                hasProcessedCallback.current = false;
             }
         };
 
         handleCallback();
-    }, [
-        code,
-        shop,
-        user.isLoading,
-        user.data,
-        isActiveProjectLoading,
-        activeProjectUuid,
-        navigate,
-        refetchUser,
-    ]);
+    }, [code, shop, user.isLoading, user.data]);
 
     return <PageSpinner />;
 };

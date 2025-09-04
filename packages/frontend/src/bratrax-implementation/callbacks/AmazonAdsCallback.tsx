@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import PageSpinner from '../../components/PageSpinner';
 import { useActiveProjectUuid } from '../../hooks/useActiveProject';
@@ -16,9 +16,17 @@ const AmazonAdsCallback = () => {
     const { isLoading: isActiveProjectLoading, activeProjectUuid } =
         useActiveProjectUuid();
 
+    // Use ref to track if callback has already been processed
+    const hasProcessedCallback = useRef(false);
+
     useEffect(() => {
         const handleCallback = async () => {
             try {
+                // Prevent double execution
+                if (hasProcessedCallback.current) {
+                    return;
+                }
+
                 if (!code) {
                     throw new Error('No authorization code received');
                 }
@@ -27,6 +35,14 @@ const AmazonAdsCallback = () => {
                     // If user data is still loading or not available, wait
                     return;
                 }
+
+                if (isActiveProjectLoading) {
+                    // Wait for project data to load
+                    return;
+                }
+
+                // Mark as processing to prevent double execution
+                hasProcessedCallback.current = true;
 
                 const region = sessionStorage.getItem('amazonConfig') ?? '';
                 // Exchange the code for tokens and save the data
@@ -52,19 +68,13 @@ const AmazonAdsCallback = () => {
                     err instanceof Error ? err.message : 'An error occurred',
                 );
                 console.error('Error in Amazon callback:', err);
+                // Reset the flag on error so user can retry
+                hasProcessedCallback.current = false;
             }
         };
 
         handleCallback();
-    }, [
-        navigate,
-        user.isLoading,
-        user.data,
-        code,
-        state,
-        refetchUser,
-        activeProjectUuid,
-    ]);
+    }, [code, state, user.isLoading, user.data]);
 
     if (error) {
         // You might want to show an error state here instead of just the spinner

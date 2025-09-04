@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import PageSpinner from '../../components/PageSpinner';
 import { useActiveProjectUuid } from '../../hooks/useActiveProject';
@@ -15,9 +15,17 @@ const ClickFunnel2Callback = () => {
     const { isLoading: isActiveProjectLoading, activeProjectUuid } =
         useActiveProjectUuid();
 
+    // Use ref to track if callback has already been processed
+    const hasProcessedCallback = useRef(false);
+
     useEffect(() => {
         const handleCallback = async () => {
             try {
+                // Prevent double execution
+                if (hasProcessedCallback.current) {
+                    return;
+                }
+
                 if (code.length === 0) {
                     // If no code, navigate to projects
                     if (activeProjectUuid) {
@@ -28,10 +36,18 @@ const ClickFunnel2Callback = () => {
                     return;
                 }
 
-                if (user.isLoading || !user.data || isActiveProjectLoading) {
-                    // If user data or project data is still loading, wait
+                if (user.isLoading || !user.data) {
+                    // If user data is still loading or not available, wait
                     return;
                 }
+
+                if (isActiveProjectLoading) {
+                    // Wait for project data to load
+                    return;
+                }
+
+                // Mark as processing to prevent double execution
+                hasProcessedCallback.current = true;
 
                 await apiService.generateClickFunnel2TokensDataAndSaveinBQ(
                     code,
@@ -49,19 +65,13 @@ const ClickFunnel2Callback = () => {
                 }
             } catch (err) {
                 console.error('Error in ClickFunnel2 callback:', err);
+                // Reset the flag on error so user can retry
+                hasProcessedCallback.current = false;
             }
         };
 
         handleCallback();
-    }, [
-        code,
-        navigate,
-        user.isLoading,
-        user.data,
-        isActiveProjectLoading,
-        activeProjectUuid,
-        refetchUser,
-    ]);
+    }, [code, user.isLoading, user.data]);
 
     return <PageSpinner />;
 };

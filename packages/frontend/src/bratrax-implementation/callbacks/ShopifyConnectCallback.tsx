@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import PageSpinner from '../../components/PageSpinner';
 import { useActiveProjectUuid } from '../../hooks/useActiveProject';
 import useApp from '../../providers/App/useApp';
@@ -11,18 +11,30 @@ const ShopifyConnectCallback = () => {
     const { isLoading: isActiveProjectLoading, activeProjectUuid } =
         useActiveProjectUuid();
 
+    // Use ref to track if callback has already been processed
+    const hasProcessedCallback = useRef(false);
+
     useEffect(() => {
         const handleCallback = async () => {
             try {
+                // Prevent double execution
+                if (hasProcessedCallback.current) {
+                    return;
+                }
+
                 if (shop.length !== 0 && hmac.length !== 0) {
-                    if (
-                        user.isLoading ||
-                        !user.data ||
-                        isActiveProjectLoading
-                    ) {
-                        // If user data or project data is still loading, wait
+                    if (user.isLoading || !user.data) {
+                        // If user data is still loading, wait
                         return;
                     }
+
+                    if (isActiveProjectLoading) {
+                        // Wait for project data to load
+                        return;
+                    }
+
+                    // Mark as processing to prevent double execution
+                    hasProcessedCallback.current = true;
 
                     const shopAuthUrl = await apiService.getShopifyShopAuthUrl(
                         shop,
@@ -31,18 +43,13 @@ const ShopifyConnectCallback = () => {
                 }
             } catch (err) {
                 console.error('Error in Shopify Connect callback:', err);
+                // Reset the flag on error so user can retry
+                hasProcessedCallback.current = false;
             }
         };
 
         handleCallback();
-    }, [
-        shop,
-        hmac,
-        user.isLoading,
-        user.data,
-        isActiveProjectLoading,
-        activeProjectUuid,
-    ]);
+    }, [shop, hmac, user.isLoading, user.data]);
 
     return <PageSpinner />;
 };
