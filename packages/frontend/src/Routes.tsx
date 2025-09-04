@@ -1,7 +1,18 @@
 import { Stack } from '@mantine/core';
 import { type FC } from 'react';
 import { Navigate, Outlet, useParams, type RouteObject } from 'react-router';
+import AmazonAdsCallback from './bratrax-implementation/callbacks/AmazonAdsCallback';
+import AmazonSpCallback from './bratrax-implementation/callbacks/AmazonSPCallback';
+import ClickFunnel2Callback from './bratrax-implementation/callbacks/ClickFunnel2Callback';
+import GoHighLevelCallback from './bratrax-implementation/callbacks/GoHighLevelCallback';
+import KlaviyoCallback from './bratrax-implementation/callbacks/KlaviyoCallback';
+import PinterestCallback from './bratrax-implementation/callbacks/PinterestCallback';
+import ShopifyConnectCallback from './bratrax-implementation/callbacks/ShopifyConnectCallback';
+import ShopifySuccessCallback from './bratrax-implementation/callbacks/ShopifySuccessCallback';
+import StripeCallback from './bratrax-implementation/callbacks/StripeCallback';
+import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
 import StoreSettings from './bratrax-implementation/pages/Settings';
+import TermsOfService from './bratrax-implementation/pages/TermsOfService';
 import TrackingPlan from './bratrax-implementation/tracking-plan/TrackingPlan';
 import AppRoute from './components/AppRoute';
 import ForbiddenPanel from './components/ForbiddenPanel';
@@ -43,8 +54,6 @@ import VerifyEmailPage from './pages/VerifyEmail';
 import ViewSqlChart from './pages/ViewSqlChart';
 import { TrackPage } from './providers/Tracking/TrackingProvider';
 import { PageName } from './types/Events';
-import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
-import TermsOfService from './bratrax-implementation/pages/TermsOfService';
 
 const DashboardPageWrapper: FC = () => {
     const { dashboardUuid } = useParams<{ dashboardUuid: string }>();
@@ -342,6 +351,45 @@ const METRICS_ROUTES: RouteObject[] = [
     },
 ];
 
+const CALLBACK_ROUTES: RouteObject[] = [
+    {
+        path: '/projects/amazon-ads/callback',
+        element: <AmazonAdsCallback />,
+    },
+    {
+        path: '/projects/amazon/callback',
+        element: <AmazonSpCallback />,
+    },
+    {
+        path: '/projects/clickfunnels2/callback',
+        element: <ClickFunnel2Callback />,
+    },
+    {
+        path: '/projects/gh/callback',
+        element: <GoHighLevelCallback />,
+    },
+    {
+        path: '/projects/klaviyo/callback',
+        element: <KlaviyoCallback />,
+    },
+    {
+        path: '/projects/pinterest/callback',
+        element: <PinterestCallback />,
+    },
+    {
+        path: '/projects/connect-shopify/callback',
+        element: <ShopifyConnectCallback />,
+    },
+    {
+        path: '/projects/shpfy/callback',
+        element: <ShopifySuccessCallback />,
+    },
+    {
+        path: '/projects/stripe/callback',
+        element: <StripeCallback />,
+    },
+];
+
 const APP_ROUTES: RouteObject[] = [
     {
         path: '/projects',
@@ -355,6 +403,8 @@ const APP_ROUTES: RouteObject[] = [
                 path: '/projects',
                 element: <Projects />,
             },
+            // Add callback routes here
+            ...CALLBACK_ROUTES,
             {
                 path: '/projects/:projectUuid',
                 element: (
