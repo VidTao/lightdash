@@ -103,7 +103,7 @@ const ShopifySuccessCallback = () => {
         };
 
         handleCallback();
-    }, [code, shop, user.isLoading, user.data]);
+    }, [code, shop, user.isLoading, user.data, isActiveProjectLoading]);
 
     return <PageSpinner />;
 };

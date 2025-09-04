@@ -69,7 +69,7 @@ const StripeCallback = () => {
         };
 
         handleCallback();
-    }, [code, user.isLoading, user.data]);
+    }, [code, user.isLoading, user.data, isActiveProjectLoading]);
 
     return <PageSpinner />;
 };

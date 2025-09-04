@@ -49,7 +49,7 @@ const ShopifyConnectCallback = () => {
         };
 
         handleCallback();
-    }, [shop, hmac, user.isLoading, user.data]);
+    }, [shop, hmac, user.isLoading, user.data, isActiveProjectLoading]);
 
     return <PageSpinner />;
 };

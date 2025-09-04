@@ -74,7 +74,7 @@ const AmazonAdsCallback = () => {
         };
 
         handleCallback();
-    }, [code, state, user.isLoading, user.data]);
+    }, [code, state, user.isLoading, user.data, isActiveProjectLoading]);
 
     if (error) {
         // You might want to show an error state here instead of just the spinner

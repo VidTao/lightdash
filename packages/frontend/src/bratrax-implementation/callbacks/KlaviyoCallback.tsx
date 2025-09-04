@@ -72,7 +72,7 @@ const KlaviyoCallback = () => {
         };
 
         handleCallback();
-    }, [code, state, user.isLoading, user.data]);
+    }, [code, state, user.isLoading, user.data, isActiveProjectLoading]);
 
     return <PageSpinner />;
 };
