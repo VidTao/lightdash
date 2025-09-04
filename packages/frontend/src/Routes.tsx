@@ -353,39 +353,39 @@ const METRICS_ROUTES: RouteObject[] = [
 
 const CALLBACK_ROUTES: RouteObject[] = [
     {
-        path: '/projects/amazon-ads/callback',
+        path: '/amazon-ads/callback',
         element: <AmazonAdsCallback />,
     },
     {
-        path: '/projects/amazon/callback',
+        path: '/amazon/callback',
         element: <AmazonSpCallback />,
     },
     {
-        path: '/projects/clickfunnels2/callback',
+        path: '/clickfunnels2/callback',
         element: <ClickFunnel2Callback />,
     },
     {
-        path: '/projects/gh/callback',
+        path: '/gh/callback',
         element: <GoHighLevelCallback />,
     },
     {
-        path: '/projects/klaviyo/callback',
+        path: '/klaviyo/callback',
         element: <KlaviyoCallback />,
     },
     {
-        path: '/projects/pinterest/callback',
+        path: '/pinterest/callback',
         element: <PinterestCallback />,
     },
     {
-        path: '/projects/connect-shopify/callback',
+        path: '/connect-shopify/callback',
         element: <ShopifyConnectCallback />,
     },
     {
-        path: '/projects/shpfy/callback',
+        path: '/shpfy/callback',
         element: <ShopifySuccessCallback />,
     },
     {
-        path: '/projects/stripe/callback',
+        path: '/stripe/callback',
         element: <StripeCallback />,
     },
 ];
@@ -403,8 +403,7 @@ const APP_ROUTES: RouteObject[] = [
                 path: '/projects',
                 element: <Projects />,
             },
-            // Add callback routes here
-            ...CALLBACK_ROUTES,
+            // Remove callback routes from here
             {
                 path: '/projects/:projectUuid',
                 element: (
@@ -482,6 +481,7 @@ const PRIVATE_ROUTES: RouteObject[] = [
         children: [
             ...MINIMAL_ROUTES,
             ...APP_ROUTES,
+            ...CALLBACK_ROUTES, // Add callback routes here at root level
             {
                 path: '/',
                 element: <Navigate to="/projects" replace />,
