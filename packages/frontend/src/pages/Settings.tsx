@@ -2,6 +2,7 @@ import { subject } from '@casl/ability';
 import { CommercialFeatureFlags, FeatureFlags } from '@lightdash/common';
 import { Box, ScrollArea, Stack, Text, Title } from '@mantine/core';
 import {
+    IconBrain,
     IconBrowser,
     IconBuildingSkyscraper,
     IconCalendarStats,
@@ -9,6 +10,7 @@ import {
     IconDatabase,
     IconDatabaseCog,
     IconDatabaseExport,
+    IconIdBadge2,
     IconKey,
     IconLock,
     IconPalette,
@@ -20,6 +22,7 @@ import {
     IconUserPlus,
     IconUserShield,
     IconUsers,
+    IconVariable,
 } from '@tabler/icons-react';
 import { useMemo, type FC } from 'react';
 import { Navigate, useRoutes, type RouteObject } from 'react-router';
@@ -47,6 +50,9 @@ import RouterNavLink from '../components/common/RouterNavLink';
 import { SettingsGridCard } from '../components/common/Settings/SettingsCard';
 import ScimAccessTokensPanel from '../ee/features/scim/components/ScimAccessTokensPanel';
 import { ServiceAccountsPage } from '../ee/features/serviceAccounts';
+import { CustomRoleCreate } from '../ee/pages/customRoles/CustomRoleCreate';
+import { CustomRoleEdit } from '../ee/pages/customRoles/CustomRoleEdit';
+import { CustomRoles } from '../ee/pages/customRoles/CustomRoles';
 import { useOrganization } from '../hooks/organization/useOrganization';
 import { useActiveProjectUuid } from '../hooks/useActiveProject';
 import {
@@ -54,6 +60,7 @@ import {
     useFeatureFlagEnabled,
 } from '../hooks/useFeatureFlagEnabled';
 import { useProject } from '../hooks/useProject';
+import { Can } from '../providers/Ability';
 import useApp from '../providers/App/useApp';
 import { TrackPage } from '../providers/Tracking/TrackingProvider';
 import useTracking from '../providers/Tracking/useTracking';
@@ -81,9 +88,13 @@ const Settings: FC = () => {
         },
         user: { data: user, isInitialLoading: isUserLoading, error: userError },
     } = useApp();
-    const { data: UserGroupFeatureFlag } = useFeatureFlag(
+
+    const isCustomRolesEnabled = health?.isCustomRolesEnabled;
+
+    const userGroupsFeatureFlagQuery = useFeatureFlag(
         FeatureFlags.UserGroupsEnabled,
     );
+
     const { track } = useTracking();
     const {
         data: organization,
@@ -108,7 +119,15 @@ const Settings: FC = () => {
         health?.auth.azuread.enabled ||
         health?.auth.oidc.enabled;
 
-    const isGroupManagementEnabled = UserGroupFeatureFlag?.enabled;
+    if (userGroupsFeatureFlagQuery.isError) {
+        console.error(userGroupsFeatureFlagQuery.error);
+        throw new Error('Error fetching user groups feature flag');
+    }
+
+    const isGroupManagementEnabled =
+        userGroupsFeatureFlagQuery.isSuccess &&
+        userGroupsFeatureFlagQuery.data.enabled;
+
     // This allows us to enable service accounts in the UI for on-premise installations
     const isServiceAccountsEnabled =
         health?.isServiceAccountEnabled || isServiceAccountFeatureFlagEnabled;
@@ -316,6 +335,24 @@ const Settings: FC = () => {
             });
         }
 
+        if (
+            user?.ability.can('manage', 'Organization') &&
+            isCustomRolesEnabled
+        ) {
+            allowedRoutes.push({
+                path: '/customRoles',
+                element: <CustomRoles />,
+            });
+            allowedRoutes.push({
+                path: '/customRoles/create',
+                element: <CustomRoleCreate />,
+            });
+            allowedRoutes.push({
+                path: '/customRoles/:roleId',
+                element: <CustomRoleEdit />,
+            });
+        }
+
         return allowedRoutes;
     }, [
         isServiceAccountsEnabled,
@@ -326,6 +363,7 @@ const Settings: FC = () => {
         organization,
         project,
         health,
+        isCustomRolesEnabled,
     ]);
     const routeElements = useRoutes(routes);
 
@@ -435,6 +473,20 @@ const Settings: FC = () => {
                                         }
                                     />
                                 )} */}
+                                {isCustomRolesEnabled && (
+                                    <Can I="manage" a="Organization">
+                                        <RouterNavLink
+                                            label="Custom roles"
+                                            to="/generalSettings/customRoles"
+                                            exact
+                                            icon={
+                                                <MantineIcon
+                                                    icon={IconIdBadge2}
+                                                />
+                                            }
+                                        />
+                                    </Can>
+                                )}
 
                                 {user.ability.can(
                                     'update',
@@ -535,6 +587,20 @@ const Settings: FC = () => {
                                             }
                                         />
                                     )}
+                                {user.ability.can(
+                                    'manage',
+                                    subject('AiAgent', {
+                                        organizationUuid:
+                                            organization.organizationUuid,
+                                    }),
+                                ) && (
+                                    <RouterNavLink
+                                        label="AI Agents"
+                                        exact
+                                        to="/ai-agents/admin"
+                                        icon={<MantineIcon icon={IconBrain} />}
+                                    />
+                                )}
                             </Box>
 
                             {organization &&
@@ -574,6 +640,15 @@ const Settings: FC = () => {
                                             />
                                         }
                                     /> */}
+
+                                    <RouterNavLink
+                                        label="Parameters"
+                                        exact
+                                        to={`/generalSettings/projectManagement/${project.projectUuid}/parameters`}
+                                        icon={
+                                            <MantineIcon icon={IconVariable} />
+                                        }
+                                    />
 
                                     <RouterNavLink
                                         label="Project access"

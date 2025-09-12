@@ -1,4 +1,6 @@
 import {
+    FeatureFlags,
+    MAX_SAFE_INTEGER,
     QueryExecutionContext,
     QueryHistoryStatus,
     type ApiExecuteAsyncDashboardChartQueryResults,
@@ -7,6 +9,7 @@ import { useCallback, useMemo } from 'react';
 import { lightdashApi } from '../../api';
 import { pollForResults } from '../../features/queryRunner/executeQuery';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
+import { useFeatureFlag } from '../useFeatureFlagEnabled';
 import useDashboardFiltersForTile from './useDashboardFiltersForTile';
 
 export const useDashboardChartDownload = (
@@ -18,12 +21,17 @@ export const useDashboardChartDownload = (
     // Get dashboard filters and sorts for this tile
     const dashboardFilters = useDashboardFiltersForTile(tileUuid);
     const chartSort = useDashboardContext((c) => c.chartSort);
+    const parameters = useDashboardContext((c) => c.parameterValues);
     const dashboardSorts = useMemo(
         () => chartSort[tileUuid] || [],
         [chartSort, tileUuid],
     );
     const dateZoomGranularity = useDashboardContext(
         (c) => c.dateZoomGranularity,
+    );
+
+    const { data: useSqlPivotResults } = useFeatureFlag(
+        FeatureFlags.UseSqlPivotResults,
     );
 
     const getDownloadQueryUuid = useCallback(
@@ -47,8 +55,10 @@ export const useDashboardChartDownload = (
                         dateZoom: dateZoomGranularity
                             ? { granularity: dateZoomGranularity }
                             : undefined,
-                        limit: limit ?? Number.MAX_SAFE_INTEGER,
+                        limit: limit ?? MAX_SAFE_INTEGER,
                         invalidateCache: false,
+                        parameters,
+                        pivotResults: useSqlPivotResults?.enabled,
                     }),
                 });
 
@@ -75,6 +85,8 @@ export const useDashboardChartDownload = (
             dashboardFilters,
             dashboardSorts,
             dateZoomGranularity,
+            parameters,
+            useSqlPivotResults,
         ],
     );
 

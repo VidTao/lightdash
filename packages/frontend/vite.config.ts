@@ -5,48 +5,64 @@ import monacoEditorPlugin from 'vite-plugin-monaco-editor';
 import svgrPlugin from 'vite-plugin-svgr';
 import { defineConfig } from 'vitest/config';
 
-export default defineConfig({
-    publicDir: 'public',
-    define: {
-        __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
-    },
-    plugins: [
-        svgrPlugin(),
-        reactPlugin(),
-        compression({
-            include: [/\.(js)$/, /\.(css)$/],
-            filename: '[path][base].gzip',
-        }),
-        monacoEditorPlugin({
-            forceBuildCDN: true,
-            languageWorkers: ['json'],
-        }),
-        sentryVitePlugin({
-            org: 'lightdash',
-            project: 'lightdash-frontend',
-            authToken: process.env.SENTRY_AUTH_TOKEN,
-            release: {
-                name: process.env.SENTRY_RELEASE_VERSION,
-                inject: true,
-            },
-            // Sourcemaps are already uploaded by the Sentry CLI
-            sourcemaps: {
-                disable: true,
-            },
-        }),
-    ],
-    css: {
-        transformer: 'lightningcss',
-    },
-    optimizeDeps: {
-        exclude: ['@lightdash/common'],
-    },
-    build: {
-        outDir: 'build',
-        emptyOutDir: false,
-        target: 'es2020',
-        minify: true,
-        sourcemap: true,
+const FE_PORT = process.env.FE_PORT ? parseInt(process.env.FE_PORT) : 3000;
+const BE_PORT = process.env.PORT ? parseInt(process.env.PORT) : 8080;
+
+// @ts-expect-error - Vitest is not typed correctly
+export default defineConfig(async () => {
+    const { default: spotlight } = await import(
+        '@spotlightjs/spotlight/vite-plugin'
+    );
+    const { default: spotlightSidecar } = await import(
+        '@spotlightjs/sidecar/vite-plugin'
+    );
+
+    return {
+        publicDir: 'public',
+        define: {
+            __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
+        },
+        plugins: [
+            svgrPlugin(),
+            reactPlugin(),
+            compression({
+                include: [/\.(js)$/, /\.(css)$/],
+                filename: '[path][base].gzip',
+            }),
+            monacoEditorPlugin({
+                forceBuildCDN: true,
+                languageWorkers: ['json'],
+            }),
+            sentryVitePlugin({
+                org: 'lightdash',
+                project: 'lightdash-frontend',
+                authToken: process.env.SENTRY_AUTH_TOKEN,
+                release: {
+                    name: process.env.SENTRY_RELEASE_VERSION,
+                    inject: true,
+                },
+                // Sourcemaps are already uploaded by the Sentry CLI
+                sourcemaps: {
+                    disable: true,
+                },
+            }),
+            ...(process.env.SENTRY_SPOTLIGHT === '1' &&
+            process.env.NODE_ENV === 'development'
+                ? [spotlight(), spotlightSidecar()]
+                : []),
+        ],
+        css: {
+            transformer: 'lightningcss',
+        },
+        optimizeDeps: {
+            exclude: ['@lightdash/common'],
+        },
+        build: {
+            outDir: 'build',
+            emptyOutDir: false,
+            target: 'es2020',
+            minify: true,
+            sourcemap: true,
 
         rollupOptions: {
             output: {

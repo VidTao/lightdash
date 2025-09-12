@@ -140,6 +140,16 @@ export const lightdashConfigMock: LightdashConfig = {
         enabled: false,
         jobTimeout: 0,
         tasks: ALL_TASK_NAMES,
+        queryHistory: {
+            cleanup: {
+                enabled: true,
+                retentionDays: 30,
+                batchSize: 1000,
+                delayMs: 100,
+                maxBatches: 100,
+                schedule: '0 2 * * *',
+            },
+        },
     },
     secureCookies: false,
     sentry: {
@@ -179,24 +189,29 @@ export const lightdashConfigMock: LightdashConfig = {
         defaultLimit: 500,
         csvCellsLimit: 100000,
         timezone: undefined,
+        useSqlPivotResults: false,
     },
     ai: {
         copilot: {
             enabled: false,
+            debugLoggingEnabled: false,
+            maxQueryLimit: 10000,
             telemetryEnabled: false,
             requiresFeatureFlag: false,
+            askAiButtonEnabled: false,
             defaultProvider: 'openai',
             providers: {
                 openai: {
                     apiKey: 'mock_api_key',
                     modelName: 'mock_model_name',
+                    temperature: 0.2,
                 },
             },
-            embeddingSearchEnabled: false,
         },
     },
     embedding: {
         enabled: false,
+        events: undefined,
     },
     scim: {
         enabled: false,
@@ -232,5 +247,11 @@ export const lightdashConfigMock: LightdashConfig = {
     },
     googleCloudPlatform: {
         projectId: 'test-project-id',
+    },
+    mcp: {
+        enabled: true,
+    },
+    customRoles: {
+        enabled: false,
     },
 };

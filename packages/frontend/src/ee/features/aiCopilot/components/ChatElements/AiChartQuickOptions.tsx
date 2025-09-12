@@ -10,6 +10,7 @@ import {
     IconDots,
     IconExternalLink,
     IconTableShortcut,
+    IconTerminal2,
 } from '@tabler/icons-react';
 import { Fragment, useMemo } from 'react';
 import { Link, useParams } from 'react-router';
@@ -20,7 +21,7 @@ import { useVisualizationContext } from '../../../../../components/LightdashVisu
 import useApp from '../../../../../providers/App/useApp';
 import useTracking from '../../../../../providers/Tracking/useTracking';
 import { EventName } from '../../../../../types/Events';
-import { useSavePromptQuery } from '../../hooks/useOrganizationAiAgents';
+import { useSavePromptQuery } from '../../hooks/useProjectAiAgents';
 import { getOpenInExploreUrl } from '../../utils/getOpenInExploreUrl';
 
 type Props = {
@@ -30,12 +31,14 @@ type Props = {
         description: string | null;
     };
     message: AiAgentMessageAssistant;
+    compiledSql?: string;
 };
 
 export const AiChartQuickOptions = ({
     projectUuid,
     saveChartOptions = { name: '', description: '' },
     message,
+    compiledSql,
 }: Props) => {
     const { track } = useTracking();
     const { user } = useApp();
@@ -50,6 +53,7 @@ export const AiChartQuickOptions = ({
         pivotDimensions,
     } = useVisualizationContext();
     const { mutate: savePromptQuery } = useSavePromptQuery(
+        projectUuid,
         agentUuid!,
         message.threadUuid,
         message.uuid,
@@ -168,6 +172,19 @@ export const AiChartQuickOptions = ({
                     >
                         Explore from here
                     </Menu.Item>
+
+                    {!!compiledSql ? (
+                        <Menu.Item
+                            component={Link}
+                            to={{
+                                pathname: `/projects/${projectUuid}/sql-runner`,
+                            }}
+                            state={{ sql: compiledSql }}
+                            leftSection={<MantineIcon icon={IconTerminal2} />}
+                        >
+                            Open in SQL Runner
+                        </Menu.Item>
+                    ) : null}
                 </Menu.Dropdown>
             </Menu>
             <MantineModal

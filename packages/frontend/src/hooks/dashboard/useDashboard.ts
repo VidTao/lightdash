@@ -74,16 +74,12 @@ const postDashboardsAvailableFilters = async (
     });
 
 const postEmbedDashboardsAvailableFilters = async (
-    embedToken: string,
     projectUuid: string,
     savedChartUuidsAndTileUuids: SavedChartsInfoForDashboardAvailableFilters,
 ) =>
     lightdashApi<DashboardAvailableFilters>({
         url: `/embed/${projectUuid}/dashboard/availableFilters`,
         method: 'POST',
-        headers: {
-            'Lightdash-Embed-Token': embedToken!,
-        },
         body: JSON.stringify(savedChartUuidsAndTileUuids),
     });
 
@@ -91,7 +87,7 @@ const exportDashboard = async (
     id: string,
     gridWidth: number | undefined,
     queryFilters: string,
-    selectedTabs?: string[],
+    selectedTabs: string[] | null,
 ) =>
     lightdashApi<string>({
         url: `/dashboards/${id}/export`,
@@ -109,7 +105,6 @@ export const useDashboardsAvailableFilters = (
         () =>
             embedToken && projectUuid
                 ? postEmbedDashboardsAvailableFilters(
-                      embedToken,
                       projectUuid,
                       savedChartUuidsAndTileUuids,
                   )
@@ -134,6 +129,53 @@ export const useDashboardQuery = (
     });
 };
 
+/**
+ * Checks if the dashboard version is up to date and returns the latest dashboard if it is not
+ * Helpful for refreshing the dashboard when the user wants to make changes to the dashboard
+ * This is to avoid one user or multiple users overwriting each other's changes
+ * @param dashboardUuid The dashboard uuid
+ * @returns The latest dashboard or null if the dashboard is up to date
+ */
+export const useDashboardVersionRefresh = (dashboardUuid: string) => {
+    const queryClient = useQueryClient();
+
+    return useMutation<Dashboard | null, ApiError, Dashboard | undefined>({
+        mutationKey: ['dashboard_version_refresh', dashboardUuid],
+        mutationFn: async (currentDashboard) => {
+            try {
+                if (!currentDashboard) {
+                    throw new Error('Current dashboard is undefined');
+                }
+
+                const latestDashboard = await getDashboard(dashboardUuid);
+
+                const currentTime = new Date(
+                    currentDashboard.updatedAt,
+                ).getTime();
+                const latestTime = new Date(
+                    latestDashboard.updatedAt,
+                ).getTime();
+
+                const isUpToDate = latestTime <= currentTime;
+
+                if (isUpToDate) {
+                    return null;
+                }
+
+                queryClient.setQueryData(
+                    ['saved_dashboard_query', dashboardUuid],
+                    latestDashboard,
+                );
+
+                return latestDashboard;
+            } catch (error) {
+                console.warn('Failed to check dashboard timestamp:', error);
+                return null;
+            }
+        },
+    });
+};
+
 export const useExportDashboard = () => {
     const { showToastSuccess, showToastApiError, showToastInfo } = useToaster();
     return useMutation<
@@ -144,7 +186,7 @@ export const useExportDashboard = () => {
             gridWidth: number | undefined;
             queryFilters: string;
             isPreview?: boolean;
-            selectedTabs?: string[];
+            selectedTabs: string[] | null;
         }
     >(
         (data) =>
@@ -343,9 +385,21 @@ export const useUpdateDashboard = (
     );
 };
 
+// Minimal patch hook to update a dashboard by id (no toasts/redirects)
+export const useUpdateMutation = () => {
+    return useMutation<
+        Dashboard,
+        ApiError,
+        { id: string; data: UpdateDashboard }
+    >(({ id, data }) => updateDashboard(id, data), {
+        mutationKey: ['dashboard_update_once'],
+    });
+};
+
 export const useCreateMutation = (
     projectUuid: string | undefined,
     showRedirectButton: boolean = false,
+    { showToastOnSuccess = true }: { showToastOnSuccess?: boolean } = {},
 ) => {
     const navigate = useNavigate();
     const { showToastSuccess, showToastApiError } = useToaster();
@@ -364,19 +418,22 @@ export const useCreateMutation = (
                     'most-popular-and-recently-updated',
                 ]);
                 await queryClient.invalidateQueries(['content']);
-                showToastSuccess({
-                    title: `Success! Dashboard was created.`,
-                    action: showRedirectButton
-                        ? {
-                              children: 'Open dashboard',
-                              icon: IconArrowRight,
-                              onClick: () =>
-                                  navigate(
-                                      `/projects/${projectUuid}/dashboards/${result.uuid}`,
-                                  ),
-                          }
-                        : undefined,
-                });
+
+                if (showToastOnSuccess) {
+                    showToastSuccess({
+                        title: `Success! Dashboard was created.`,
+                        action: showRedirectButton
+                            ? {
+                                  children: 'Open dashboard',
+                                  icon: IconArrowRight,
+                                  onClick: () =>
+                                      navigate(
+                                          `/projects/${projectUuid}/dashboards/${result.uuid}`,
+                                      ),
+                              }
+                            : undefined,
+                    });
+                }
             },
             onError: ({ error }) => {
                 showToastApiError({

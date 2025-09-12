@@ -3,31 +3,46 @@ import { useOutletContext, useParams } from 'react-router';
 import useApp from '../../../providers/App/useApp';
 import { AgentChatDisplay } from '../../features/aiCopilot/components/ChatElements/AgentChatDisplay';
 import { AgentChatInput } from '../../features/aiCopilot/components/ChatElements/AgentChatInput';
+import { useAiAgentThreadArtifact } from '../../features/aiCopilot/hooks/useAiAgentThreadArtifact';
 import {
-    useAiAgent,
+    useProjectAiAgent as useAiAgent,
     useAiAgentThread,
     useCreateAgentThreadMessageMutation,
-} from '../../features/aiCopilot/hooks/useOrganizationAiAgents';
+} from '../../features/aiCopilot/hooks/useProjectAiAgents';
 import { useAiAgentThreadStreaming } from '../../features/aiCopilot/streaming/useAiAgentThreadStreamQuery';
 import { type AgentContext } from './AgentPage';
 
-const AiAgentThreadPage = () => {
-    const { agentUuid, threadUuid, projectUuid } = useParams();
+const AiAgentThreadPage = ({ debug }: { debug?: boolean }) => {
+    const { agentUuid, threadUuid, projectUuid, promptUuid } = useParams();
     const { user } = useApp();
+
     const { data: thread, isLoading: isLoadingThread } = useAiAgentThread(
+        projectUuid!,
         agentUuid,
         threadUuid,
     );
 
+    // Handle artifact selection based on thread changes
+    useAiAgentThreadArtifact({
+        projectUuid,
+        agentUuid,
+        threadUuid,
+        thread,
+    });
+
     const isThreadFromCurrentUser = thread?.user.uuid === user?.data?.userUuid;
 
-    const agentQuery = useAiAgent(agentUuid);
+    const agentQuery = useAiAgent(projectUuid!, agentUuid!);
     const { agent } = useOutletContext<AgentContext>();
 
     const {
         mutateAsync: createAgentThreadMessage,
         isLoading: isCreatingMessage,
-    } = useCreateAgentThreadMessageMutation(projectUuid, agentUuid, threadUuid);
+    } = useCreateAgentThreadMessageMutation(
+        projectUuid!,
+        agentUuid,
+        threadUuid,
+    );
     const isStreaming = useAiAgentThreadStreaming(threadUuid!);
 
     const handleSubmit = (prompt: string) => {
@@ -47,7 +62,10 @@ const AiAgentThreadPage = () => {
             thread={thread}
             agentName={agentQuery.data?.name ?? 'AI'}
             enableAutoScroll={true}
-            mode="interactive"
+            promptUuid={promptUuid}
+            debug={debug}
+            projectUuid={projectUuid}
+            agentUuid={agentUuid}
         >
             <AgentChatInput
                 disabled={

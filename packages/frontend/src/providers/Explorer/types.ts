@@ -14,6 +14,8 @@ import {
     type Metric,
     type MetricQuery,
     type MetricType,
+    type ParameterDefinitions,
+    type ParameterValue,
     type PieChartConfig,
     type ReplaceCustomFields,
     type SavedChart,
@@ -22,6 +24,7 @@ import {
     type TableCalculationMetadata,
     type TableChartConfig,
     type TimeZone,
+    type TreemapChartConfig,
 } from '@lightdash/common';
 import {
     type useGetReadyQueryResults,
@@ -34,6 +37,7 @@ export enum ExplorerSection {
     CUSTOMVISUALIZATION = 'CUSTOMVISUALIZATION',
     RESULTS = 'RESULTS',
     SQL = 'SQL',
+    PARAMETERS = 'PARAMETERS',
 }
 
 interface SwapSortFieldsPayload {
@@ -52,14 +56,16 @@ export enum ActionType {
     ADD_SORT_FIELD,
     REMOVE_SORT_FIELD,
     MOVE_SORT_FIELDS,
+    SET_SORT_FIELD_NULLS_FIRST,
     SET_ROW_LIMIT,
     SET_TIME_ZONE,
     SET_FILTERS,
     SET_COLUMN_ORDER,
+    SET_PARAMETER,
+    CLEAR_ALL_PARAMETERS,
     ADD_TABLE_CALCULATION,
     UPDATE_TABLE_CALCULATION,
     DELETE_TABLE_CALCULATION,
-    SET_FETCH_RESULTS_FALSE,
     SET_PREVIOUSLY_FETCHED_STATE,
     ADD_ADDITIONAL_METRIC,
     EDIT_ADDITIONAL_METRIC,
@@ -77,6 +83,9 @@ export enum ActionType {
     TOGGLE_FORMAT_MODAL,
     UPDATE_METRIC_FORMAT,
     REPLACE_FIELDS,
+    OPEN_VISUALIZATION_CONFIG,
+    CLOSE_VISUALIZATION_CONFIG,
+    SET_PARAMETER_REFERENCES,
 }
 
 export type ConfigCacheMap = {
@@ -85,12 +94,12 @@ export type ConfigCacheMap = {
     [ChartType.BIG_NUMBER]: BigNumberConfig['config'];
     [ChartType.TABLE]: TableChartConfig['config'];
     [ChartType.CARTESIAN]: CartesianChartConfig['config'];
+    [ChartType.TREEMAP]: TreemapChartConfig['config'];
     [ChartType.CUSTOM]: CustomVisConfig['config'];
 };
 
 export type Action =
     | { type: ActionType.RESET; payload: ExplorerReduceState }
-    | { type: ActionType.SET_FETCH_RESULTS_FALSE }
     | {
           type: ActionType.SET_PREVIOUSLY_FETCHED_STATE;
           payload: MetricQuery;
@@ -122,6 +131,10 @@ export type Action =
           payload: SwapSortFieldsPayload;
       }
     | {
+          type: ActionType.SET_SORT_FIELD_NULLS_FIRST;
+          payload: { fieldId: FieldId; nullsFirst: boolean | undefined };
+      }
+    | {
           type: ActionType.SET_ROW_LIMIT;
           payload: number;
       }
@@ -149,6 +162,14 @@ export type Action =
           type: ActionType.SET_COLUMN_ORDER;
           payload: string[];
       }
+    | {
+          type: ActionType.SET_PARAMETER;
+          payload: {
+              key: string;
+              value: ParameterValue | null;
+          };
+      }
+    | { type: ActionType.CLEAR_ALL_PARAMETERS }
     | {
           type: ActionType.ADD_ADDITIONAL_METRIC;
           payload: AdditionalMetric;
@@ -228,17 +249,34 @@ export type Action =
           payload: {
               fieldsToReplace: ReplaceCustomFields[string];
           };
+      }
+    | {
+          type: ActionType.OPEN_VISUALIZATION_CONFIG;
+      }
+    | {
+          type: ActionType.CLOSE_VISUALIZATION_CONFIG;
+      }
+    | {
+          type: ActionType.SET_PARAMETER_REFERENCES;
+          payload: string[] | null;
       };
 
 export interface ExplorerReduceState {
-    shouldFetchResults: boolean;
     expandedSections: ExplorerSection[];
     metadata?: {
         // Temporary state that tracks changes to `table calculations` - keeps track of new name and previous name to ensure these get updated correctly when making changes to the layout & config of a chart
         tableCalculations?: TableCalculationMetadata[];
     };
+    isVisualizationConfigOpen?: boolean;
     unsavedChartVersion: CreateSavedChartVersion;
     previouslyFetchedState?: MetricQuery;
+    /**
+     * The parameters that are referenced in the query.
+     * If null, this means we can't calculate the missing parameters, so we can't run the query.
+     * If empty array, this means we know the missing parameters, but they are all optional, so we can run the query.
+     */
+    parameterReferences: string[] | null;
+    parameterDefinitions: ParameterDefinitions;
     modals: {
         format: {
             isOpen: boolean;
@@ -261,6 +299,8 @@ export interface ExplorerReduceState {
             items?: CustomDimension[] | AdditionalMetric[];
         };
     };
+
+    fromDashboard?: string;
 }
 
 export interface ExplorerState extends ExplorerReduceState {
@@ -269,12 +309,15 @@ export interface ExplorerState extends ExplorerReduceState {
     hasUnsavedChanges: boolean;
     isEditMode: boolean;
     savedChart: SavedChart | undefined;
+    missingRequiredParameters: string[] | null;
 }
 
 export interface ExplorerContextType {
     state: ExplorerState;
     query: ReturnType<typeof useGetReadyQueryResults>;
     queryResults: ReturnType<typeof useInfiniteQueryResults>;
+    unpivotedQuery: ReturnType<typeof useGetReadyQueryResults>;
+    unpivotedQueryResults: ReturnType<typeof useInfiniteQueryResults>;
     actions: {
         clearExplore: () => void;
         clearQuery: () => void;
@@ -290,12 +333,15 @@ export interface ExplorerContextType {
         ) => void;
         removeSortField: (fieldId: FieldId) => void;
         moveSortFields: (sourceIndex: number, destinationIndex: number) => void;
-        setRowLimit: (limit: number) => void;
-        setTimeZone: (timezone: TimeZone) => void;
-        setFilters: (
-            filters: MetricQuery['filters'],
-            syncPristineState: boolean,
+        setSortFieldNullsFirst: (
+            fieldId: FieldId,
+            nullsFirst: boolean | undefined,
         ) => void;
+        setRowLimit: (limit: number) => void;
+        setTimeZone: (timezone: string | null) => void;
+        setFilters: (filters: MetricQuery['filters']) => void;
+        setParameter: (key: string, value: ParameterValue | null) => void;
+        clearAllParameters: () => void;
         addAdditionalMetric: (metric: AdditionalMetric) => void;
         editAdditionalMetric: (
             metric: AdditionalMetric,
@@ -346,5 +392,8 @@ export interface ExplorerContextType {
         }) => void;
         replaceFields: (fieldsToReplace: ReplaceCustomFields[string]) => void;
         getDownloadQueryUuid: (limit: number | null) => Promise<string>;
+        openVisualizationConfig: () => void;
+        closeVisualizationConfig: () => void;
+        setParameterReferences: (parameterReferences: string[] | null) => void;
     };
 }

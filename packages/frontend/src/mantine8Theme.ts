@@ -2,9 +2,13 @@ import {
     Button,
     Card,
     Loader,
+    MultiSelect,
     Pill,
     ScrollArea,
     Select,
+    TagsInput,
+    Textarea,
+    TextInput,
     type ButtonVariant,
     type MantineTheme,
     type MantineThemeOverride,
@@ -23,6 +27,7 @@ declare module '@mantine-8/core' {
     export interface ButtonProps {
         variant?: ButtonVariant | 'compact-outline' | 'dark';
     }
+
     export interface LoaderProps {
         /**
          * Displays a message after 8s. Only available when type='dots'
@@ -30,6 +35,23 @@ declare module '@mantine-8/core' {
         delayedMessage?: string;
     }
 }
+
+const subtleInputStyles = (theme: MantineTheme) => ({
+    input: {
+        fontWeight: 500,
+        fontSize: 14,
+        '--input-bd': theme.colors.gray[2],
+        borderRadius: theme.radius.md,
+        boxShadow: theme.shadows.subtle,
+        padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+        color: theme.colors.dark[7],
+    },
+    label: {
+        fontWeight: 500,
+        color: theme.colors.gray[7],
+        marginBottom: theme.spacing.xxs,
+    },
+});
 
 export const getMantine8ThemeOverride = (
     overrides?: Partial<MantineThemeOverride>,
@@ -156,6 +178,42 @@ export const getMantine8ThemeOverride = (
             }),
 
             Select: Select.extend({
+                defaultProps: {
+                    radius: 'md',
+                },
+            }),
+
+            TextInput: TextInput.extend({
+                defaultProps: {
+                    radius: 'md',
+                },
+                vars: (theme, props) => {
+                    if (props.variant === 'subtle')
+                        return subtleInputStyles(theme);
+                    return {};
+                },
+            }),
+
+            Textarea: Textarea.extend({
+                vars: (theme, props) => {
+                    if (props.variant === 'subtle')
+                        return subtleInputStyles(theme);
+                    return {};
+                },
+            }),
+            TagsInput: TagsInput.extend({
+                vars: (theme, props) => {
+                    if (props.variant === 'subtle')
+                        return subtleInputStyles(theme);
+                    return {};
+                },
+            }),
+            MultiSelect: MultiSelect.extend({
+                vars: (theme, props) => {
+                    if (props.variant === 'subtle')
+                        return subtleInputStyles(theme);
+                    return {};
+                },
                 defaultProps: {
                     radius: 'md',
                 },

@@ -1,9 +1,14 @@
-import { getItemMap } from '@lightdash/common';
+import { FeatureFlags, getItemMap } from '@lightdash/common';
 import { Box, Text } from '@mantine/core';
 import { memo, useCallback, useMemo, useState, type FC } from 'react';
 
 import { useColumns } from '../../../hooks/useColumns';
 import { useExplore } from '../../../hooks/useExplore';
+import { useFeatureFlag } from '../../../hooks/useFeatureFlagEnabled';
+import type {
+    useGetReadyQueryResults,
+    useInfiniteQueryResults,
+} from '../../../hooks/useQueryResults';
 import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import { TrackSection } from '../../../providers/Tracking/TrackingProvider';
 import { SectionName } from '../../../types/Events';
@@ -15,8 +20,30 @@ import {
     EmptyStateExploreLoading,
     EmptyStateNoColumns,
     EmptyStateNoTableData,
+    MissingRequiredParameters,
     NoTableSelected,
 } from './ExplorerResultsNonIdealStates';
+
+const getQueryStatus = (
+    query: ReturnType<typeof useGetReadyQueryResults>,
+    queryResults: ReturnType<typeof useInfiniteQueryResults>,
+): 'loading' | 'error' | 'idle' | 'success' => {
+    const isCreatingQuery = query.isFetching;
+    const isFetchingFirstPage = queryResults.isFetchingFirstPage;
+
+    // Don't return queryResults.status because we changed from mutation to query so 'loading' has a different meaning
+    if (queryResults.error) {
+        return 'error';
+    } else if (isCreatingQuery || isFetchingFirstPage) {
+        return 'loading';
+    } else if (query.status === 'loading' || !query.isFetched) {
+        return 'idle';
+    } else if (query.status === 'success') {
+        return 'success';
+    } else {
+        return 'error';
+    }
+};
 
 export const ExplorerResults = memo(() => {
     const columns = useColumns();
@@ -25,6 +52,9 @@ export const ExplorerResults = memo(() => {
     );
     const activeTableName = useExplorerContext(
         (context) => context.state.unsavedChartVersion.tableName,
+    );
+    const { data: useSqlPivotResults } = useFeatureFlag(
+        FeatureFlags.UseSqlPivotResults,
     );
     const dimensions = useExplorerContext(
         (context) => context.state.unsavedChartVersion.metricQuery.dimensions,
@@ -35,34 +65,96 @@ export const ExplorerResults = memo(() => {
     const explorerColumnOrder = useExplorerContext(
         (context) => context.state.unsavedChartVersion.tableConfig.columnOrder,
     );
-    const rows = useExplorerContext((context) => context.queryResults.rows);
-    const totalRows = useExplorerContext(
-        (context) => context.queryResults.totalResults,
-    );
 
-    const isFetchingRows = useExplorerContext(
-        (context) =>
-            context.queryResults.isFetchingRows && !context.queryResults.error,
-    );
-    const fetchMoreRows = useExplorerContext(
-        (context) => context.queryResults.fetchMoreRows,
-    );
-    const status = useExplorerContext((context) => {
-        const isCreatingQuery = context.query.isFetching;
-        const isFetchingFirstPage = context.queryResults.isFetchingFirstPage;
-        // Don't return context.queryResults.status because we changed from mutation to query so 'loading' as a different meaning
-        if (context.queryResults.error) {
-            return 'error';
-        } else if (isCreatingQuery || isFetchingFirstPage) {
-            return 'loading';
-        } else if (context.query.status === 'loading') {
-            return 'idle';
-        } else {
-            return context.query.status;
+    const resultsData = useExplorerContext((context) => {
+        const hasPivotConfig = !!context.state.unsavedChartVersion.pivotConfig;
+        const isSqlPivotEnabled = !!useSqlPivotResults?.enabled;
+        const hasUnpivotedQuery = !!context.unpivotedQuery?.data?.queryUuid;
+        const hasMainQuery = !!context.query.data?.queryUuid;
+
+        // Only use unpivoted data when SQL pivot is enabled
+        const shouldUseUnpivotedData =
+            isSqlPivotEnabled && hasPivotConfig && hasUnpivotedQuery;
+
+        // Check if the main query is currently loading
+        const isMainQueryLoading =
+            context.query.isFetching ||
+            context.queryResults.isFetchingFirstPage ||
+            context.query.status === 'loading';
+
+        // Only check unpivoted query states if SQL pivot is enabled
+        if (isSqlPivotEnabled) {
+            // Check if we need to show loading for unpivoted data
+            const isUnpivotedQueryLoading =
+                context.unpivotedQuery.isFetching ||
+                context.unpivotedQueryResults.isFetchingFirstPage ||
+                context.unpivotedQuery.status === 'loading';
+
+            // Only consider needing unpivoted query if we actually expect it to run
+            const needsUnpivotedQuery =
+                hasPivotConfig &&
+                hasMainQuery &&
+                !hasUnpivotedQuery &&
+                !context.unpivotedQuery.isFetching &&
+                !context.unpivotedQuery.data &&
+                !isMainQueryLoading; // Don't show loading if main query is still running
+
+            const shouldShowLoadingForUnpivoted =
+                hasPivotConfig &&
+                hasMainQuery &&
+                !hasUnpivotedQuery &&
+                !isMainQueryLoading && // Don't show loading if main query is still running
+                (isUnpivotedQueryLoading || needsUnpivotedQuery);
+
+            if (shouldShowLoadingForUnpivoted) {
+                // Show loading state for pivoted charts waiting for unpivoted data
+                return {
+                    rows: undefined,
+                    totalResults: undefined,
+                    isFetchingRows: false,
+                    fetchMoreRows: () => {},
+                    status: 'loading' as const,
+                    apiError: null,
+                };
+            }
         }
+
+        if (shouldUseUnpivotedData) {
+            const queryResults = context.unpivotedQueryResults;
+            const query = context.unpivotedQuery;
+
+            return {
+                rows: queryResults.rows,
+                totalResults: queryResults.totalResults,
+                isFetchingRows:
+                    queryResults.isFetchingRows && !queryResults.error,
+                fetchMoreRows: queryResults.fetchMoreRows,
+                status: getQueryStatus(query, queryResults),
+                apiError: query.error ?? queryResults.error,
+            };
+        }
+
+        const queryResults = context.queryResults;
+        const query = context.query;
+
+        return {
+            rows: queryResults.rows,
+            totalResults: queryResults.totalResults,
+            isFetchingRows: queryResults.isFetchingRows && !queryResults.error,
+            fetchMoreRows: queryResults.fetchMoreRows,
+            status: getQueryStatus(query, queryResults),
+            apiError: query.error ?? queryResults.error,
+        };
     });
 
-    const apiError = useExplorerContext((context) => context.query.error);
+    const {
+        rows,
+        totalResults: totalRows,
+        isFetchingRows,
+        fetchMoreRows,
+        status,
+        apiError,
+    } = resultsData;
 
     const setColumnOrder = useExplorerContext(
         (context) => context.actions.setColumnOrder,
@@ -78,6 +170,9 @@ export const ExplorerResults = memo(() => {
     const additionalMetrics = useExplorerContext(
         (context) =>
             context.state.unsavedChartVersion.metricQuery.additionalMetrics,
+    );
+    const missingRequiredParameters = useExplorerContext(
+        (context) => context.state.missingRequiredParameters,
     );
     const [isExpandModalOpened, setIsExpandModalOpened] = useState(false);
     const [expandData, setExpandData] = useState<{
@@ -166,6 +261,13 @@ export const ExplorerResults = memo(() => {
     if (columns.length === 0) return <EmptyStateNoColumns />;
 
     if (isExploreLoading) return <EmptyStateExploreLoading />;
+
+    if (missingRequiredParameters && missingRequiredParameters.length > 0)
+        return (
+            <MissingRequiredParameters
+                missingRequiredParameters={missingRequiredParameters}
+            />
+        );
 
     return (
         <TrackSection name={SectionName.RESULTS_TABLE}>

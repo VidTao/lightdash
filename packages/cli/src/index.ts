@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+    ForbiddenError,
     getErrorMessage,
     LightdashError,
     RenameType,
@@ -172,11 +173,20 @@ ${styles.bold('Examples:')}
         )} https://custom.lightdash.domain --token 12345 ${styles.secondary(
             '-- Logs in with an API access token (useful for users that use SSO in the browser)',
         )}
+  ${styles.title('⚡')}️lightdash ${styles.bold(
+            'login',
+        )} https://custom.lightdash.domain --oauth ${styles.secondary(
+            '-- Logs in using OAuth2 flow (opens browser for authentication)',
+        )}
 `,
     )
     .option('--token <token>', 'Login with an API access token', undefined)
+    .option(
+        '--oauth',
+        'Login using OAuth2 flow (opens browser for authentication)',
+        false,
+    )
     .option('--verbose', undefined, false)
-
     .action(login);
 
 // CONFIG
@@ -579,6 +589,11 @@ program
         parseProjectArgument,
         undefined,
     )
+    .option(
+        '--skip-space-create',
+        'Skip space creation if it does not exist',
+        false,
+    )
     .action(uploadHandler);
 
 program
@@ -904,8 +919,21 @@ ${styles.bold('Examples:')}
     .action(diagnosticsHandler);
 
 const errorHandler = (err: Error) => {
-    console.error(styles.error(getErrorMessage(err)));
-    if (err.name === 'AuthorizationError') {
+    // Use error message with fallback for safety
+    const errorMessage = getErrorMessage(err) || 'An unexpected error occurred';
+    console.error(styles.error(errorMessage));
+
+    if (err.name === 'ForbiddenError' || err instanceof ForbiddenError) {
+        // For permission errors, show clear message with fallback
+        const permissionMessage =
+            err.message || "You don't have permission to perform this action";
+        if (permissionMessage !== errorMessage) {
+            console.error(styles.error(permissionMessage));
+        }
+        console.error(
+            `\n💡 Contact your Lightdash administrator to request project creation access or if you believe this is incorrect.\n`,
+        );
+    } else if (err.name === 'AuthorizationError') {
         console.error(
             `Looks like you did not authenticate or the personal access token expired.\n\n👀 See https://docs.lightdash.com/guides/cli/cli-authentication for help and examples`,
         );

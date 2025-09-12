@@ -1,29 +1,80 @@
 import {
+    AdditionalMetric,
+    AiArtifact,
     AiMetricQueryWithFilters,
     AiWebAppPrompt,
+    AllChartsSearchResult,
     AnyType,
     CacheMetadata,
+    CatalogField,
+    CatalogTable,
+    DashboardSearchResult,
     Explore,
+    Filters,
     ItemsMap,
+    KnexPaginateArgs,
     SlackPrompt,
+    ToolFindChartsArgs,
+    ToolFindDashboardsArgs,
+    ToolFindFieldsArgs,
     UpdateSlackResponse,
     UpdateWebAppResponse,
 } from '@lightdash/common';
 import { AiAgentResponseStreamed } from '../../../../analytics/LightdashAnalytics';
 import { PostSlackFile } from '../../../../clients/Slack/SlackClient';
-import { AiAgentExploreSummary } from './aiAgentExploreSummary';
 
-export type GetExploresFn = () => Promise<AiAgentExploreSummary[]>;
+type Pagination = KnexPaginateArgs & {
+    totalPageCount: number;
+    totalResults: number;
+};
+
+export type FindExploresFn = (
+    args: {
+        tableName: string | null;
+        fieldOverviewSearchSize?: number;
+        fieldSearchSize?: number;
+        includeFields: boolean;
+    } & KnexPaginateArgs,
+) => Promise<{
+    tablesWithFields: {
+        table: CatalogTable;
+        dimensions?: CatalogField[];
+        metrics?: CatalogField[];
+        dimensionsPagination?: Pagination;
+        metricsPagination?: Pagination;
+    }[];
+    pagination: Pagination | undefined;
+}>;
+
+export type FindFieldFn = (
+    args: KnexPaginateArgs & {
+        table: ToolFindFieldsArgs['table'];
+        fieldSearchQuery: ToolFindFieldsArgs['fieldSearchQueries'][number];
+    },
+) => Promise<{
+    fields: CatalogField[];
+    pagination: Pagination | undefined;
+}>;
+
+export type FindDashboardsFn = (
+    args: KnexPaginateArgs & {
+        dashboardSearchQuery: ToolFindDashboardsArgs['dashboardSearchQueries'][number];
+    },
+) => Promise<{
+    dashboards: DashboardSearchResult[];
+    pagination: Pagination | undefined;
+}>;
+
+export type FindChartsFn = (
+    args: KnexPaginateArgs & {
+        chartSearchQuery: ToolFindChartsArgs['chartSearchQueries'][number];
+    },
+) => Promise<{
+    charts: AllChartsSearchResult[];
+    pagination: Pagination | undefined;
+}>;
 
 export type GetExploreFn = (args: { exploreName: string }) => Promise<Explore>;
-
-export type SearchFieldsFn = (args: {
-    exploreName: string;
-    embeddingSearchQueries: Array<{
-        name: string;
-        description: string;
-    }>;
-}) => Promise<string[]>;
 
 export type UpdateProgressFn = (progress: string) => Promise<void>;
 
@@ -32,6 +83,7 @@ export type GetPromptFn = () => Promise<SlackPrompt | AiWebAppPrompt>;
 export type RunMiniMetricQueryFn = (
     metricQuery: AiMetricQueryWithFilters,
     maxLimit: number,
+    additionalMetrics?: AdditionalMetric[],
 ) => Promise<{
     rows: Record<string, AnyType>[];
     cacheMetadata: CacheMetadata;
@@ -61,3 +113,19 @@ export type StoreToolResultsFn = (
 ) => Promise<void>;
 
 export type TrackEventFn = (event: AiAgentResponseStreamed) => void;
+
+export type SearchFieldValuesFn = (args: {
+    table: string;
+    fieldId: string;
+    query: string;
+    filters?: Filters;
+}) => Promise<string[]>;
+
+export type CreateOrUpdateArtifactFn = (data: {
+    threadUuid: string;
+    promptUuid: string;
+    artifactType: 'chart' | 'dashboard';
+    title?: string;
+    description?: string;
+    vizConfig: Record<string, unknown>;
+}) => Promise<AiArtifact>;

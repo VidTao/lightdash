@@ -34,6 +34,7 @@ import {
     DEFAULT_BATCH_SIZE,
     processPromisesInBatches,
 } from '../utils/processPromisesInBatches';
+import { normalizeUnicode } from '../utils/sql';
 import WarehouseBaseClient from './WarehouseBaseClient';
 import WarehouseBaseSqlBuilder from './WarehouseBaseSqlBuilder';
 
@@ -158,6 +159,25 @@ export class SnowflakeSqlBuilder extends WarehouseBaseSqlBuilder {
                 return super.getMetricSql(sql, metric);
         }
     }
+
+    escapeString(value: string): string {
+        if (typeof value !== 'string') {
+            return value;
+        }
+
+        return (
+            normalizeUnicode(value)
+                // Snowflake uses single quote doubling like PostgreSQL
+                .replaceAll("'", "''")
+                // Escape backslashes first (before LIKE wildcards)
+                .replaceAll('\\', '\\\\')
+                // Remove SQL comments (-- and /* */)
+                .replace(/--.*$/gm, '')
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                // Remove null bytes
+                .replaceAll('\0', '')
+        );
+    }
 }
 
 export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflakeCredentials> {
@@ -235,6 +255,8 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
             ...(credentials.accessUrl?.length
                 ? { accessUrl: credentials.accessUrl }
                 : {}),
+            sfRetryMaxLoginRetries: 3, // Number of retries for the login request.
+            retryTimeout: 15000, // according to docs: The max login timeout value. This value is either 0 or over 300.
         };
     }
 
@@ -810,11 +832,62 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
         return this.parseWarehouseCatalog(rows, mapFieldType);
     }
 
+    /*
+     * This function is used to format the error message for the user.
+     * It is used to replace the {snowflakeTable} and {snowflakeSchema} with the actual table and schema names.
+     * Sample custom template: You don't have access to the {snowflakeTable} table. Please go to '{snowflakeSchema}' and request access
+     */
+    private formatCustomErrorMessage(
+        originalMessage: string,
+        customTemplate: string,
+    ): string {
+        let formattedMessage = customTemplate;
+
+        // Extract table information from the original error message
+        // Pattern matches: Object 'DATABASE.SCHEMA.TABLE' does not exist or not authorized
+        const tableMatch = originalMessage.match(
+            /Object '([^']+)' does not exist or not authorized/i,
+        );
+
+        if (tableMatch) {
+            const fullTableName = tableMatch[1];
+            const parts = fullTableName.split('.');
+
+            if (parts.length >= 3) {
+                const snowflakeTable = parts[parts.length - 1]; // Last part is table name
+                const snowflakeSchema = parts[parts.length - 2]; // Second to last is schema
+
+                // Replace variables in the custom message
+                formattedMessage = formattedMessage
+                    .replace(/\{snowflakeTable\}/g, snowflakeTable)
+                    .replace(/\{snowflakeSchema\}/g, snowflakeSchema);
+            }
+        }
+
+        return formattedMessage;
+    }
+
     parseError(error: SnowflakeError, query: string = '') {
         // if the error has no code or data, return a generic error
         if (!error?.code && !error.data) {
             return new WarehouseQueryError(error?.message || 'Unknown error');
         }
+
+        const originalMessage = error?.message || 'Unknown error';
+
+        // Check for unauthorized access errors and use custom message if configured
+        if (originalMessage.includes('does not exist or not authorized')) {
+            const customErrorMessage =
+                process.env.SNOWFLAKE_UNAUTHORIZED_ERROR_MESSAGE;
+            if (customErrorMessage) {
+                const formattedMessage = this.formatCustomErrorMessage(
+                    originalMessage,
+                    customErrorMessage,
+                );
+                return new WarehouseQueryError(formattedMessage);
+            }
+        }
+
         // pull error type from data object
         const errorType = error.data?.type || error.code;
         switch (errorType) {
@@ -856,6 +929,6 @@ export class SnowflakeWarehouseClient extends WarehouseBaseClient<CreateSnowflak
                 break;
         }
         // otherwise return a generic error
-        return new WarehouseQueryError(error?.message || 'Unknown error');
+        return new WarehouseQueryError(originalMessage);
     }
 }

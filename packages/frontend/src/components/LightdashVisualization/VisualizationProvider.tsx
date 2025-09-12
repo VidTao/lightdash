@@ -8,6 +8,7 @@ import {
     type DashboardFilters,
     type ItemsMap,
     type MetricQuery,
+    type ParametersValuesMap,
     type PivotValue,
     type Series,
     type TableCalculationMetadata,
@@ -31,7 +32,10 @@ import {
     calculateSeriesLikeIdentifier,
     isGroupedSeries,
 } from '../../hooks/useChartColorConfig/utils';
-import { useFeatureFlagEnabled } from '../../hooks/useFeatureFlagEnabled';
+import {
+    useFeatureFlag,
+    useFeatureFlagEnabled,
+} from '../../hooks/useFeatureFlagEnabled';
 import usePivotDimensions from '../../hooks/usePivotDimensions';
 import { type InfiniteQueryResults } from '../../hooks/useQueryResults';
 import { type EchartSeriesClickEvent } from '../SimpleChart';
@@ -40,6 +44,7 @@ import VisualizationCartesianConfig from './VisualizationConfigCartesian';
 import VisualizationConfigFunnel from './VisualizationConfigFunnel';
 import VisualizationPieConfig from './VisualizationConfigPie';
 import VisualizationTableConfig from './VisualizationConfigTable';
+import VisualizationTreemapConfig from './VisualizationConfigTreemap';
 import VisualizationCustomConfig from './VisualizationCustomConfig';
 import Context from './context';
 import { type useVisualizationContext } from './useVisualizationContext';
@@ -48,10 +53,12 @@ export type VisualizationProviderProps = {
     minimal?: boolean;
     chartConfig: ChartConfig;
     initialPivotDimensions: string[] | undefined;
+    unsavedMetricQuery?: MetricQuery;
     resultsData: InfiniteQueryResults & {
         metricQuery?: MetricQuery;
         fields?: ItemsMap;
     };
+    parameters?: ParametersValuesMap;
     isLoading: boolean;
     columnOrder: string[];
     onSeriesContextMenu?: (
@@ -95,6 +102,8 @@ const VisualizationProvider: FC<
     setEchartsRef,
     computedSeries,
     apiErrorDetail,
+    parameters,
+    unsavedMetricQuery,
 }) => {
     const itemsMap = useMemo(() => {
         return resultsData?.fields;
@@ -109,9 +118,15 @@ const VisualizationProvider: FC<
         InfiniteQueryResults & { metricQuery?: MetricQuery; fields?: ItemsMap }
     >();
 
+    const { data: useSqlPivotResults } = useFeatureFlag(
+        FeatureFlags.UseSqlPivotResults,
+    );
+
     const { validPivotDimensions, setPivotDimensions } = usePivotDimensions(
         initialPivotDimensions,
-        lastValidResultsData?.metricQuery,
+        useSqlPivotResults?.enabled
+            ? unsavedMetricQuery ?? lastValidResultsData?.metricQuery
+            : lastValidResultsData?.metricQuery,
     );
 
     const setChartType = useCallback(
@@ -385,6 +400,24 @@ const VisualizationProvider: FC<
                     )}
                 </VisualizationBigNumberConfig>
             );
+        case ChartType.TREEMAP:
+            return (
+                <VisualizationTreemapConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    parameters={parameters}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationTreemapConfig>
+            );
         case ChartType.TABLE:
             return (
                 <VisualizationTableConfig
@@ -398,6 +431,7 @@ const VisualizationProvider: FC<
                     savedChartUuid={savedChartUuid}
                     dashboardFilters={dashboardFilters}
                     invalidateCache={invalidateCache}
+                    parameters={parameters}
                 >
                     {({ visualizationConfig }) => (
                         <Context.Provider

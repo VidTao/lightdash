@@ -1,56 +1,26 @@
-import { subject } from '@casl/ability';
 import {
     AllowedEmailDomains,
-    AllowedEmailDomainsRoles,
-    convertProjectRoleToOrganizationRole,
-    CreateColorPalette,
-    CreateGroup,
-    CreateOrganization,
     CreateProject,
-    DbtVersionOptionLatest,
-    ForbiddenError,
-    getOrganizationNameSchema,
-    Group,
-    GroupWithMembers,
-    isUserWithOrg,
-    KnexPaginateArgs,
-    KnexPaginatedData,
-    LightdashMode,
+    CreateWarehouseCredentials,
+    DbtProjectConfig,
+    isGitProjectType,
     NotExistsError,
-    OnbordingRecord,
-    OpenIdIdentityIssuerType,
-    OpenIdUser,
-    Organization,
-    OrganizationColorPalette,
-    OrganizationColorPaletteWithIsActive,
-    OrganizationMemberProfile,
-    OrganizationMemberProfileUpdate,
-    OrganizationMemberProfileWithGroups,
     OrganizationMemberRole,
-    OrganizationProject,
     ParameterError,
     ProjectType,
     RequestMethod,
     ServiceAccountScope,
-    SessionUser,
     UnexpectedServerError,
-    UpdateAllowedEmailDomains,
-    UpdateColorPalette,
-    UpdateOrganization,
+    UpdateProject,
     validateOrganizationEmailDomains,
-    validateOrganizationNameOrThrow,
+    WarehouseTypes,
 } from '@lightdash/common';
-import { groupBy } from 'lodash';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../../config/parseConfig';
 import { ServiceAccountModel } from '../../ee/models/ServiceAccountModel';
 import { PersonalAccessTokenModel } from '../../models/DashboardModel/PersonalAccessTokenModel';
 import { EmailModel } from '../../models/EmailModel';
-import { GroupsModel } from '../../models/GroupsModel';
-import { InviteLinkModel } from '../../models/InviteLinkModel';
-import { OnboardingModel } from '../../models/OnboardingModel/OnboardingModel';
 import { OrganizationAllowedEmailDomainsModel } from '../../models/OrganizationAllowedEmailDomainsModel';
-import { OrganizationMemberProfileModel } from '../../models/OrganizationMemberProfileModel';
 import { OrganizationModel } from '../../models/OrganizationModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { UserModel } from '../../models/UserModel';
@@ -216,11 +186,16 @@ export class InstanceConfigurationService extends BaseService {
             );
 
             // Optional steps are performed at the end
-            if (setup.organization.emailDomain) {
+            if (
+                setup.organization.emailDomains &&
+                setup.organization.emailDomains.length > 0
+            ) {
                 this.logger.debug(
-                    `Initial setup: Whitelisting domain "${setup.organization.emailDomain}"`,
+                    `Initial setup: Whitelisting domains "${setup.organization.emailDomains.join(
+                        ', ',
+                    )}"`,
                 );
-                const emailDomains = [setup.organization.emailDomain];
+                const { emailDomains } = setup.organization;
                 // Validates input
                 const error = validateOrganizationEmailDomains(emailDomains);
                 if (error) {
@@ -229,7 +204,7 @@ export class InstanceConfigurationService extends BaseService {
                 const allowedDomains: AllowedEmailDomains = {
                     organizationUuid,
                     emailDomains,
-                    role: OrganizationMemberRole.VIEWER,
+                    role: setup.organization.defaultRole,
                     projects: [],
                 };
                 await this.organizationAllowedEmailDomainsModel.upsertAllowedEmailDomains(
@@ -237,11 +212,13 @@ export class InstanceConfigurationService extends BaseService {
                 );
 
                 this.logger.info(
-                    `Initial setup: Whitelisted domain "${setup.organization.emailDomain}"`,
+                    `Initial setup: Whitelisted domains "${setup.organization.emailDomains.join(
+                        ', ',
+                    )}"`,
                 );
             } else {
                 this.logger.info(
-                    `Initial setup: No whitelisted domain, skipping`,
+                    `Initial setup: No whitelisted domains, skipping`,
                 );
             }
 
@@ -285,5 +262,260 @@ export class InstanceConfigurationService extends BaseService {
             );
             throw error;
         }
+    }
+
+    /**
+     * Update API key for admin
+     * revoke other existing PATs for the admin.
+     */
+    private async updateApiKeyForAdmin(config: LightdashConfig['updateSetup']) {
+        if (!config) return;
+
+        const adminEmail = config.organization?.admin?.email;
+
+        if (config.apiKey?.token && adminEmail) {
+            this.logger.debug(
+                `Update instance: Updating API key for user ${adminEmail}`,
+            );
+            const sessionUser =
+                await this.userModel.findSessionUserByPrimaryEmail(adminEmail);
+            if (!sessionUser) {
+                throw new NotExistsError(`User ${adminEmail} not found`);
+            }
+            // Revoke other existing PATs for the admin.
+            await this.personalAccessTokenModel.deleteAllTokensForUser(
+                sessionUser.userId,
+            );
+            // Create new PAT
+            await this.personalAccessTokenModel.save(sessionUser, {
+                expiresAt: config.apiKey.expirationTime,
+                description: 'Updated API token',
+                autoGenerated: false,
+                token: config.apiKey.token,
+            });
+            this.logger.info(
+                `Update instance: Updated API key for user ${adminEmail}`,
+            );
+        }
+    }
+
+    /*
+     * Update API key for service account
+     */
+    private async updateServiceAccountForAdmin(
+        config: LightdashConfig['updateSetup'],
+    ) {
+        if (!config) return;
+
+        if (config.serviceAccount && this.serviceAccountModel) {
+            // This will throw an error if there is not exactly 1 org
+            const orgUuid = await this.getSingleOrg();
+            this.logger.debug(
+                `Update instance: Updating API key for service account`,
+            );
+            const existingServiceAccounts =
+                await this.serviceAccountModel.getAllForOrganization(orgUuid, [
+                    ServiceAccountScope.ORG_ADMIN,
+                ]);
+            this.logger.debug(
+                `Update instance: Deleting ${existingServiceAccounts.length} existing service accounts`,
+            );
+
+            // We will delete all existing service accounts with the org admin scope
+            // before creating a new one.
+            await Promise.all(
+                existingServiceAccounts.map((sa) =>
+                    this.serviceAccountModel?.delete(sa.uuid),
+                ),
+            );
+
+            await this.serviceAccountModel.save(
+                undefined, // user
+                {
+                    organizationUuid: orgUuid,
+                    expiresAt: config.serviceAccount.expirationTime,
+                    description: 'Updated service account',
+                    scopes: [ServiceAccountScope.ORG_ADMIN],
+                },
+                config.serviceAccount.token,
+            );
+
+            this.logger.info(
+                `Update instance: Updated service account for org ${orgUuid}`,
+            );
+        } else {
+            this.logger.debug(
+                `Update instance: No service account token provided, skipping`,
+            );
+        }
+    }
+
+    /**
+     * Update one or many of the following properties on the configuration
+     * - Github dbt PAT
+     * - Databricks project httpPath
+     * - Databricks project dbtVersion
+     */
+    private async updateProjectConfiguration(
+        config: LightdashConfig['updateSetup'],
+    ) {
+        if (!config) return;
+
+        if (
+            config.dbt?.personal_access_token ||
+            config.project?.httpPath ||
+            config.project?.dbtVersion ||
+            config.project?.personalAccessToken
+        ) {
+            // This will throw an error if there is not exactly 1 project
+            const projectUuid = await this.getSingleProject();
+            this.logger.debug(
+                `Update instance: Updating configuration for project ${projectUuid}`,
+            );
+
+            const project = await this.projectModel.getWithSensitiveFields(
+                projectUuid,
+            );
+
+            const { warehouseConnection, dbtConnection } = project;
+
+            if (!warehouseConnection) {
+                throw new ParameterError(
+                    `Project ${projectUuid} has no warehouse connection`,
+                );
+            }
+
+            // Update dbt connection
+            let updatedDbtConnection: DbtProjectConfig | undefined;
+            if (config.dbt?.personal_access_token) {
+                if (!isGitProjectType(dbtConnection)) {
+                    throw new ParameterError(
+                        `Project ${projectUuid} is not a git project`,
+                    );
+                }
+                updatedDbtConnection = {
+                    ...dbtConnection,
+                    personal_access_token: config.dbt.personal_access_token,
+                };
+            }
+            // Update warehouse connection
+            let updatedWarehouseConnection:
+                | CreateWarehouseCredentials
+                | undefined;
+            if (
+                config.project?.httpPath ||
+                config.project?.personalAccessToken
+            ) {
+                if (warehouseConnection.type !== WarehouseTypes.DATABRICKS) {
+                    throw new ParameterError(
+                        `Project ${projectUuid} is not a Databricks project. Only Databricks projects are supported at the moment.`,
+                    );
+                }
+                updatedWarehouseConnection = {
+                    ...warehouseConnection,
+                    ...(config.project.httpPath && {
+                        httpPath: config.project.httpPath,
+                    }),
+                    ...(config.project.personalAccessToken && {
+                        personalAccessToken: config.project.personalAccessToken,
+                    }),
+                };
+            }
+
+            const updatedProject: UpdateProject = {
+                ...project,
+                warehouseConnection:
+                    updatedWarehouseConnection ?? warehouseConnection,
+                dbtVersion: config.project?.dbtVersion || project.dbtVersion,
+                dbtConnection: updatedDbtConnection ?? dbtConnection,
+            };
+
+            await this.projectModel.update(projectUuid, updatedProject);
+
+            this.logger.info(
+                `Update instance: Updated configuration for project ${projectUuid}`,
+            );
+        } else {
+            this.logger.debug(`Update instance: No configuration to update`);
+        }
+    }
+
+    private async getSingleOrg() {
+        const orgUuids = await this.organizationModel.getOrgUuids();
+        if (orgUuids.length !== 1) {
+            throw new ParameterError(
+                `There must be exactly 1 organization to update instance configuration, remove all the LD_SETUP* env variables or keep only one organization to continue`,
+            );
+        }
+        return orgUuids[0];
+    }
+
+    private async getSingleProject() {
+        const projectUuids = await this.projectModel.getDefaultProjectUuids();
+        if (projectUuids.length !== 1) {
+            throw new ParameterError(
+                `There must be exactly 1 project to update instance configuration, remove all the LD_SETUP* env variables or keep only one project to continue`,
+            );
+        }
+        return projectUuids[0];
+    }
+
+    private async updateOrganizationDefaultRole(
+        config: NonNullable<LightdashConfig['updateSetup']>,
+    ) {
+        if (
+            !config.organization?.defaultRole ||
+            !config.organization?.emailDomains ||
+            config.organization.emailDomains.length === 0
+        ) {
+            this.logger.debug(
+                `Update instance: No default role config found, skipping`,
+            );
+            return;
+        }
+
+        const orgUuid = await this.getSingleOrg();
+
+        const { emailDomains } = config.organization;
+        // Validates input
+        const error = validateOrganizationEmailDomains(emailDomains);
+        if (error) {
+            throw new ParameterError(error);
+        }
+        const allowedDomains: AllowedEmailDomains = {
+            organizationUuid: orgUuid,
+            emailDomains,
+            role: config.organization.defaultRole,
+            projects: [],
+        };
+        await this.organizationAllowedEmailDomainsModel.upsertAllowedEmailDomains(
+            allowedDomains,
+        );
+
+        this.logger.info(
+            `Update instance: Updated default role to ${
+                config.organization.defaultRole
+            } for domains "${emailDomains.join(
+                ', ',
+            )}" in organization ${orgUuid}`,
+        );
+    }
+
+    async updateInstanceConfiguration() {
+        const config = this.lightdashConfig.updateSetup;
+        if (!config) {
+            this.logger.debug(
+                `Update instance: No update setup config found, skipping`,
+            );
+            return;
+        }
+
+        await this.updateApiKeyForAdmin(config);
+
+        await this.updateServiceAccountForAdmin(config);
+
+        await this.updateProjectConfiguration(config);
+
+        await this.updateOrganizationDefaultRole(config);
     }
 }

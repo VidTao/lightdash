@@ -33,6 +33,7 @@ const createSavedQuery = async (
             ...payload.metricQuery,
             filters: convertDateFilters(payload.metricQuery.filters),
         },
+        parameters: payload.parameters,
     };
     return lightdashApi<SavedChart>({
         url: `/projects/${projectUuid}/saved`,
@@ -306,7 +307,19 @@ export const useUpdateMutation = (
                 await queryClient.invalidateQueries(['content']);
 
                 await queryClient.invalidateQueries(['spaces']);
+
                 queryClient.setQueryData(['saved_query', data.uuid], data);
+
+                if (dashboardUuid) {
+                    // Invalidate dashboard chart queries to refresh charts on dashboards
+                    await queryClient.resetQueries([
+                        'dashboard_chart_ready_query',
+                        data.projectUuid,
+                        data.uuid,
+                        dashboardUuid,
+                    ]);
+                }
+
                 showToastSuccess({
                     title: `Success! Chart was saved.`,
                     action: dashboardUuid
@@ -333,7 +346,8 @@ export const useUpdateMutation = (
 
 export const useCreateMutation = ({
     redirectOnSuccess = true,
-}: { redirectOnSuccess?: boolean } = {}) => {
+    showToastOnSuccess = true,
+}: { redirectOnSuccess?: boolean; showToastOnSuccess?: boolean } = {}) => {
     const navigate = useNavigate();
     const { projectUuid } = useParams<{ projectUuid: string }>();
     const queryClient = useQueryClient();
@@ -348,16 +362,18 @@ export const useCreateMutation = ({
             onSuccess: (data) => {
                 const navigateUrl = `/projects/${projectUuid}/saved/${data.uuid}/view`;
                 queryClient.setQueryData(['saved_query', data.uuid], data);
-                showToastSuccess({
-                    title: `Success! Chart was saved.`,
-                    action: redirectOnSuccess
-                        ? undefined
-                        : {
-                              children: 'View chart',
-                              icon: IconArrowRight,
-                              onClick: () => navigate(navigateUrl),
-                          },
-                });
+                if (showToastOnSuccess) {
+                    showToastSuccess({
+                        title: `Success! Chart was saved.`,
+                        action: redirectOnSuccess
+                            ? undefined
+                            : {
+                                  children: 'View chart',
+                                  icon: IconArrowRight,
+                                  onClick: () => navigate(navigateUrl),
+                              },
+                    });
+                }
                 if (redirectOnSuccess) {
                     void navigate(navigateUrl, {
                         replace: true,
@@ -465,6 +481,16 @@ export const useAddVersionMutation = () => {
 
             queryClient.setQueryData(['saved_query', data.uuid], data);
             await queryClient.resetQueries(['savedChartResults', data.uuid]);
+
+            if (dashboardUuid) {
+                // Invalidate dashboard chart queries to refresh charts on dashboards
+                await queryClient.resetQueries([
+                    'dashboard_chart_ready_query',
+                    data.projectUuid,
+                    data.uuid,
+                    dashboardUuid,
+                ]);
+            }
 
             if (dashboardUuid)
                 showToastSuccess({

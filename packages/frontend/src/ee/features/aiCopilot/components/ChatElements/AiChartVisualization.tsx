@@ -1,197 +1,126 @@
 import {
-    AiResultType,
-    assertUnreachable,
-    ChartType,
-    ECHARTS_DEFAULT_COLORS,
+    parseVizConfig,
     type AiAgentMessageAssistant,
-    type ApiAiAgentThreadMessageVizQuery,
-    type ApiError,
+    type AiArtifact,
 } from '@lightdash/common';
-import { Box, Group, SegmentedControl, Stack } from '@mantine-8/core';
-import { type QueryObserverSuccessResult } from '@tanstack/react-query';
-import { useMemo, useState, type FC } from 'react';
-import { useParams } from 'react-router';
-import { z } from 'zod';
-import { SeriesContextMenu } from '../../../../../components/Explorer/VisualizationCard/SeriesContextMenu';
-import LightdashVisualization from '../../../../../components/LightdashVisualization';
-import VisualizationProvider from '../../../../../components/LightdashVisualization/VisualizationProvider';
-import { DrillDownModal } from '../../../../../components/MetricQueryData/DrillDownModal';
-import MetricQueryDataProvider from '../../../../../components/MetricQueryData/MetricQueryDataProvider';
-import UnderlyingDataModal from '../../../../../components/MetricQueryData/UnderlyingDataModal';
-import { type EchartSeriesClickEvent } from '../../../../../components/SimpleChart';
-import ErrorBoundary from '../../../../../features/errorBoundary/ErrorBoundary';
-import { type EChartSeries } from '../../../../../hooks/echarts/useEchartsCartesianConfig';
-import useHealth from '../../../../../hooks/health/useHealth';
-import { useOrganization } from '../../../../../hooks/organization/useOrganization';
+import {
+    ActionIcon,
+    Center,
+    Group,
+    Loader,
+    Stack,
+    Text,
+    Title,
+} from '@mantine-8/core';
+import { useMediaQuery } from '@mantine-8/hooks';
+import { IconExclamationCircle, IconX } from '@tabler/icons-react';
+import { useMemo, type FC } from 'react';
+import MantineIcon from '../../../../../components/common/MantineIcon';
 import { useCompiledSqlFromMetricQuery } from '../../../../../hooks/useCompiledSql';
-import { useExplore } from '../../../../../hooks/useExplore';
-import { type InfiniteQueryResults } from '../../../../../hooks/useQueryResults';
-import useApp from '../../../../../providers/App/useApp';
-import useTracking from '../../../../../providers/Tracking/useTracking';
-import { EventName } from '../../../../../types/Events';
-import { getChartConfigFromAiAgentVizConfig } from '../../utils/echarts';
-import AgentVisualizationFilters from './AgentVisualizationFilters';
-import AgentVisualizationMetricsAndDimensions from './AgentVisualizationMetricsAndDimensions';
+import { useInfiniteQueryResults } from '../../../../../hooks/useQueryResults';
+import { useAiAgentArtifactVizQuery } from '../../hooks/useProjectAiAgents';
+import { clearArtifact } from '../../store/aiArtifactSlice';
+import { useAiAgentStoreDispatch } from '../../store/hooks';
 import { AiChartQuickOptions } from './AiChartQuickOptions';
-import { AiChartToolCalls } from './ToolCalls/AiChartToolCalls';
+import { AiVisualizationRenderer } from './AiVisualizationRenderer';
+import { ViewSqlButton } from './ViewSqlButton';
 
 type Props = {
-    results: InfiniteQueryResults;
-    queryExecutionHandle: QueryObserverSuccessResult<
-        ApiAiAgentThreadMessageVizQuery,
-        ApiError
-    >;
+    artifactData: AiArtifact;
     projectUuid: string;
+    agentUuid: string;
+    artifactUuid: string;
+    versionUuid: string;
     message: AiAgentMessageAssistant;
 };
 
-const activeTabsSchema = z.enum(['chart', 'calculation']);
-const activeTabsDataSchema = z.array(
-    z.object({
-        label: z.string(),
-        value: activeTabsSchema,
-    }),
-);
-
-const activeTabsData = activeTabsDataSchema.parse([
-    { label: 'Chart', value: 'chart' },
-    { label: "How it's calculated", value: 'calculation' },
-]);
-
 export const AiChartVisualization: FC<Props> = ({
-    results,
-    queryExecutionHandle,
+    artifactData,
     projectUuid,
+    agentUuid,
+    artifactUuid,
+    versionUuid,
     message,
 }) => {
-    const { track } = useTracking();
-    const { user } = useApp();
-    const { agentUuid } = useParams();
-    const { data: health } = useHealth();
-    const { data: organization } = useOrganization();
-    const { metricQuery, fields } = queryExecutionHandle.data.query;
-    const tableName = metricQuery?.exploreName;
-    const { data: explore } = useExplore(tableName);
-    const [echartsClickEvent, setEchartsClickEvent] =
-        useState<EchartSeriesClickEvent | null>(null);
-    const [echartSeries, setEchartSeries] = useState<EChartSeries[]>([]);
-    const [activeTab, setActiveTab] = useState<'chart' | 'calculation'>(
-        'chart',
+    const dispatch = useAiAgentStoreDispatch();
+    const isMobile = useMediaQuery('(max-width: 768px)');
+
+    const vizConfig = useMemo(() => {
+        if (!artifactData?.chartConfig) return null;
+        return parseVizConfig(artifactData.chartConfig);
+    }, [artifactData?.chartConfig]);
+
+    const queryExecutionHandle = useAiAgentArtifactVizQuery(
+        {
+            projectUuid,
+            agentUuid,
+            artifactUuid,
+            versionUuid,
+        },
+        { enabled: !!vizConfig },
     );
 
-    const toolCalls = message.toolCalls;
+    const queryResults = useInfiniteQueryResults(
+        projectUuid,
+        queryExecutionHandle?.data?.query.queryUuid,
+    );
 
     const { data: compiledSql } = useCompiledSqlFromMetricQuery({
-        tableName,
+        tableName: queryExecutionHandle.data?.query.metricQuery?.exploreName,
         projectUuid,
-        metricQuery,
+        metricQuery: queryExecutionHandle.data?.query.metricQuery,
     });
 
-    const resultsData = useMemo(
-        () => ({
-            ...results,
-            metricQuery,
-            fields,
-        }),
-        [results, metricQuery, fields],
-    );
+    const isQueryLoading =
+        queryExecutionHandle.isLoading || queryResults.isFetchingRows;
+    const isQueryError = queryExecutionHandle.isError || queryResults.error;
 
-    const chartConfig = useMemo(() => {
-        return getChartConfigFromAiAgentVizConfig({
-            vizConfigOutput: message.vizConfigOutput,
-            metricQuery,
-            rows: results.rows,
-            maxQueryLimit: health?.query.maxLimit,
-        });
-    }, [
-        message.vizConfigOutput,
-        metricQuery,
-        results.rows,
-        health?.query.maxLimit,
-    ]);
+    if (isQueryLoading) {
+        return (
+            <Center>
+                <Loader
+                    type="dots"
+                    color="gray"
+                    delayedMessage="Loading visualization..."
+                />
+            </Center>
+        );
+    }
 
-    const onActiveTabChange = (value: string) => {
-        setActiveTab(activeTabsSchema.parse(value));
+    if (isQueryError) {
+        return (
+            <Stack gap="xs" align="center" justify="center">
+                <MantineIcon icon={IconExclamationCircle} color="gray" />
+                <Text size="xs" c="dimmed" ta="center">
+                    Something went wrong loading the visualization data. Please
+                    try again.
+                </Text>
+            </Stack>
+        );
+    }
 
-        if (
-            value === 'calculation' &&
-            user?.data?.userUuid &&
-            user?.data?.organizationUuid &&
-            agentUuid &&
-            message.threadUuid &&
-            message.uuid
-        ) {
-            track({
-                name: EventName.AI_AGENT_CHART_HOW_ITS_CALCULATED_CLICKED,
-                properties: {
-                    userId: user.data.userUuid,
-                    organizationId: user.data.organizationUuid,
-                    projectId: projectUuid,
-                    aiAgentId: agentUuid,
-                    threadId: message.threadUuid,
-                    messageId: message.uuid,
-                    chartType: chartConfig.type,
-                },
-            });
-        }
-    };
+    if (!queryExecutionHandle.data || !vizConfig) {
+        return null;
+    }
 
     return (
-        <MetricQueryDataProvider
-            metricQuery={metricQuery}
-            tableName={tableName}
-            explore={explore}
-            queryUuid={queryExecutionHandle.data.query.queryUuid}
-        >
-            <VisualizationProvider
-                resultsData={resultsData}
-                chartConfig={chartConfig.echartsConfig}
-                columnOrder={[
-                    ...metricQuery.dimensions,
-                    ...metricQuery.metrics,
-                ]}
-                pivotTableMaxColumnLimit={
-                    health?.pivotTable.maxColumnLimit ?? 60
-                }
-                initialPivotDimensions={
-                    (chartConfig.type === AiResultType.VERTICAL_BAR_RESULT ||
-                        chartConfig.type === AiResultType.TIME_SERIES_RESULT) &&
-                    chartConfig.echartsConfig.type === ChartType.CARTESIAN &&
-                    chartConfig.vizTool.vizConfig.breakdownByDimension
-                        ? [
-                              chartConfig.vizTool.vizConfig
-                                  .breakdownByDimension as string,
-                          ]
-                        : undefined
-                }
-                colorPalette={
-                    organization?.chartColors ?? ECHARTS_DEFAULT_COLORS
-                }
-                isLoading={resultsData.isFetchingRows}
-                onSeriesContextMenu={(
-                    e: EchartSeriesClickEvent,
-                    series: EChartSeries[],
-                ) => {
-                    setEchartsClickEvent(e);
-                    setEchartSeries(series);
-                }}
-            >
-                <Stack gap="md" h="100%">
-                    <Group justify="space-between" align="start">
-                        <SegmentedControl
-                            style={{
-                                visibility:
-                                    toolCalls.length > 0 ? 'visible' : 'hidden',
-                            }}
-                            value={activeTab}
-                            onChange={onActiveTabChange}
-                            data={activeTabsData}
-                            size="xs"
-                            radius="md"
-                            color="gray"
-                        />
-
-                        {activeTab === 'chart' && (
+        <Stack gap="md" h="100%">
+            <AiVisualizationRenderer
+                results={queryResults}
+                queryExecutionHandle={queryExecutionHandle}
+                chartConfig={artifactData.chartConfig!}
+                headerContent={
+                    <Group gap="md" align="start">
+                        <Stack gap={0} flex={1}>
+                            <Title order={5}>
+                                {queryExecutionHandle.data.metadata.title}
+                            </Title>
+                            <Text c="dimmed" size="xs">
+                                {queryExecutionHandle.data.metadata.description}
+                            </Text>
+                        </Stack>
+                        <Group gap="sm" display={isMobile ? 'none' : 'flex'}>
+                            <ViewSqlButton sql={compiledSql?.query} />
                             <AiChartQuickOptions
                                 message={message}
                                 projectUuid={projectUuid}
@@ -202,82 +131,20 @@ export const AiChartVisualization: FC<Props> = ({
                                         queryExecutionHandle.data.metadata
                                             .description,
                                 }}
+                                compiledSql={compiledSql?.query}
                             />
-                        )}
+                            <ActionIcon
+                                size="sm"
+                                variant="subtle"
+                                color="gray"
+                                onClick={() => dispatch(clearArtifact())}
+                            >
+                                <MantineIcon icon={IconX} color="gray" />
+                            </ActionIcon>
+                        </Group>
                     </Group>
-
-                    <Box
-                        flex="1 0 0"
-                        style={{
-                            // Scrolling for tables
-                            overflow: 'auto',
-                        }}
-                    >
-                        {activeTab === 'chart' ? (
-                            <>
-                                <LightdashVisualization
-                                    className="sentry-block ph-no-capture"
-                                    data-testid="ai-visualization"
-                                />
-
-                                {chartConfig.echartsConfig.type ===
-                                    ChartType.CARTESIAN && (
-                                    <SeriesContextMenu
-                                        echartSeriesClickEvent={
-                                            echartsClickEvent ?? undefined
-                                        }
-                                        dimensions={metricQuery.dimensions}
-                                        series={echartSeries}
-                                        explore={explore}
-                                    />
-                                )}
-                                <UnderlyingDataModal />
-                                <DrillDownModal />
-                            </>
-                        ) : activeTab === 'calculation' ? (
-                            <AiChartToolCalls
-                                toolCalls={toolCalls}
-                                compiledSql={compiledSql}
-                                type="persisted"
-                            />
-                        ) : (
-                            assertUnreachable(activeTab, 'Invalid active tab')
-                        )}
-                    </Box>
-
-                    {activeTab === 'chart' && (
-                        <Stack gap="xs">
-                            <ErrorBoundary>
-                                {queryExecutionHandle.data &&
-                                    queryExecutionHandle.data.type !==
-                                        AiResultType.TABLE_RESULT && (
-                                        <AgentVisualizationMetricsAndDimensions
-                                            metricQuery={
-                                                queryExecutionHandle.data.query
-                                                    .metricQuery
-                                            }
-                                            fieldsMap={
-                                                queryExecutionHandle.data.query
-                                                    .fields
-                                            }
-                                        />
-                                    )}
-
-                                {message.vizConfigOutput &&
-                                'filters' in message.vizConfigOutput &&
-                                message.vizConfigOutput.filters ? (
-                                    <AgentVisualizationFilters
-                                        filters={
-                                            queryExecutionHandle.data.query
-                                                .metricQuery.filters
-                                        }
-                                    />
-                                ) : null}
-                            </ErrorBoundary>
-                        </Stack>
-                    )}
-                </Stack>
-            </VisualizationProvider>
-        </MetricQueryDataProvider>
+                }
+            />
+        </Stack>
     );
 };

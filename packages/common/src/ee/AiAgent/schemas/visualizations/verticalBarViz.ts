@@ -3,7 +3,9 @@ import type { Filters } from '../../../../types/filter';
 import { AI_DEFAULT_MAX_QUERY_LIMIT } from '../../constants';
 import type { AiMetricQueryWithFilters } from '../../types';
 import { getValidAiQueryLimit } from '../../validators';
+import { getFieldIdSchema } from '../fieldId';
 import sortFieldSchema from '../sortField';
+import type { ToolVerticalBarArgsTransformed } from '../tools';
 
 export const verticalBarMetricVizConfigSchema = z.object({
     exploreName: z
@@ -11,16 +13,15 @@ export const verticalBarMetricVizConfigSchema = z.object({
         .describe(
             'The name of the explore containing the metrics and dimensions used for the chart.',
         ),
-    xDimension: z
-        .string()
-        .describe(
+    xDimension: getFieldIdSchema({
+        additionalDescription:
             'The field id of the dimension to be displayed on the x-axis.',
-        ),
+    }),
     yMetrics: z
-        .array(z.string())
+        .array(getFieldIdSchema({ additionalDescription: null }))
         .min(1)
         .describe(
-            'At least one metric is required. The field ids of the metrics to be displayed on the y-axis. The height of the bars',
+            'The field ids of the metrics to be displayed on the y-axis. The height of the bars',
         ),
     sorts: z
         .array(sortFieldSchema)
@@ -34,12 +35,10 @@ export const verticalBarMetricVizConfigSchema = z.object({
         .describe(
             `The total number of data points / bars allowed on the chart.`,
         ),
-    breakdownByDimension: z
-        .string()
-        .nullable()
-        .describe(
+    breakdownByDimension: getFieldIdSchema({
+        additionalDescription:
             'The field id of the dimension used to split the metrics into groups along the x-axis. If stacking is false then this will create multiple bars around each x value, if stacking is true then this will create multiple bars for each metric stacked on top of each other',
-        ),
+    }).nullable(),
     stackBars: z
         .boolean()
         .nullable()
@@ -65,11 +64,17 @@ export type VerticalBarMetricVizConfigSchemaType = z.infer<
     typeof verticalBarMetricVizConfigSchema
 >;
 
-export const metricQueryVerticalBarViz = (
-    vizConfig: VerticalBarMetricVizConfigSchemaType,
-    filters: Filters,
-    maxLimit: number,
-): AiMetricQueryWithFilters => {
+export const metricQueryVerticalBarViz = ({
+    vizConfig,
+    filters,
+    maxLimit,
+    customMetrics,
+}: {
+    vizConfig: VerticalBarMetricVizConfigSchemaType;
+    filters: Filters;
+    maxLimit: number;
+    customMetrics: ToolVerticalBarArgsTransformed['customMetrics'] | null;
+}): AiMetricQueryWithFilters => {
     const metrics = vizConfig.yMetrics;
     const dimensions = [
         vizConfig.xDimension,
@@ -82,8 +87,12 @@ export const metricQueryVerticalBarViz = (
         metrics,
         dimensions,
         limit: getValidAiQueryLimit(limit, maxLimit),
-        sorts,
+        sorts: sorts.map((sort) => ({
+            ...sort,
+            nullsFirst: sort.nullsFirst ?? undefined,
+        })),
         exploreName: vizConfig.exploreName,
         filters,
+        additionalMetrics: customMetrics ?? [],
     };
 };

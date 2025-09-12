@@ -1,8 +1,10 @@
+import merge from 'lodash/merge';
 import {
     SupportedDbtAdapter,
     buildModelGraph,
     convertColumnMetric,
     convertModelMetric,
+    convertToAiHints,
     convertToGroups,
     isV9MetricRef,
     type DbtColumnLightdashDimension,
@@ -12,7 +14,11 @@ import {
     type DbtModelNode,
     type LineageGraph,
 } from '../types/dbt';
-import { MissingCatalogEntryError, ParseError } from '../types/errors';
+import {
+    CompileError,
+    MissingCatalogEntryError,
+    ParseError,
+} from '../types/errors';
 import {
     InlineErrorType,
     type Explore,
@@ -110,10 +116,8 @@ const convertDimension = (
     startOfWeek?: WeekDay | null,
     isAdditionalDimension?: boolean,
 ): Dimension => {
-    const meta = {
-        ...(column.meta || {}),
-        ...(column.config?.meta || {}),
-    };
+    // Config block takes priority, then meta block
+    const meta = merge({}, column.meta, column.config?.meta);
     let type = meta.dimension?.type || column.data_type || DimensionType.STRING;
     if (!Object.values(DimensionType).includes(type)) {
         throw new MissingCatalogEntryError(
@@ -191,6 +195,9 @@ const convertDimension = (
                       ? meta.dimension.tags
                       : [meta.dimension.tags],
               }
+            : {}),
+        ...(meta.dimension?.ai_hint
+            ? { aiHint: convertToAiHints(meta.dimension.ai_hint) }
             : {}),
     };
 };
@@ -336,10 +343,8 @@ export const convertTable = (
     spotlightConfig: LightdashProjectConfig['spotlight'],
     startOfWeek?: WeekDay | null,
 ): Omit<Table, 'lineageGraph'> => {
-    const meta = {
-        ...(model.meta || {}),
-        ...(model.config?.meta || {}),
-    }; // Config block takes priority, then meta block
+    // Config block takes priority, then meta block
+    const meta = merge({}, model.meta, model.config?.meta);
     const tableLabel = meta.label || friendlyName(model.name);
 
     const [dimensions, metrics]: [
@@ -357,10 +362,9 @@ export const convertTable = (
                 undefined,
                 startOfWeek,
             );
-            const columnMeta = {
-                ...(column.meta || {}),
-                ...(column.config?.meta || {}),
-            };
+
+            // Config block takes priority, then meta block
+            const columnMeta = merge({}, column.meta, column.config?.meta);
 
             const processIntervalDimension = (
                 dim: Dimension,
@@ -445,6 +449,11 @@ export const convertTable = (
                         name: subDimensionName,
                         meta: {
                             dimension: subDimension,
+                        },
+                        config: {
+                            meta: {
+                                dimension: subDimension,
+                            },
                         },
                     },
                     undefined,
@@ -607,6 +616,8 @@ export const convertTable = (
                   },
               }
             : {}),
+        ...(meta.ai_hint ? { aiHint: convertToAiHints(meta.ai_hint) } : {}),
+        ...(meta.parameters ? { parameters: meta.parameters } : {}),
     };
 };
 
@@ -664,10 +675,8 @@ export const convertExplores = async (
     const tableLineage = translateDbtModelsToTableLineage(models);
     const [tables, exploreErrors] = models.reduce(
         ([accTables, accErrors], model) => {
-            const meta = {
-                ...(model.meta || {}),
-                ...(model.config?.meta || {}), // Config block takes priority, then meta block
-            };
+            // Config block takes priority, then meta block
+            const meta = merge({}, model.meta, model.config?.meta);
 
             // model.config.tags has type string[] | string | undefined - normalise it to string[]
             const configTags =
@@ -737,10 +746,9 @@ export const convertExplores = async (
     const explores: (Explore | ExploreError)[] = validModels.reduce<
         (Explore | ExploreError)[]
     >((acc, model) => {
-        const meta = {
-            ...(model.meta || {}),
-            ...(model.config?.meta || {}), // Config block takes priority, then meta block
-        };
+        // Config block takes priority, then meta block
+        const meta = merge({}, model.meta, model.config?.meta);
+
         const configTags =
             typeof model.config?.tags === 'string'
                 ? [model.config.tags]
@@ -801,6 +809,9 @@ export const convertExplores = async (
                     ymlPath: model.patch_path?.split('://')?.[1],
                     sqlPath: model.path,
                     spotlightConfig: lightdashProjectConfig.spotlight,
+                    ...(meta.ai_hint
+                        ? { aiHint: convertToAiHints(meta.ai_hint) }
+                        : {}),
                     meta: {
                         ...meta,
                         // Override description for additional explores
@@ -808,6 +819,7 @@ export const convertExplores = async (
                             ? { description: exploreToCreate.description }
                             : {}),
                     },
+                    projectParameters: lightdashProjectConfig.parameters,
                 });
             } catch (e: unknown) {
                 return {
@@ -818,7 +830,8 @@ export const convertExplores = async (
                         {
                             // TODO improve parsing of error type
                             type:
-                                e instanceof ParseError
+                                e instanceof ParseError ||
+                                e instanceof CompileError
                                     ? InlineErrorType.METADATA_PARSE_ERROR
                                     : InlineErrorType.NO_DIMENSIONS_FOUND,
                             message:

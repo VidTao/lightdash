@@ -1,4 +1,6 @@
 import {
+    FeatureFlags,
+    getAvailableParametersFromTables,
     getDimensions,
     getItemId,
     isDateItem,
@@ -10,12 +12,13 @@ import {
     type SavedChart,
 } from '@lightdash/common';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { lightdashApi } from '../../api';
 import { queuedLightdashApi } from '../../api/queuedApi';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
 import { convertDateDashboardFilters } from '../../utils/dateFilter';
 import { useExplore } from '../useExplore';
+import { useFeatureFlag } from '../useFeatureFlagEnabled';
 import { useSavedQuery } from '../useSavedQuery';
 import useSearchParams from '../useSearchParams';
 import useDashboardFiltersForTile from './useDashboardFiltersForTile';
@@ -40,11 +43,19 @@ export type DashboardChartReadyQuery = {
 export const useDashboardChartReadyQuery = (
     tileUuid: string,
     chartUuid: string | null,
+    contextOverride?: QueryExecutionContext,
 ) => {
     const dashboardUuid = useDashboardContext((c) => c.dashboard?.uuid);
     const invalidateCache = useDashboardContext((c) => c.invalidateCache);
     const dashboardFilters = useDashboardFiltersForTile(tileUuid);
     const chartSort = useDashboardContext((c) => c.chartSort);
+    const parameterValues = useDashboardContext((c) => c.parameterValues);
+    const addParameterReferences = useDashboardContext(
+        (c) => c.addParameterReferences,
+    );
+    const tileParameterReferences = useDashboardContext(
+        (c) => c.tileParameterReferences,
+    );
     const dashboardSorts = useMemo(
         () => chartSort[tileUuid] || [],
         [chartSort, tileUuid],
@@ -55,6 +66,9 @@ export const useDashboardChartReadyQuery = (
         useSearchParams<QueryExecutionContext>('context') || undefined;
     const setChartsWithDateZoomApplied = useDashboardContext(
         (c) => c.setChartsWithDateZoomApplied,
+    );
+    const addParameterDefinitions = useDashboardContext(
+        (c) => c.addParameterDefinitions,
     );
 
 
@@ -73,6 +87,14 @@ export const useDashboardChartReadyQuery = (
     const { data: explore } = useExplore(
         chartQuery.data?.metricQuery?.exploreName,
     );
+
+    useEffect(() => {
+        if (explore) {
+            addParameterDefinitions(
+                getAvailableParametersFromTables(Object.values(explore.tables)),
+            );
+        }
+    }, [explore, addParameterDefinitions]);
 
     const timezoneFixFilters =
         dashboardFilters && convertDateDashboardFilters(dashboardFilters);
@@ -94,6 +116,16 @@ export const useDashboardChartReadyQuery = (
         explore,
     ]);
 
+    const chartParameterValues = useMemo(() => {
+        if (!tileParameterReferences || !tileParameterReferences[tileUuid])
+            return {};
+        return Object.fromEntries(
+            Object.entries(parameterValues).filter(([key]) =>
+                tileParameterReferences[tileUuid].includes(key),
+            ),
+        );
+    }, [parameterValues, tileParameterReferences, tileUuid]);
+
     setChartsWithDateZoomApplied((prev) => {
         if (hasADateDimension) {
             if (granularity) {
@@ -105,6 +137,10 @@ export const useDashboardChartReadyQuery = (
         return prev;
     });
 
+    const { data: useSqlPivotResults } = useFeatureFlag(
+        FeatureFlags.UseSqlPivotResults,
+    );
+
     const queryKey = useMemo(
         () => [
             'dashboard_chart_ready_query',
@@ -114,10 +150,12 @@ export const useDashboardChartReadyQuery = (
             timezoneFixFilters,
             dashboardSorts,
             sortKey,
-            context,
+            contextOverride || context,
             autoRefresh,
             hasADateDimension ? granularity : null,
             invalidateCache,
+            chartParameterValues,
+            useSqlPivotResults,
         ],
         [
             chartQuery.data?.projectUuid,
@@ -126,11 +164,14 @@ export const useDashboardChartReadyQuery = (
             timezoneFixFilters,
             dashboardSorts,
             sortKey,
+            contextOverride,
             context,
             autoRefresh,
             hasADateDimension,
             granularity,
             invalidateCache,
+            chartParameterValues,
+            useSqlPivotResults,
         ],
     );
 
@@ -146,7 +187,9 @@ export const useDashboardChartReadyQuery = (
                 {
                     context: autoRefresh
                         ? QueryExecutionContext.AUTOREFRESHED_DASHBOARD
-                        : context || QueryExecutionContext.DASHBOARD,
+                        : contextOverride ||
+                          context ||
+                          QueryExecutionContext.DASHBOARD,
                     chartUuid: chartUuid!,
                     dashboardUuid: dashboardUuid!,
                     dashboardFilters: timezoneFixFilters,
@@ -155,6 +198,8 @@ export const useDashboardChartReadyQuery = (
                         granularity,
                     },
                     invalidateCache,
+                    parameters: parameterValues,
+                    pivotResults: useSqlPivotResults?.enabled,
                 },
             );
 
@@ -170,6 +215,23 @@ export const useDashboardChartReadyQuery = (
         retry: false,
         refetchOnMount: false,
     });
+
+    useEffect(() => {
+        if (queryResult.data?.executeQueryResponse?.parameterReferences) {
+            addParameterReferences(
+                tileUuid,
+                queryResult.data.executeQueryResponse.parameterReferences,
+            );
+        } else if (queryResult.error) {
+            // On error, there are no references, but we count the tile as loaded
+            addParameterReferences(tileUuid, []);
+        }
+    }, [
+        queryResult.data?.executeQueryResponse?.parameterReferences,
+        addParameterReferences,
+        tileUuid,
+        queryResult.error,
+    ]);
 
     return { ...queryResult, error: error || queryResult.error };
 };

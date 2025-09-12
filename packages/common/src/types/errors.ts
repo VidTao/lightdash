@@ -263,6 +263,17 @@ export class NotFoundError extends LightdashError {
     }
 }
 
+export class NotSupportedError extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'NotSupportedError',
+            statusCode: 400,
+            data: {},
+        });
+    }
+}
+
 export class InvalidUser extends LightdashError {
     constructor(message: string) {
         super({
@@ -534,6 +545,20 @@ export class AiAgentNotFoundError extends LightdashError {
     }
 }
 
+/* This specific error will be used in the frontend
+to show a "reauthenticate" button in the UI
+*/
+export class SnowflakeTokenError extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'SnowflakeTokenError',
+            statusCode: 401,
+            data: {},
+        });
+    }
+}
+
 export class CustomSqlQueryForbiddenError extends LightdashError {
     constructor(
         message: string = 'User cannot run queries with custom SQL dimensions',
@@ -545,6 +570,62 @@ export class CustomSqlQueryForbiddenError extends LightdashError {
             data: {
                 documentationUrl: `https://docs.lightdash.com/references/custom-fields#custom-sql`,
             },
+        });
+    }
+}
+
+export class OauthAuthenticationError extends LightdashError {
+    constructor(
+        message = 'OAuth authentication error',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'OauthAuthenticationError',
+            statusCode: 401,
+            data,
+        });
+    }
+}
+
+export class GenerateDailySchedulerJobError extends LightdashError {
+    schedulerUuid: string;
+
+    constructor(
+        message: string,
+        schedulerUuid: string,
+        originalError?: unknown,
+    ) {
+        super({
+            message,
+            name: 'GenerateDailySchedulerJobError',
+            statusCode: 500,
+            data: {
+                schedulerUuid,
+                originalError:
+                    originalError instanceof Error
+                        ? originalError.message
+                        : String(originalError),
+            },
+        });
+        this.schedulerUuid = schedulerUuid;
+        if (originalError instanceof Error) {
+            this.stack = originalError.stack;
+            this.cause = originalError;
+        }
+    }
+}
+
+export class LightdashProjectConfigError extends LightdashError {
+    constructor(
+        message = 'Invalid lightdash.config.yml',
+        data: Record<string, AnyType> = {},
+    ) {
+        super({
+            message,
+            name: 'LightdashProjectConfigError',
+            statusCode: 400,
+            data,
         });
     }
 }

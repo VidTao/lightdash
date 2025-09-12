@@ -3,9 +3,11 @@ import { EMPTY_CARTESIAN_CHART_CONFIG } from '../../hooks/cartesianChartConfig/u
 import { ExplorerSection, type ExplorerReduceState } from './types';
 
 export const defaultState: ExplorerReduceState = {
-    shouldFetchResults: false,
+    isVisualizationConfigOpen: false,
+    parameterReferences: [],
+    parameterDefinitions: {},
     previouslyFetchedState: undefined,
-    expandedSections: [ExplorerSection.RESULTS],
+    expandedSections: [ExplorerSection.RESULTS, ExplorerSection.PARAMETERS],
     unsavedChartVersion: {
         tableName: '',
         metricQuery: {

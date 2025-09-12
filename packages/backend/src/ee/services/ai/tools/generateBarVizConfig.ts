@@ -1,11 +1,14 @@
 import {
+    Explore,
     getTotalFilterRules,
     isSlackPrompt,
     toolVerticalBarArgsSchema,
     toolVerticalBarArgsSchemaTransformed,
+    ToolVerticalBarArgsTransformed,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import type {
+    CreateOrUpdateArtifactFn,
     GetExploreFn,
     GetPromptFn,
     RunMiniMetricQueryFn,
@@ -15,7 +18,7 @@ import type {
 } from '../types/aiAgentDependencies';
 import { renderEcharts } from '../utils/renderEcharts';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
-import { validateFilterRules } from '../utils/validators';
+import { validateBarVizConfig } from '../utils/validateBarVizConfig';
 import { renderVerticalBarViz } from '../visualizations/vizVerticalBar';
 
 type Dependencies = {
@@ -25,6 +28,7 @@ type Dependencies = {
     getPrompt: GetPromptFn;
     updatePrompt: UpdatePromptFn;
     sendFile: SendFileFn;
+    createOrUpdateArtifact: CreateOrUpdateArtifactFn;
     maxLimit: number;
 };
 
@@ -35,12 +39,13 @@ export const getGenerateBarVizConfig = ({
     getPrompt,
     sendFile,
     updatePrompt,
+    createOrUpdateArtifact,
     maxLimit,
 }: Dependencies) => {
     const schema = toolVerticalBarArgsSchema;
 
     return tool({
-        description: `Use this tool to generate a Bar Chart Visualization.`,
+        description: toolVerticalBarArgsSchema.description,
         parameters: schema,
         execute: async (toolArgs) => {
             try {
@@ -49,18 +54,21 @@ export const getGenerateBarVizConfig = ({
                 // TODO: common for all viz tools. find a way to reuse this code.
                 const vizTool =
                     toolVerticalBarArgsSchemaTransformed.parse(toolArgs);
-
-                const filterRules = getTotalFilterRules(vizTool.filters);
                 const explore = await getExplore({
                     exploreName: vizTool.vizConfig.exploreName,
                 });
-                validateFilterRules(explore, filterRules);
+                validateBarVizConfig(vizTool, explore);
                 // end of TODO
 
                 const prompt = await getPrompt();
-                await updatePrompt({
+
+                await createOrUpdateArtifact({
+                    threadUuid: prompt.threadUuid,
                     promptUuid: prompt.promptUuid,
-                    vizConfigOutput: toolArgs,
+                    artifactType: 'chart',
+                    title: toolArgs.title,
+                    description: toolArgs.description,
+                    vizConfig: toolArgs,
                 });
 
                 if (isSlackPrompt(prompt)) {

@@ -62,6 +62,7 @@ import { useProject } from '../../../hooks/useProject';
 import { useUpdateMutation } from '../../../hooks/useSavedQuery';
 import useSearchParams from '../../../hooks/useSearchParams';
 import { useSpaceSummaries } from '../../../hooks/useSpaces';
+import { Can } from '../../../providers/Ability';
 import useApp from '../../../providers/App/useApp';
 import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import { TrackSection } from '../../../providers/Tracking/TrackingProvider';
@@ -334,7 +335,13 @@ const SavedChartsHeader: FC = () => {
                                     dashboardUuid={savedChart.dashboardUuid}
                                     dashboardName={savedChart.dashboardName}
                                 />
-                                <Title c="dark.6" order={5} fw={600}>
+                                <Title
+                                    c="dark.6"
+                                    order={5}
+                                    fw={600}
+                                    truncate
+                                    maw={500}
+                                >
                                     {savedChart.name}
                                 </Title>
                                 {isEditMode && userCanManageChart && (
@@ -631,20 +638,32 @@ const SavedChartsHeader: FC = () => {
                                         Alerts
                                     </Menu.Item>
                                 )}
-                                {userCanManageChart && hasGoogleDriveEnabled ? (
-                                    <Menu.Item
-                                        icon={
-                                            <MantineIcon
-                                                icon={IconCirclesRelation}
-                                            />
-                                        }
-                                        onClick={
-                                            syncWithGoogleSheetsModalHandlers.open
-                                        }
-                                    >
-                                        Google Sheets Sync
-                                    </Menu.Item>
-                                ) : null}
+                                {userCanManageChart &&
+                                    hasGoogleDriveEnabled && (
+                                        <Can
+                                            I="manage"
+                                            this={subject('GoogleSheets', {
+                                                organizationUuid:
+                                                    user.data?.organizationUuid,
+                                                projectUuid,
+                                            })}
+                                        >
+                                            <Menu.Item
+                                                icon={
+                                                    <MantineIcon
+                                                        icon={
+                                                            IconCirclesRelation
+                                                        }
+                                                    />
+                                                }
+                                                onClick={
+                                                    syncWithGoogleSheetsModalHandlers.open
+                                                }
+                                            >
+                                                Google Sheets Sync
+                                            </Menu.Item>
+                                        </Can>
+                                    )}
 
                                 {userCanManageChart && (
                                     <>

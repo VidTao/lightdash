@@ -116,6 +116,7 @@ projectRouter.post(
                     req.body.limit,
                     req.body.filters,
                     req.body.forceRefresh,
+                    req.body.parameters,
                 );
 
             res.json({
@@ -263,7 +264,7 @@ projectRouter.get(
             const results: TablesConfiguration = await req.services
                 .getProjectService()
                 .getTablesConfiguration(
-                    req.user!,
+                    req.account!,
                     getObjectValue(req.params, 'projectUuid'),
                 );
             res.json({

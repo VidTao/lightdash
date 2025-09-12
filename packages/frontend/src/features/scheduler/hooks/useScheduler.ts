@@ -3,8 +3,10 @@ import {
     type AnyType,
     type ApiError,
     type ApiJobStatusResponse,
+    type ApiSchedulersResponse,
     type ApiTestSchedulerResponse,
     type CreateSchedulerAndTargets,
+    type KnexPaginateArgs,
     type SchedulerAndTargets,
     type SchedulerWithLogs,
 } from '@lightdash/common';
@@ -32,6 +34,34 @@ const getSchedulerLogs = async (projectUuid: string) =>
         method: 'GET',
         body: undefined,
     });
+
+const getPaginatedSchedulers = async (
+    projectUuid: string,
+    paginateArgs?: KnexPaginateArgs,
+    searchQuery?: string,
+    sortBy?: string,
+    sortDirection?: 'asc' | 'desc',
+) => {
+    const urlParams = new URLSearchParams({
+        ...(paginateArgs
+            ? {
+                  page: String(paginateArgs.page),
+                  pageSize: String(paginateArgs.pageSize),
+              }
+            : {}),
+        ...(searchQuery ? { searchQuery } : {}),
+        ...(sortBy ? { sortBy } : {}),
+        ...(sortDirection ? { sortDirection } : {}),
+    }).toString();
+
+    return lightdashApi<ApiSchedulersResponse['results']>({
+        url: `/schedulers/${projectUuid}/list${
+            urlParams ? `?${urlParams}` : ''
+        }`,
+        method: 'GET',
+        body: undefined,
+    });
+};
 
 export const getSchedulerJobStatus = async <
     T = ApiJobStatusResponse['results'],
@@ -67,6 +97,39 @@ export const useSchedulerLogs = (projectUuid: string) =>
         queryKey: ['schedulerLogs', projectUuid],
         queryFn: () => getSchedulerLogs(projectUuid),
     });
+
+export const usePaginatedSchedulers = ({
+    projectUuid,
+    paginateArgs,
+    searchQuery,
+    sortBy,
+    sortDirection,
+}: {
+    projectUuid: string;
+    paginateArgs?: KnexPaginateArgs;
+    searchQuery?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+}) => {
+    return useQuery<ApiSchedulersResponse['results'], ApiError>({
+        queryKey: [
+            'paginatedSchedulers',
+            projectUuid,
+            paginateArgs,
+            searchQuery,
+            sortBy,
+            sortDirection,
+        ],
+        queryFn: () =>
+            getPaginatedSchedulers(
+                projectUuid,
+                paginateArgs,
+                searchQuery,
+                sortBy,
+                sortDirection,
+            ),
+    });
+};
 
 const getJobStatus = async (
     jobId: string,
@@ -126,11 +189,22 @@ export const useSendNowScheduler = () => {
         },
         {
             mutationKey: ['sendNowScheduler'],
-            onSuccess: () => {},
-            onError: ({ error }) => {
+            onSuccess: (res) => {
+                pollJobStatus(res.jobId || '')
+                    .then((data) => {
+                        if (data?.status === SchedulerJobStatus.ERROR) {
+                            throw new Error(data?.details?.error);
+                        }
+                    })
+                    .catch((e) => {
+                        throw e;
+                    });
+            },
+            onError: (apiError: ApiError) => {
                 showToastApiError({
-                    title: 'Failed to process job',
-                    apiError: error,
+                    key: 'toast-info-job-status',
+                    title: 'Failed to send scheduled delivery',
+                    apiError: apiError.error,
                 });
             },
         },

@@ -51,6 +51,8 @@ const schedulerWorkerFactory = (context: {
     new SchedulerWorker({
         lightdashConfig: context.lightdashConfig,
         analytics: context.analytics,
+        // SlackClient should initialize before UnfurlService and AiAgentService
+        slackClient: context.clients.getSlackClient(),
         unfurlService: context.serviceRepository.getUnfurlService(),
         csvService: context.serviceRepository.getCsvService(),
         dashboardService: context.serviceRepository.getDashboardService(),
@@ -62,7 +64,6 @@ const schedulerWorkerFactory = (context: {
         googleDriveClient: context.clients.getGoogleDriveClient(),
         s3Client: context.clients.getS3Client(),
         schedulerClient: context.clients.getSchedulerClient(),
-        slackClient: context.clients.getSlackClient(),
         catalogService: context.serviceRepository.getCatalogService(),
         encryptionUtil: context.utils.getEncryptionUtil(),
         msTeamsClient: context.clients.getMsTeamsClient(),
@@ -136,6 +137,9 @@ export default class SchedulerApp {
             }),
             models: this.models,
         });
+        this.prometheusMetrics = new PrometheusMetrics(
+            this.lightdashConfig.prometheus,
+        );
         this.serviceRepository = new ServiceRepository({
             serviceProviders: args.serviceProviders,
             context: new OperationContext({
@@ -146,10 +150,8 @@ export default class SchedulerApp {
             clients: this.clients,
             models: this.models,
             utils,
+            prometheusMetrics: this.prometheusMetrics,
         });
-        this.prometheusMetrics = new PrometheusMetrics(
-            this.lightdashConfig.prometheus,
-        );
         this.schedulerWorkerFactory =
             args.schedulerWorkerFactory || schedulerWorkerFactory;
         this.utils = utils;

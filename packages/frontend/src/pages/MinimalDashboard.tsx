@@ -36,6 +36,9 @@ const MinimalDashboard: FC = () => {
 
     const schedulerUuid = useSearchParams('schedulerUuid');
     const sendNowSchedulerFilters = useSearchParams('sendNowSchedulerFilters');
+    const sendNowSchedulerParameters = useSearchParams(
+        'sendNowSchedulerParameters',
+    );
     const schedulerTabs = useSearchParams('selectedTabs');
     const dateZoom = useDateZoomGranularitySearch();
 
@@ -72,6 +75,16 @@ const MinimalDashboard: FC = () => {
         return undefined;
     }, [scheduler, schedulerUuid, sendNowSchedulerFilters]);
 
+    const schedulerParameters = useMemo(() => {
+        if (schedulerUuid && scheduler && isDashboardScheduler(scheduler)) {
+            return scheduler.parameters;
+        }
+        if (sendNowSchedulerParameters) {
+            return JSON.parse(sendNowSchedulerParameters);
+        }
+        return undefined;
+    }, [scheduler, schedulerUuid, sendNowSchedulerParameters]);
+
     const schedulerTabsSelected = useMemo(() => {
         if (schedulerTabs) {
             return JSON.parse(schedulerTabs);
@@ -104,21 +117,29 @@ const MinimalDashboard: FC = () => {
         });
     }, [sortedTabs, generateTabUrl]);
 
+    const gridProps = getResponsiveGridLayoutProps({
+        stackVerticallyOnSmallestBreakpoint: true,
+    });
+
     const layouts = useMemo(() => {
+        const tiles =
+            dashboard?.tiles.filter((tile) =>
+                // If there are selected tabs when sending now/scheduling, aggregate ALL tiles into one view.
+                schedulerTabsSelected
+                    ? schedulerTabsSelected.includes(tile.tabUuid)
+                    : // This is when viewed a dashboard with tabs in mobile mode - you can navigate between tabs.
+                      !activeTab || activeTab.uuid === tile.tabUuid,
+            ) ?? [];
+
         return {
-            lg:
-                dashboard?.tiles
-                    .filter((tile) =>
-                        // If there are selected tabs when sending now/scheduling, aggregate ALL tiles into one view.
-                        schedulerTabsSelected
-                            ? schedulerTabsSelected.includes(tile.tabUuid)
-                            : // This is when viewed a dashboard with tabs in mobile mode - you can navigate between tabs.
-                              !activeTab || activeTab.uuid === tile.tabUuid,
-                    )
-                    .map<Layout>((tile) => getReactGridLayoutConfig(tile)) ??
-                [],
+            lg: tiles.map<Layout>((tile) =>
+                getReactGridLayoutConfig(tile, false, gridProps.cols.lg),
+            ),
+            md: tiles.map<Layout>((tile) =>
+                getReactGridLayoutConfig(tile, false, gridProps.cols.md),
+            ),
         };
-    }, [dashboard?.tiles, schedulerTabsSelected, activeTab]);
+    }, [dashboard?.tiles, schedulerTabsSelected, activeTab, gridProps.cols]);
 
     const filteredDashboardTiles = useMemo(() => {
         return (
@@ -159,7 +180,9 @@ const MinimalDashboard: FC = () => {
     return (
         <DashboardProvider
             schedulerFilters={schedulerFilters}
+            schedulerParameters={schedulerParameters}
             dateZoom={dateZoom}
+            defaultInvalidateCache={true}
         >
             {/* This is when viewing a dashboard with tabs in mobile mode - you can navigate between tabs. */}
             {canNavigateBetweenTabs && (
@@ -176,12 +199,7 @@ const MinimalDashboard: FC = () => {
                     sx={{ marginTop: '40px' }}
                 />
             ) : (
-                <ResponsiveGridLayout
-                    {...getResponsiveGridLayoutProps({
-                        stackVerticallyOnSmallestBreakpoint: true,
-                    })}
-                    layouts={layouts}
-                >
+                <ResponsiveGridLayout {...gridProps} layouts={layouts}>
                     {filteredDashboardTiles.map((tile) => (
                         <div key={tile.uuid}>
                             {tile.type === DashboardTileTypes.SAVED_CHART ? (

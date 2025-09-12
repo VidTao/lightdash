@@ -1,5 +1,7 @@
 import {
     ChartKind,
+    getFirstIndexColumns,
+    getParameterReferences,
     isVizTableConfig,
     MAX_PIVOT_COLUMN_LIMIT,
     MAX_SAFE_INTEGER,
@@ -55,15 +57,18 @@ import RunSqlQueryButton from '../../../components/SqlRunner/RunSqlQueryButton';
 import { useOrganization } from '../../../hooks/organization/useOrganization';
 import useToaster from '../../../hooks/toaster/useToaster';
 import useApp from '../../../providers/App/useApp';
+import { Parameters, useParameters } from '../../parameters';
 import { executeSqlQuery } from '../../queryRunner/executeQuery';
 import { DEFAULT_SQL_LIMIT } from '../constants';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
+    clearParameterValues,
     EditorTabs,
     selectActiveChartType,
     selectActiveEditorTab,
     selectFetchResultsOnLoad,
     selectLimit,
+    selectParameterValues,
     selectProjectUuid,
     selectQueryUuid,
     selectResultsTableConfig,
@@ -74,6 +79,7 @@ import {
     setActiveEditorTab,
     setEditorHighlightError,
     setSqlLimit,
+    updateParameterValue,
 } from '../store/sqlRunnerSlice';
 import { runSqlQuery } from '../store/thunks';
 import { ChartDownload } from './Download/ChartDownload';
@@ -123,6 +129,24 @@ export const ContentPanel: FC = () => {
         height: inputSectionHeight,
     } = useElementSize();
 
+    // Parameter state management for SQL Runner context
+    const parameterValues = useAppSelector(selectParameterValues);
+
+    const handleParameterChange = useCallback(
+        (key: string, value: string | number | string[] | number[] | null) => {
+            dispatch(updateParameterValue({ key, value }));
+        },
+        [dispatch],
+    );
+
+    const parameterReferences = useMemo(() => {
+        return new Set(getParameterReferences(sql));
+    }, [sql]);
+
+    const clearAllParameters = useCallback(() => {
+        dispatch(clearParameterValues());
+    }, [dispatch]);
+
     const currentVizConfig = useAppSelector((state) =>
         selectCompleteConfigByKind(state, selectedChartType),
     );
@@ -145,10 +169,11 @@ export const ContentPanel: FC = () => {
                     sql: sqlToUse,
                     limit,
                     projectUuid,
+                    parameterValues,
                 }),
             );
         },
-        [dispatch, projectUuid, limit],
+        [dispatch, projectUuid, limit, parameterValues],
     );
 
     useEffect(() => {
@@ -304,7 +329,8 @@ export const ContentPanel: FC = () => {
             (acc, col) => {
                 if (
                     isPivoted &&
-                    pivotedChartInfo.data?.indexColumn?.reference !== col
+                    getFirstIndexColumns(pivotedChartInfo.data?.indexColumn)
+                        ?.reference !== col
                 ) {
                     return acc;
                 }
@@ -351,6 +377,12 @@ export const ContentPanel: FC = () => {
         }
         return pivotedChartInfo?.data?.queryUuid;
     }, [pivotedChartInfo]);
+
+    const {
+        data: projectParameters,
+        isLoading: isProjectParametersLoading,
+        isError: isProjectParametersError,
+    } = useParameters(projectUuid, Array.from(parameterReferences ?? []));
 
     return (
         <Stack spacing="none" style={{ flex: 1, overflow: 'hidden' }}>
@@ -451,6 +483,15 @@ export const ContentPanel: FC = () => {
                             </Indicator>
                         </Group>
                         <Group spacing="xs">
+                            <Parameters
+                                isEditMode={false}
+                                parameters={projectParameters}
+                                parameterValues={parameterValues}
+                                onParameterChange={handleParameterChange}
+                                onClearAll={clearAllParameters}
+                                isLoading={isProjectParametersLoading}
+                                isError={isProjectParametersError}
+                            />
                             {activeEditorTab === EditorTabs.SQL && (
                                 <SqlQueryHistory />
                             )}

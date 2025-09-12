@@ -1,5 +1,8 @@
 import {
+    AI_DEFAULT_MAX_QUERY_LIMIT,
     ALL_TASK_NAMES,
+    AllowedEmailDomainsRole,
+    AllowedEmailDomainsRoles,
     AnyType,
     AuthTokenPrefix,
     cleanColorArray,
@@ -32,19 +35,16 @@ import {
     DEFAULT_ANTHROPIC_MODEL_NAME,
     DEFAULT_DEFAULT_AI_PROVIDER,
     DEFAULT_OPENAI_MODEL_NAME,
+    DEFAULT_OPENROUTER_MODEL_NAME,
 } from './aiConfigSchema';
 
 enum TokenEnvironmentVariable {
     SERVICE_ACCOUNT = 'LD_SETUP_SERVICE_ACCOUNT_TOKEN',
-    PERSONAL_ACCESS_TOKEN = 'LD_SETUP_PROJECT_PAT',
 }
 
 const tokenConfigs = {
     [TokenEnvironmentVariable.SERVICE_ACCOUNT]: {
         prefix: AuthTokenPrefix.SERVICE_ACCOUNT,
-    },
-    [TokenEnvironmentVariable.PERSONAL_ACCESS_TOKEN]: {
-        prefix: AuthTokenPrefix.PERSONAL_ACCESS_TOKEN,
     },
 };
 
@@ -241,7 +241,13 @@ export const getPemFileContent = (certValue: string | undefined) =>
         decodeUnlessStartsWith: '-----BEGIN ', // -----BEGIN CERTIFICATE | -----BEGIN PRIVATE KEY
     });
 
-type LoggingLevel = 'error' | 'warn' | 'info' | 'http' | 'debug' | 'audit';
+export type LoggingLevel =
+    | 'error'
+    | 'warn'
+    | 'info'
+    | 'http'
+    | 'debug'
+    | 'audit';
 const assertIsLoggingLevel = (x: string): x is LoggingLevel =>
     ['error', 'warn', 'info', 'http', 'debug', 'audit'].includes(x);
 const parseLoggingLevel = (raw: string): LoggingLevel => {
@@ -290,35 +296,32 @@ export const parseOrganizationMemberRoleArray = (
         return role;
     });
 };
+const parseApiExpiration = (envVariable: string): Date | null => {
+    const apiExpiration = process.env[envVariable];
+    const apiExpirationDays = apiExpiration ? parseInt(apiExpiration, 10) : 30; // Convert to number, this might throw an error
+    if (apiExpirationDays === 0) return null; // If 0, we return null, which means, no expiration
+    if (Number.isNaN(apiExpirationDays)) {
+        throw new ParameterError(`${envVariable} must be a valid number`);
+    }
+    return new Date(Date.now() + 1000 * 60 * 60 * 24 * apiExpirationDays);
+};
+
+const parseEnum = <T>(
+    value: string | undefined,
+    enumObj?: AnyType,
+): T | undefined => {
+    if (!value) return undefined;
+
+    const enumValues = enumObj ? Object.values(enumObj) : [];
+    if (enumValues.length > 0 && !enumValues.includes(value)) {
+        throw new ParameterError(
+            `Invalid value "${value}". Must be one of ${enumValues.join(', ')}`,
+        );
+    }
+    return value as T;
+};
+
 const getInitialSetupConfig = (): LightdashConfig['initialSetup'] => {
-    const parseEnum = <T>(
-        value: string | undefined,
-        enumObj?: AnyType,
-    ): T | undefined => {
-        if (!value) return undefined;
-
-        const enumValues = enumObj ? Object.values(enumObj) : [];
-        if (enumValues.length > 0 && !enumValues.includes(value)) {
-            throw new ParameterError(
-                `Invalid value "${value}". Must be one of ${enumValues.join(
-                    ', ',
-                )}`,
-            );
-        }
-        return value as T;
-    };
-
-    const parseApiExpiration = (envVariable: string): Date | null => {
-        const apiExpiration = process.env[envVariable];
-        const apiExpirationDays = apiExpiration
-            ? parseInt(apiExpiration, 10)
-            : 30; // Convert to number, this might throw an error
-        if (apiExpirationDays === 0) return null; // If 0, we return null, which means, no expiration
-        if (Number.isNaN(apiExpirationDays)) {
-            throw new ParameterError(`${envVariable} must be a valid number`);
-        }
-        return new Date(Date.now() + 1000 * 60 * 60 * 24 * apiExpirationDays);
-    };
     const parseCompute = (): CreateDatabricksCredentials['compute'] => {
         // This is a stringified array of objects, in JSON format
         // If format is not correct, it will throw an error
@@ -330,17 +333,27 @@ const getInitialSetupConfig = (): LightdashConfig['initialSetup'] => {
     try {
         if (!process.env.LD_SETUP_ADMIN_EMAIL) return undefined;
 
+        const projectPat = process.env.LD_SETUP_PROJECT_PAT;
+        if (!projectPat) {
+            throw new ParameterError(
+                `LD_SETUP_PROJECT_PAT is required for initial setup`,
+                { variant: 'ApiToken' },
+            );
+        }
+
         return {
             organization: {
                 admin: {
                     name: process.env.LD_SETUP_ADMIN_NAME || 'Admin User',
                     email: process.env.LD_SETUP_ADMIN_EMAIL!,
                 },
-                emailDomain: process.env.LD_SETUP_ORGANIZATION_EMAIL_DOMAIN,
+                emailDomains: getArrayFromCommaSeparatedList(
+                    'LD_SETUP_ORGANIZATION_EMAIL_DOMAIN',
+                ),
                 defaultRole:
-                    parseEnum<OrganizationMemberRole>(
+                    parseEnum<AllowedEmailDomainsRole>(
                         process.env.LD_SETUP_ORGANIZATION_DEFAULT_ROLE,
-                        OrganizationMemberRole,
+                        AllowedEmailDomainsRoles,
                     ) || OrganizationMemberRole.VIEWER,
                 name: process.env.LD_SETUP_ORGANIZATION_NAME!,
             },
@@ -370,9 +383,7 @@ const getInitialSetupConfig = (): LightdashConfig['initialSetup'] => {
                 database: process.env.LD_SETUP_PROJECT_SCHEMA!,
                 serverHostName: process.env.LD_SETUP_PROJECT_HOST!,
                 httpPath: process.env.LD_SETUP_PROJECT_HTTP_PATH!,
-                personalAccessToken: isApiValidToken(
-                    TokenEnvironmentVariable.PERSONAL_ACCESS_TOKEN,
-                )?.value!,
+                personalAccessToken: projectPat,
                 requireUserCredentials: undefined,
                 startOfWeek: parseEnum<WeekDay>(
                     process.env.LD_SETUP_START_OF_WEEK,
@@ -402,13 +413,71 @@ const getInitialSetupConfig = (): LightdashConfig['initialSetup'] => {
         // Unless it's related to API tokens, in which case we throw an error to get
         // a proper token. Otherwise, the CLI will not work and the app will be in a state
         // that needs to be recovered.
-        if (e instanceof ParseError && e.data.variant === 'ApiToken') {
+        if (
+            (e instanceof ParseError && e.data.variant === 'ApiToken') ||
+            (e instanceof ParameterError && e.data.variant === 'ApiToken')
+        ) {
             throw e;
         }
 
         console.error('Error parsing initial setup config', e);
         return undefined;
     }
+};
+
+/**
+ * This method is some kind of subset of the initial setup config
+ * and it is used to update some of the values on server restart
+ */
+export const getUpdateSetupConfig = (): LightdashConfig['updateSetup'] => {
+    if (
+        process.env.LD_SETUP_ADMIN_API_KEY &&
+        !process.env.LD_SETUP_ADMIN_EMAIL
+    ) {
+        throw new ParameterError(
+            `LD_SETUP_ADMIN_API_KEY is present, but there is no LD_SETUP_ADMIN_EMAIL to create a PAT for`,
+        );
+    }
+
+    return {
+        organization: {
+            admin: {
+                email: process.env.LD_SETUP_ADMIN_EMAIL,
+            },
+            emailDomains: getArrayFromCommaSeparatedList(
+                'LD_SETUP_ORGANIZATION_EMAIL_DOMAIN',
+            ),
+            defaultRole: parseEnum<AllowedEmailDomainsRole>(
+                process.env.LD_SETUP_ORGANIZATION_DEFAULT_ROLE,
+                AllowedEmailDomainsRoles,
+            ),
+        },
+        apiKey: {
+            token: process.env.LD_SETUP_ADMIN_API_KEY,
+            expirationTime: parseApiExpiration('LD_SETUP_API_KEY_EXPIRATION'),
+        },
+        project: {
+            httpPath: process.env.LD_SETUP_PROJECT_HTTP_PATH,
+            dbtVersion: parseEnum<SupportedDbtVersions>(
+                process.env.LD_SETUP_DBT_VERSION,
+                SupportedDbtVersions,
+            ),
+            personalAccessToken: process.env.LD_SETUP_PROJECT_PAT,
+        },
+        serviceAccount: isApiValidToken(
+            TokenEnvironmentVariable.SERVICE_ACCOUNT,
+        )
+            ? {
+                  token: process.env.LD_SETUP_SERVICE_ACCOUNT_TOKEN!,
+                  expirationTime: parseApiExpiration(
+                      'LD_SETUP_SERVICE_ACCOUNT_EXPIRATION',
+                  ),
+              }
+            : undefined,
+        dbt: {
+            personal_access_token: process.env.LD_SETUP_GITHUB_PAT,
+        },
+    };
 };
 
 export const parseBaseS3Config = (): LightdashConfig['s3'] => {
@@ -622,6 +691,7 @@ export type LightdashConfig = {
         csvCellsLimit: number;
         timezone: string | undefined;
         maxPageSize: number;
+        useSqlPivotResults: boolean;
     };
     pivotTable: {
         maxColumnLimit: number;
@@ -651,6 +721,16 @@ export type LightdashConfig = {
         jobTimeout: number;
         screenshotTimeout?: number;
         tasks: Array<SchedulerTaskName>;
+        queryHistory: {
+            cleanup: {
+                enabled: boolean;
+                retentionDays: number;
+                batchSize: number;
+                delayMs: number;
+                maxBatches?: number;
+                schedule: string;
+            };
+        };
     };
     groups: {
         enabled: boolean;
@@ -664,6 +744,15 @@ export type LightdashConfig = {
     };
     embedding: {
         enabled: boolean;
+        events?: {
+            enabled: boolean;
+            rateLimiting: {
+                maxEventsPerWindow: number;
+                windowDurationMs: number;
+            };
+            allowedOrigins: string[];
+            enablePostMessage: boolean;
+        };
     };
     scim: {
         enabled: boolean;
@@ -691,9 +780,9 @@ export type LightdashConfig = {
                 email: string;
                 name: string;
             };
-            emailDomain?: string;
+            emailDomains: string[];
             name: string;
-            defaultRole: OrganizationMemberRole;
+            defaultRole: AllowedEmailDomainsRole;
         };
         apiKey?: {
             token: string;
@@ -708,6 +797,37 @@ export type LightdashConfig = {
             dbtVersion: DbtVersionOption;
         };
         dbt: DbtGithubProjectConfig;
+    };
+    updateSetup?: {
+        organization?: {
+            admin: {
+                email?: string;
+            };
+            emailDomains: string[];
+            defaultRole?: AllowedEmailDomainsRole;
+        };
+        apiKey: {
+            token?: string;
+            expirationTime: Date | null;
+        };
+        dbt: {
+            personal_access_token?: string;
+        };
+        project: {
+            httpPath?: CreateDatabricksCredentials['httpPath'];
+            dbtVersion?: DbtVersionOption;
+            personalAccessToken?: CreateDatabricksCredentials['personalAccessToken'];
+        };
+        serviceAccount?: {
+            token: string;
+            expirationTime: Date | null;
+        };
+    };
+    mcp: {
+        enabled: boolean;
+    };
+    customRoles: {
+        enabled: boolean;
     };
 };
 
@@ -858,6 +978,10 @@ export type AuthConfig = {
         allowedOrgRoles: OrganizationMemberRole[];
         maxExpirationTimeInDays: number | undefined;
     };
+    oauthServer?: {
+        accessTokenLifetime: number; // in seconds (default = 1 hour)
+        refreshTokenLifetime: number; // in seconds (default = 2 weeks)
+    };
 };
 
 export type SmtpConfig = {
@@ -932,11 +1056,12 @@ export const parseConfig = (): LightdashConfig => {
 
     const rawCopilotConfig = {
         enabled: process.env.AI_COPILOT_ENABLED === 'true',
+        debugLoggingEnabled:
+            process.env.AI_COPILOT_DEBUG_LOGGING_ENABLED === 'true',
         telemetryEnabled: process.env.AI_COPILOT_TELEMETRY_ENABLED === 'true',
         requiresFeatureFlag:
             process.env.AI_COPILOT_REQUIRES_FEATURE_FLAG === 'true',
-        embeddingSearchEnabled:
-            process.env.AI_COPILOT_EMBEDDING_SEARCH_ENABLED === 'true',
+        askAiButtonEnabled: process.env.ASK_AI_BUTTON_ENABLED === 'true',
         defaultProvider:
             process.env.AI_DEFAULT_PROVIDER || DEFAULT_DEFAULT_AI_PROVIDER,
         providers: {
@@ -946,6 +1071,9 @@ export const parseConfig = (): LightdashConfig => {
                       apiKey: process.env.AZURE_AI_API_KEY,
                       apiVersion: process.env.AZURE_AI_API_VERSION,
                       deploymentName: process.env.AZURE_AI_DEPLOYMENT_NAME,
+                      temperature: getFloatFromEnvironmentVariable(
+                          'AZURE_AI_TEMPERATURE',
+                      ),
                   }
                 : undefined,
             openai: process.env.OPENAI_API_KEY
@@ -955,6 +1083,8 @@ export const parseConfig = (): LightdashConfig => {
                           process.env.OPENAI_MODEL_NAME ||
                           DEFAULT_OPENAI_MODEL_NAME,
                       baseUrl: process.env.OPENAI_BASE_URL,
+                      temperature:
+                          getFloatFromEnvironmentVariable('OPENAI_TEMPERATURE'),
                   }
                 : undefined,
             anthropic: process.env.ANTHROPIC_API_KEY
@@ -963,9 +1093,30 @@ export const parseConfig = (): LightdashConfig => {
                       modelName:
                           process.env.ANTHROPIC_MODEL_NAME ||
                           DEFAULT_ANTHROPIC_MODEL_NAME,
+                      temperature: getFloatFromEnvironmentVariable(
+                          'ANTHROPIC_TEMPERATURE',
+                      ),
+                  }
+                : undefined,
+            openrouter: process.env.OPENROUTER_API_KEY
+                ? {
+                      apiKey: process.env.OPENROUTER_API_KEY,
+                      modelName:
+                          process.env.OPENROUTER_MODEL_NAME ||
+                          DEFAULT_OPENROUTER_MODEL_NAME,
+                      sortOrder: process.env.OPENROUTER_SORT_ORDER,
+                      allowedProviders: getArrayFromCommaSeparatedList(
+                          'OPENROUTER_ALLOWED_PROVIDERS',
+                      ),
+                      temperature: getFloatFromEnvironmentVariable(
+                          'OPENROUTER_TEMPERATURE',
+                      ),
                   }
                 : undefined,
         },
+        maxQueryLimit:
+            getIntegerFromEnvironmentVariable('AI_COPILOT_MAX_QUERY_LIMIT') ||
+            AI_DEFAULT_MAX_QUERY_LIMIT,
     };
 
     const copilotConfigParse =
@@ -1185,6 +1336,16 @@ export const parseConfig = (): LightdashConfig => {
                 loginPath: '/login/snowflake',
                 callbackPath: '/oauth/redirect/snowflake',
             },
+            oauthServer: {
+                accessTokenLifetime:
+                    getIntegerFromEnvironmentVariable(
+                        'AUTH_OAUTH_SERVER_ACCESS_TOKEN_LIFETIME',
+                    ) || 60 * 60, // 1 hour
+                refreshTokenLifetime:
+                    getIntegerFromEnvironmentVariable(
+                        'AUTH_OAUTH_SERVER_REFRESH_TOKEN_LIFETIME',
+                    ) || 60 * 60 * 24 * 14, // 2 weeks
+            },
         },
         intercom: {
             appId:
@@ -1245,6 +1406,7 @@ export const parseConfig = (): LightdashConfig => {
                 getIntegerFromEnvironmentVariable(
                     'LIGHTDASH_QUERY_MAX_PAGE_SIZE',
                 ) || 2500, // Defaults to default limit * 5
+            useSqlPivotResults: process.env.USE_SQL_PIVOT_RESULTS === 'true',
         },
         chart: {
             versionHistory: {
@@ -1302,6 +1464,31 @@ export const parseConfig = (): LightdashConfig => {
                 ? parseInt(process.env.SCHEDULER_SCREENSHOT_TIMEOUT, 10)
                 : undefined,
             tasks: parseAndSanitizeSchedulerTasks(),
+            queryHistory: {
+                cleanup: {
+                    enabled:
+                        process.env.QUERY_HISTORY_CLEANUP_ENABLED !== 'false', // true by default
+                    retentionDays:
+                        getIntegerFromEnvironmentVariable(
+                            'QUERY_HISTORY_RETENTION_DAYS',
+                        ) || 30,
+                    batchSize:
+                        getIntegerFromEnvironmentVariable(
+                            'QUERY_HISTORY_CLEANUP_BATCH_SIZE',
+                        ) || 1000,
+                    delayMs:
+                        getIntegerFromEnvironmentVariable(
+                            'QUERY_HISTORY_CLEANUP_DELAY_MS',
+                        ) || 100,
+                    maxBatches:
+                        getIntegerFromEnvironmentVariable(
+                            'QUERY_HISTORY_CLEANUP_MAX_BATCHES',
+                        ) || 100,
+                    schedule:
+                        process.env.QUERY_HISTORY_CLEANUP_SCHEDULE ||
+                        '0 2 * * *',
+                },
+            },
         },
         groups: {
             enabled: process.env.GROUPS_ENABLED === 'true',
@@ -1350,6 +1537,23 @@ export const parseConfig = (): LightdashConfig => {
         },
         embedding: {
             enabled: process.env.EMBEDDING_ENABLED === 'true',
+            events: {
+                enabled: process.env.EMBED_EVENT_SYSTEM_ENABLED === 'true',
+                rateLimiting: {
+                    maxEventsPerWindow:
+                        getIntegerFromEnvironmentVariable(
+                            'EMBED_EVENT_RATE_LIMIT_MAX_EVENTS',
+                        ) || 10,
+                    windowDurationMs:
+                        getIntegerFromEnvironmentVariable(
+                            'EMBED_EVENT_RATE_LIMIT_WINDOW_MS',
+                        ) || 1000,
+                },
+                allowedOrigins: iframeAllowedDomains,
+                enablePostMessage:
+                    process.env.EMBED_EVENT_SYSTEM_POST_MESSAGE_ENABLED ===
+                    'true',
+            },
         },
         scim: {
             enabled: process.env.SCIM_ENABLED === 'true',
@@ -1382,5 +1586,12 @@ export const parseConfig = (): LightdashConfig => {
             projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
         },
         initialSetup: getInitialSetupConfig(),
+        updateSetup: getUpdateSetupConfig(),
+        mcp: {
+            enabled: process.env.MCP_ENABLED === 'true',
+        },
+        customRoles: {
+            enabled: process.env.CUSTOM_ROLES_ENABLED === 'true',
+        },
     };
 };

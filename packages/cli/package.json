@@ -1,6 +1,6 @@
 {
     "name": "@lightdash/cli",
-    "version": "0.1791.0",
+    "version": "0.2000.3",
     "license": "MIT",
     "bin": {
         "lightdash": "dist/index.js"
@@ -11,6 +11,7 @@
     ],
     "dependencies": {
         "@actions/core": "^1.11.1",
+        "@casl/ability": "^5.4.3",
         "@lightdash/common": "workspace:*",
         "@lightdash/warehouses": "workspace:*",
         "@types/columnify": "^1.5.1",
@@ -28,6 +29,7 @@
         "lodash": "^4.17.21",
         "node-fetch": "^2.7.0",
         "nunjucks": "^3.2.3",
+        "openid-client": "^5.6.4",
         "ora": "5.4.1",
         "parse-node-version": "^2.0.0",
         "unique-names-generator": "^4.7.1",

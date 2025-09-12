@@ -1,47 +1,97 @@
 import {
     friendlyName,
+    getItemId,
     getItemLabel,
+    getItemLabelWithoutTableName,
     isCompiledMetric,
     isDimension,
     isField,
     isMetric,
+    type AdditionalMetric,
     type ItemsMap,
     type MetricQuery,
 } from '@lightdash/common';
-import { Box, Button, Flex, HoverCard, Text } from '@mantine-8/core';
+import {
+    ActionIcon,
+    Box,
+    Button,
+    Flex,
+    HoverCard,
+    Text,
+    Tooltip,
+} from '@mantine-8/core';
+import { IconCode } from '@tabler/icons-react';
 import { lighten } from 'polished';
-import { type FC } from 'react';
+import { useMemo, useState, type FC } from 'react';
+import { useParams } from 'react-router';
 import FieldIcon from '../../../../../components/common/Filters/FieldIcon';
+import MantineIcon from '../../../../../components/common/MantineIcon';
 import { ItemDetailPreview } from '../../../../../components/Explorer/ExploreTree/TableTree/ItemDetailPreview';
 import { getItemBgColor } from '../../../../../hooks/useColumns';
+import useApp from '../../../../../providers/App/useApp';
+import useTracking from '../../../../../providers/Tracking/useTracking';
+import { EventName } from '../../../../../types/Events';
 
+import { SingleItemModalContent } from '../../../../../components/Explorer/WriteBackModal';
 import classes from './AgentVisualizationMetricsAndDimensions.module.css';
 
 const MetricDimensionItem: FC<{
     fieldId: string;
     type: 'metric' | 'dimension';
     fieldsMap: ItemsMap;
-}> = ({ fieldId, type, fieldsMap }) => {
-    const field = fieldsMap[fieldId];
+    showTablePrefix: boolean;
+    customMetric?: AdditionalMetric;
+    onWriteBackCustomMetric?: (metric: AdditionalMetric) => void;
+}> = ({
+    fieldId,
+    type,
+    fieldsMap,
+    showTablePrefix,
+    customMetric,
+    onWriteBackCustomMetric,
+}) => {
+    const { projectUuid } = useParams<{ projectUuid: string }>();
+    const { user } = useApp();
+    const { track } = useTracking();
+    const [isCodeIconHovered, setIsCodeIconHovered] = useState(false);
+
+    // If it's a custom metric, use it directly, otherwise get from fieldsMap
+    const field = customMetric || fieldsMap[fieldId];
+    const isCustomMetric = !!customMetric;
 
     if (!field) {
         return null;
     }
 
-    if (!isMetric(field) && !isDimension(field)) {
+    if (!isCustomMetric && !isMetric(field) && !isDimension(field)) {
         return null;
     }
 
-    const displayName = field ? getItemLabel(field) : friendlyName(fieldId);
+    let displayName = '';
+
+    if (isField(field)) {
+        displayName = showTablePrefix
+            ? getItemLabel(field)
+            : getItemLabelWithoutTableName(field);
+    } else {
+        displayName = friendlyName(fieldId);
+    }
+
     const backgroundColor = lighten(0.05, getItemBgColor(field));
     const iconColor = type === 'dimension' ? 'blue.9' : 'yellow.9';
 
-    // Get field description and other metadata
     const description = isField(field) ? field.description : undefined;
     const fieldName = field?.name || fieldId;
 
-    // Get metric info if it's a metric
-    const metricInfo = isCompiledMetric(field)
+    const metricInfo = isCustomMetric
+        ? {
+              type: customMetric.type,
+              sql: customMetric.sql,
+              compiledSql: customMetric.sql, // Using sql as compiledSql for custom metrics
+              name: customMetric.name,
+              filters: customMetric.filters,
+          }
+        : isCompiledMetric(field)
         ? {
               type: field.type,
               sql: field.sql,
@@ -52,10 +102,29 @@ const MetricDimensionItem: FC<{
           }
         : undefined;
 
-    const isHoverCardDisabled = !description && !metricInfo;
+    const isHoverCardDisabled =
+        (!description && !metricInfo) || isCodeIconHovered;
 
     const onOpenDescriptionView = () => {};
     const handleDropdownClick = (e: React.MouseEvent) => e.stopPropagation();
+
+    const handleWriteBack = (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.stopPropagation();
+        if (projectUuid && user.data?.organizationUuid) {
+            track({
+                name: EventName.WRITE_BACK_FROM_CUSTOM_METRIC_CLICKED,
+                properties: {
+                    userId: user.data.userUuid,
+                    projectId: projectUuid,
+                    organizationId: user.data.organizationUuid,
+                    customMetricsCount: 1,
+                },
+            });
+        }
+        if (onWriteBackCustomMetric && customMetric) {
+            onWriteBackCustomMetric(customMetric);
+        }
+    };
 
     return (
         <HoverCard
@@ -84,6 +153,37 @@ const MetricDimensionItem: FC<{
                         },
                     }}
                     bd="none"
+                    rightSection={
+                        isCustomMetric &&
+                        onWriteBackCustomMetric && (
+                            <Tooltip
+                                openDelay={200}
+                                position="top"
+                                label="Write back to dbt"
+                                withArrow
+                                offset={5}
+                            >
+                                <ActionIcon
+                                    variant="light"
+                                    size="xs"
+                                    color="grape.7"
+                                    onClick={handleWriteBack}
+                                    onMouseEnter={() =>
+                                        setIsCodeIconHovered(true)
+                                    }
+                                    onMouseLeave={() =>
+                                        setIsCodeIconHovered(false)
+                                    }
+                                >
+                                    <MantineIcon
+                                        icon={IconCode}
+                                        size={12}
+                                        strokeWidth={2.5}
+                                    />
+                                </ActionIcon>
+                            </Tooltip>
+                        )
+                    }
                 >
                     <Flex align="center" gap="xs">
                         <FieldIcon item={field} color={iconColor} size="sm" />
@@ -135,30 +235,101 @@ const AgentVisualizationMetricsAndDimensions: FC<Props> = ({
     metricQuery,
     fieldsMap,
 }) => {
-    if (!metricQuery.metrics.length && !metricQuery.dimensions.length) {
+    const { projectUuid } = useParams<{ projectUuid: string }>();
+    const [writeBackModal, setWriteBackModal] = useState<{
+        isOpen: boolean;
+        metric: AdditionalMetric | null;
+    }>({ isOpen: false, metric: null });
+
+    const handleWriteBack = (metric: AdditionalMetric) => {
+        setWriteBackModal({ isOpen: true, metric });
+    };
+
+    const handleCloseModal = () => {
+        setWriteBackModal({ isOpen: false, metric: null });
+    };
+
+    const numberOfExplores = useMemo(() => {
+        const tables = new Set<string>();
+
+        // Check regular fields
+        [...metricQuery.metrics, ...metricQuery.dimensions].forEach(
+            (fieldId) => {
+                const field = fieldsMap[fieldId];
+                if (field && isField(field)) {
+                    tables.add(field.table);
+                }
+            },
+        );
+
+        // Check additional metrics
+        metricQuery.additionalMetrics?.forEach((metric) => {
+            if (metric.table) {
+                tables.add(metric.table);
+            }
+        });
+
+        return tables.size;
+    }, [
+        metricQuery.metrics,
+        metricQuery.dimensions,
+        metricQuery.additionalMetrics,
+        fieldsMap,
+    ]);
+
+    const showTablePrefix = numberOfExplores > 1;
+
+    if (
+        !metricQuery.metrics.length &&
+        !metricQuery.dimensions.length &&
+        !metricQuery.additionalMetrics?.length
+    ) {
         return null;
     }
+
+    const additionalMetrics = metricQuery.additionalMetrics ?? [];
 
     return (
         <>
             <Flex gap="xs" wrap="wrap" align="center">
-                {metricQuery.metrics.map((fieldId) => (
-                    <MetricDimensionItem
-                        key={fieldId}
-                        fieldId={fieldId}
-                        type="metric"
-                        fieldsMap={fieldsMap}
-                    />
-                ))}
+                {metricQuery.metrics.map((fieldId) => {
+                    // Check if this metric is actually a custom metric
+                    const customMetric = additionalMetrics.find(
+                        (am) => getItemId(am) === fieldId,
+                    );
+
+                    return (
+                        <MetricDimensionItem
+                            key={fieldId}
+                            fieldId={fieldId}
+                            type="metric"
+                            fieldsMap={fieldsMap}
+                            showTablePrefix={showTablePrefix}
+                            customMetric={customMetric}
+                            onWriteBackCustomMetric={
+                                customMetric ? handleWriteBack : undefined
+                            }
+                        />
+                    );
+                })}
                 {metricQuery.dimensions.map((fieldId) => (
                     <MetricDimensionItem
                         key={fieldId}
                         fieldId={fieldId}
                         type="dimension"
                         fieldsMap={fieldsMap}
+                        showTablePrefix={showTablePrefix}
                     />
                 ))}
             </Flex>
+
+            {projectUuid && writeBackModal.metric && (
+                <SingleItemModalContent
+                    handleClose={handleCloseModal}
+                    item={writeBackModal.metric}
+                    projectUuid={projectUuid}
+                />
+            )}
         </>
     );
 };

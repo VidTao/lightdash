@@ -1,17 +1,20 @@
 import {
     AnyType,
     friendlyName,
-    getErrorMessage,
-    LightdashMode,
     MissingConfigError,
-    ScreenshotError,
     SlackAppCustomSettings,
     SlackChannel,
+    SlackError,
     SlackInstallationNotFoundError,
     SlackSettings,
     UnexpectedServerError,
 } from '@lightdash/common';
-import { App, Block, ExpressReceiver, LogLevel } from '@slack/bolt';
+import {
+    App,
+    Block,
+    ExpressReceiver,
+    LogLevel as SlackLogLevel,
+} from '@slack/bolt';
 import {
     ChatPostMessageArguments,
     ChatUpdateArguments,
@@ -24,18 +27,11 @@ import {
 } from '@slack/web-api';
 import { Express } from 'express';
 import { without } from 'lodash';
-import { nanoid } from 'nanoid';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
-import { LightdashConfig } from '../../config/parseConfig';
+import { LightdashConfig, LoggingLevel } from '../../config/parseConfig';
 import { slackErrorHandler } from '../../errors';
 import Logger from '../../logging/logger';
 import { SlackAuthenticationModel } from '../../models/SlackAuthenticationModel';
-import {
-    ScreenshotContext,
-    Unfurl,
-    UnfurlService,
-} from '../../services/UnfurlService/UnfurlService';
-import { getUnfurlBlocks } from './SlackMessageBlocks';
 
 const DEFAULT_CACHE_TIME = 1000 * 60 * 10; // 10 minutes
 const MAX_CHANNELS_LIMIT = 100000;
@@ -51,37 +47,27 @@ export type PostSlackFile = {
     fileType?: string;
 };
 
-const notifySlackError = async (
-    error: unknown,
-    url: string,
-    client: AnyType,
-    event: AnyType,
-    { appProfilePhotoUrl }: { appProfilePhotoUrl?: string },
-): Promise<void> => {
-    /** Expected slack errors:
-     * - cannot_parse_attachment: Means the image on the blocks is not accessible from slack, is the URL public ?
-     */
-    Logger.error(`Unable to unfurl slack URL ${url}: ${error} `);
-
-    // Send message in thread
-    await client.chat
-        .postMessage({
-            thread_ts: event.message_ts,
-            channel: event.channel,
-            ...(appProfilePhotoUrl ? { icon_url: appProfilePhotoUrl } : {}),
-            text: `:fire: Unable to unfurl ${url}: ${error}`,
-        })
-        .catch((er: unknown) =>
-            Logger.error(
-                `Unable send slack error message: ${getErrorMessage(er)}`,
-            ),
-        );
-};
-
 export type SlackClientArguments = {
     slackAuthenticationModel: SlackAuthenticationModel;
     lightdashConfig: LightdashConfig;
     analytics: LightdashAnalytics;
+};
+
+const lightdashLogLevelToSlackLogLevel = (
+    level: LoggingLevel,
+): SlackLogLevel => {
+    switch (level) {
+        case 'error':
+            return SlackLogLevel.ERROR;
+        case 'warn':
+            return SlackLogLevel.WARN;
+        case 'info':
+            return SlackLogLevel.INFO;
+        case 'debug':
+            return SlackLogLevel.DEBUG;
+        default:
+            return SlackLogLevel.INFO;
+    }
 };
 
 export class SlackClient {
@@ -92,6 +78,8 @@ export class SlackClient {
     analytics: LightdashAnalytics;
 
     public isEnabled: boolean = false;
+
+    private slackApp: App | undefined;
 
     private channelsCache: Map<
         string,
@@ -112,6 +100,10 @@ export class SlackClient {
         }
     }
 
+    public getApp(): App | undefined {
+        return this.slackApp;
+    }
+
     // eslint-disable-next-line class-methods-use-this
     public getRequiredScopes() {
         return [
@@ -120,12 +112,12 @@ export class SlackClient {
             'chat:write',
             'chat:write.customize',
             'channels:read',
-            'channels:join',
             'groups:read',
             'users:read',
             'app_mentions:read',
             'files:write',
             'files:read',
+            // 'channels:join', - Made optional since users can manually add the app to channels
         ];
     }
 
@@ -323,7 +315,16 @@ export class SlackClient {
                 });
             });
             await Promise.all(joinPromises);
-        } catch (e) {
+        } catch (e: AnyType) {
+            // If the channels:join scope is missing, log a warning but don't throw
+            if (e?.data?.error === 'missing_scope') {
+                Logger.warn(
+                    `Unable to join channels ${channels} on organization ${organizationUuid}: missing channels:join scope. The app can still be added to channels manually.`,
+                );
+                throw new SlackError(
+                    `Unable to join channel(s): missing channels:join scope. Add the app to the channel(s) manually.`,
+                );
+            }
             slackErrorHandler(
                 e,
                 `Unable to join channels ${channels} on organization ${organizationUuid}`,
@@ -668,19 +669,17 @@ export class SlackClient {
         }
     }
 
-    async start(
-        expressApp: Express,
-        unfurlService: UnfurlService,
-        aiAgentService: AnyType,
-    ) {
+    async start(expressApp: Express) {
         if (!this.lightdashConfig.slack?.clientId) {
             Logger.warn(`Missing "SLACK_CLIENT_ID", Slack App will not run`);
             return;
         }
 
+        let app: App | undefined;
+
         try {
             if (this.lightdashConfig.slack?.socketMode) {
-                const app = new App({
+                app = new App({
                     ...this.getSlackOptions(),
                     installationStore: {
                         storeInstallation: (i) =>
@@ -690,12 +689,13 @@ export class SlackClient {
                         deleteInstallation: (i) =>
                             this.slackAuthenticationModel.deleteInstallation(i),
                     },
-                    logLevel: LogLevel.INFO,
+                    logLevel: lightdashLogLevelToSlackLogLevel(
+                        this.lightdashConfig.logging.level ?? 'info',
+                    ),
                     port: this.lightdashConfig.slack.port,
                     socketMode: this.lightdashConfig.slack.socketMode,
                     appToken: this.lightdashConfig.slack.appToken,
                 });
-                this.addEventListeners(app, unfurlService, aiAgentService);
             } else {
                 const slackReceiver = new ExpressReceiver({
                     ...this.getSlackOptions(),
@@ -707,151 +707,24 @@ export class SlackClient {
                         deleteInstallation: (i) =>
                             this.slackAuthenticationModel.deleteInstallation(i),
                     },
-                    logLevel: LogLevel.INFO,
+                    logLevel: lightdashLogLevelToSlackLogLevel(
+                        this.lightdashConfig.logging.level ?? 'info',
+                    ),
                     app: expressApp,
                 });
-                const app = new App({
-                    ...this.getSlackOptions(),
 
+                app = new App({
+                    ...this.getSlackOptions(),
                     receiver: slackReceiver,
                 });
-                this.addEventListeners(app, unfurlService, aiAgentService);
             }
         } catch (e: unknown) {
             Logger.error(`Unable to start Slack app ${e}`);
         }
-    }
 
-    protected addEventListeners(
-        app: App,
-        unfurlService: UnfurlService,
-        // TODO: aiAgentService is optional, but we need to handle it in the service
-        aiAgentService: AnyType,
-    ) {
-        app.event('link_shared', (m) => this.unfurlSlackUrls(m, unfurlService));
-    }
-
-    private async sendUnfurl(
-        event: AnyType,
-        originalUrl: string,
-        unfurl: Unfurl,
-        client: AnyType,
-    ) {
-        const unfurlBlocks = getUnfurlBlocks(originalUrl, unfurl);
-        await client.chat
-            .unfurl({
-                ts: event.message_ts,
-                channel: event.channel,
-                unfurls: unfurlBlocks,
-            })
-            .catch((e: unknown) => {
-                this.analytics.track({
-                    event: 'share_slack.unfurl_error',
-                    userId: event.user,
-                    properties: {
-                        error: `${getErrorMessage(e)}`,
-                    },
-                });
-                Logger.error(
-                    `Unable to unfurl on slack ${JSON.stringify(
-                        unfurlBlocks,
-                    )}: ${JSON.stringify(e)}`,
-                );
-            });
-    }
-
-    // TODO: this is an antipattern, we should not have UnfurlService as a parameter here
-    // in fact, we should not have unfurlSlackUrls here at all, it should be moved to the service
-    async unfurlSlackUrls(message: AnyType, unfurlService: UnfurlService) {
-        const { event, client, context } = message;
-        let appProfilePhotoUrl: string | undefined;
-
-        if (event.channel === 'COMPOSER') return; // Do not unfurl urls when typing, only when message is sent
-
-        Logger.debug(`Got link_shared slack event ${event.message_ts}`);
-
-        event.links.map(async (l: AnyType) => {
-            const eventUserId = context.botUserId;
-
-            try {
-                const { teamId } = context;
-                const details = await unfurlService.unfurlDetails(l.url);
-
-                if (details) {
-                    this.analytics.track({
-                        event: 'share_slack.unfurl',
-                        userId: eventUserId,
-                        properties: {
-                            organizationId: details?.organizationUuid,
-                        },
-                    });
-
-                    Logger.debug(
-                        `Unfurling ${details.pageType} with URL ${details.minimalUrl}`,
-                    );
-
-                    await this.sendUnfurl(event, l.url, details, client);
-
-                    const imageId = `slack-image-${nanoid()}`;
-                    const authUserUuid =
-                        await this.slackAuthenticationModel.getUserUuid(teamId);
-
-                    const installation =
-                        await this.slackAuthenticationModel.getInstallationFromOrganizationUuid(
-                            details?.organizationUuid,
-                        );
-
-                    if (!installation) {
-                        throw new SlackInstallationNotFoundError();
-                    }
-
-                    appProfilePhotoUrl = installation.appProfilePhotoUrl;
-
-                    const { imageUrl } = await unfurlService.unfurlImage({
-                        url: details.minimalUrl,
-                        lightdashPage: details.pageType,
-                        imageId,
-                        authUserUuid,
-                        context: ScreenshotContext.SLACK,
-                    });
-
-                    if (imageUrl) {
-                        await this.sendUnfurl(
-                            event,
-                            l.url,
-                            { ...details, imageUrl },
-                            client,
-                        );
-
-                        this.analytics.track({
-                            event: 'share_slack.unfurl_completed',
-                            userId: eventUserId,
-                            properties: {
-                                pageType: details.pageType,
-                                organizationId: details?.organizationUuid,
-                            },
-                        });
-                    }
-                }
-            } catch (e) {
-                if (this.lightdashConfig.mode === LightdashMode.PR) {
-                    void notifySlackError(e, l.url, client, event, {
-                        appProfilePhotoUrl,
-                    });
-                }
-                if (!(e instanceof ScreenshotError)) {
-                    slackErrorHandler(e, 'Unable to unfurl slack URL');
-                }
-
-                this.analytics.track({
-                    event: 'share_slack.unfurl_error',
-                    userId: eventUserId,
-
-                    properties: {
-                        error: `${e}`,
-                    },
-                });
-            }
-        });
+        if (app) {
+            this.slackApp = app;
+            Logger.info('Slack app initialized successfully');
+        }
     }
 }

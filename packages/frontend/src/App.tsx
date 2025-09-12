@@ -14,14 +14,12 @@ import AbilityProvider from './providers/Ability/AbilityProvider';
 import ActiveJobProvider from './providers/ActiveJob/ActiveJobProvider';
 import AppProvider from './providers/App/AppProvider';
 import FullscreenProvider from './providers/Fullscreen/FullscreenProvider';
+import Mantine8Provider from './providers/Mantine8Provider';
 import MantineProvider from './providers/MantineProvider';
 import ReactQueryProvider from './providers/ReactQuery/ReactQueryProvider';
 import ThirdPartyProvider from './providers/ThirdPartyServicesProvider';
 import TrackingProvider from './providers/Tracking/TrackingProvider';
 import Routes from './Routes';
-
-// Mantine v8 styles
-import '@mantine-8/core/styles.css';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { useEffect } from 'react';
 import environment from './bratrax-implementation/environments';
@@ -93,20 +91,17 @@ const App = () => {
         <>
             <title>Bratrax</title>
 
-            <ReactQueryProvider>
-                <MantineProvider
-                    withGlobalStyles
-                    withNormalizeCSS
-                    withCSSVariables
-                >
+        <ReactQueryProvider>
+            <MantineProvider withGlobalStyles withNormalizeCSS withCSSVariables>
+                <Mantine8Provider>
                     <ModalsProvider>
                         <RouterProvider router={router} />
                     </ModalsProvider>
-                </MantineProvider>
-                <ReactQueryDevtools initialIsOpen={false} />
-            </ReactQueryProvider>
-        </>
-    );
-};
+                </Mantine8Provider>
+            </MantineProvider>
+            <ReactQueryDevtools initialIsOpen={false} />
+        </ReactQueryProvider>
+    </>
+);
 
 export default App;

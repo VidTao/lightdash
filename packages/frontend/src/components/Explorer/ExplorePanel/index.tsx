@@ -28,6 +28,7 @@ import {
     EditVirtualViewModal,
 } from '../../../features/virtualView';
 import { useExplore } from '../../../hooks/useExplore';
+import { Can } from '../../../providers/Ability';
 import useApp from '../../../providers/App/useApp';
 import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import useTracking from '../../../providers/Tracking/useTracking';
@@ -36,6 +37,7 @@ import MantineIcon from '../../common/MantineIcon';
 import PageBreadcrumbs from '../../common/PageBreadcrumbs';
 import ExploreTree from '../ExploreTree';
 import { ItemDetailProvider } from '../ExploreTree/TableTree/ItemDetailProvider';
+import { VisualizationConfigPortalId } from './constants';
 
 const LoadingSkeleton = () => (
     <Stack>
@@ -93,7 +95,12 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
     const replaceFields = useExplorerContext(
         (context) => context.actions.replaceFields,
     );
-    const { data: explore, status } = useExplore(activeTableName);
+
+    const isVisualizationConfigOpen = useExplorerContext(
+        (context) => context.state.isVisualizationConfigOpen,
+    );
+
+    const { data: explore, status, error } = useExplore(activeTableName);
 
     useEffect(() => {
         if (
@@ -135,14 +142,6 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
         projectUuid,
         chartUuid,
     ]);
-
-    const canManageVirtualViews = user.data?.ability?.can(
-        'manage',
-        subject('VirtualView', {
-            organizationUuid: user.data?.organizationUuid,
-            projectUuid,
-        }),
-    );
 
     const missingFields = useMemo(() => {
         if (explore) {
@@ -219,76 +218,112 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
 
     if (!explore) return null;
 
-    if (status === 'error') {
-        if (onBack) onBack();
+    // Only call `onBack` for 4XX errors, otherwise we lose URL state when there's a Network error or backend is down
+    if (status === 'error' && error.error.statusCode < 500) {
+        onBack?.();
         return null;
     }
 
     return (
-        <Stack h="100%" sx={{ flexGrow: 1 }}>
-            <Group position="apart">
-                <PageBreadcrumbs size="md" items={breadcrumbs} />
-                {canManageVirtualViews &&
-                    explore.type === ExploreType.VIRTUAL && (
-                        <Menu withArrow offset={-2}>
-                            <Menu.Target>
-                                <ActionIcon variant="transparent">
-                                    <MantineIcon icon={IconDots} />
-                                </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                                <Menu.Item
-                                    icon={<MantineIcon icon={IconPencil} />}
-                                    onClick={handleEditVirtualView}
-                                >
-                                    <Text fz="xs" fw={500}>
-                                        Edit virtual view
-                                    </Text>
-                                </Menu.Item>
-                                <Menu.Item
-                                    icon={<MantineIcon icon={IconTrash} />}
-                                    color="red"
-                                    onClick={handleDeleteVirtualView}
-                                >
-                                    <Text fz="xs" fw={500}>
-                                        Delete
-                                    </Text>
-                                </Menu.Item>
-                            </Menu.Dropdown>
-                        </Menu>
+        <>
+            <Stack
+                id={VisualizationConfigPortalId}
+                sx={{
+                    flexGrow: 1,
+                    overflow: 'hidden',
+                    display: isVisualizationConfigOpen ? 'flex' : 'none',
+                }}
+            />
+
+            <Stack
+                h="100%"
+                sx={{
+                    flexGrow: 1,
+                    display: isVisualizationConfigOpen ? 'none' : 'flex',
+                }}
+            >
+                <Group position="apart">
+                    <PageBreadcrumbs size="md" items={breadcrumbs} />
+                    {explore.type === ExploreType.VIRTUAL && (
+                        <Can
+                            I="create"
+                            this={subject('VirtualView', {
+                                organizationUuid: user.data?.organizationUuid,
+                                projectUuid,
+                            })}
+                        >
+                            <Menu withArrow offset={-2}>
+                                <Menu.Target>
+                                    <ActionIcon variant="transparent">
+                                        <MantineIcon icon={IconDots} />
+                                    </ActionIcon>
+                                </Menu.Target>
+                                <Menu.Dropdown>
+                                    <Menu.Item
+                                        icon={<MantineIcon icon={IconPencil} />}
+                                        onClick={handleEditVirtualView}
+                                    >
+                                        <Text fz="xs" fw={500}>
+                                            Edit virtual view
+                                        </Text>
+                                    </Menu.Item>
+                                    <Can
+                                        I="delete"
+                                        this={subject('VirtualView', {
+                                            organizationUuid:
+                                                user.data?.organizationUuid,
+                                            projectUuid,
+                                        })}
+                                    >
+                                        <Menu.Item
+                                            icon={
+                                                <MantineIcon icon={IconTrash} />
+                                            }
+                                            color="red"
+                                            onClick={handleDeleteVirtualView}
+                                        >
+                                            <Text fz="xs" fw={500}>
+                                                Delete
+                                            </Text>
+                                        </Menu.Item>
+                                    </Can>
+                                </Menu.Dropdown>
+                            </Menu>
+                        </Can>
                     )}
-            </Group>
+                </Group>
 
-            <ItemDetailProvider>
-                <ExploreTree
-                    explore={explore}
-                    additionalMetrics={additionalMetrics || []}
-                    selectedNodes={activeFields}
-                    onSelectedFieldChange={toggleActiveField}
-                    customDimensions={customDimensions}
-                    selectedDimensions={dimensions}
-                    missingFields={missingFields}
-                />
-            </ItemDetailProvider>
+                <ItemDetailProvider>
+                    <ExploreTree
+                        explore={explore}
+                        additionalMetrics={additionalMetrics || []}
+                        selectedNodes={activeFields}
+                        onSelectedFieldChange={toggleActiveField}
+                        customDimensions={customDimensions}
+                        selectedDimensions={dimensions}
+                        missingFields={missingFields}
+                    />
+                </ItemDetailProvider>
 
-            {isEditVirtualViewOpen && (
-                <EditVirtualViewModal
-                    opened={isEditVirtualViewOpen}
-                    onClose={() => setIsEditVirtualViewOpen(false)}
-                    activeTableName={activeTableName}
-                    setIsEditVirtualViewOpen={setIsEditVirtualViewOpen}
-                    explore={explore}
-                />
-            )}
-            {isDeleteVirtualViewOpen && projectUuid && (
-                <DeleteVirtualViewModal
-                    opened={isDeleteVirtualViewOpen}
-                    onClose={() => setIsDeleteVirtualViewOpen(false)}
-                    virtualViewName={activeTableName}
-                    projectUuid={projectUuid}
-                />
-            )}
-        </Stack>
+                {isEditVirtualViewOpen && (
+                    <EditVirtualViewModal
+                        opened={isEditVirtualViewOpen}
+                        onClose={() => setIsEditVirtualViewOpen(false)}
+                        activeTableName={activeTableName}
+                        setIsEditVirtualViewOpen={setIsEditVirtualViewOpen}
+                        explore={explore}
+                    />
+                )}
+                {isDeleteVirtualViewOpen && projectUuid && (
+                    <DeleteVirtualViewModal
+                        opened={isDeleteVirtualViewOpen}
+                        onClose={() => setIsDeleteVirtualViewOpen(false)}
+                        virtualViewName={activeTableName}
+                        projectUuid={projectUuid}
+                    />
+                )}
+            </Stack>
+        </>
     );
 });
 

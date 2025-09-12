@@ -49,6 +49,7 @@ import ShareRedirect from './pages/ShareRedirect';
 import Space from './pages/Space';
 import Spaces from './pages/Spaces';
 import SqlRunner from './pages/SqlRunner';
+import UnusedContent from './pages/UnusedContent';
 import UserActivity from './pages/UserActivity';
 import VerifyEmailPage from './pages/VerifyEmail';
 import ViewSqlChart from './pages/ViewSqlChart';
@@ -447,6 +448,17 @@ const APP_ROUTES: RouteObject[] = [
                                 <NavBar />
                                 <TrackPage name={PageName.USER_ACTIVITY}>
                                     <UserActivity />
+                                </TrackPage>
+                            </>
+                        ),
+                    },
+                    {
+                        path: '/projects/:projectUuid/unused-content',
+                        element: (
+                            <>
+                                <NavBar />
+                                <TrackPage name={PageName.USER_ACTIVITY}>
+                                    <UnusedContent />
                                 </TrackPage>
                             </>
                         ),

@@ -92,6 +92,7 @@ export type DbSavedChartVersion = {
     saved_query_id: number;
     chart_config: ChartConfig['config'] | null;
     pivot_dimensions: string[] | null;
+    parameters: AnyType | null; // JSONB
     updated_by_user_uuid: string | null;
     timezone: string | null;
 };
@@ -111,6 +112,7 @@ export type CreateDbSavedChartVersion = Pick<
     | 'chart_type'
     | 'pivot_dimensions'
     | 'chart_config'
+    | 'parameters'
     | 'updated_by_user_uuid'
     | 'timezone'
 >;
@@ -139,12 +141,17 @@ type DbSavedChartVersionSort = {
     saved_queries_version_id: number;
     field_name: string;
     descending: boolean;
+    nulls_first: boolean | null;
     order: number;
 };
 
 export type CreateDbSavedChartVersionSort = Pick<
     DbSavedChartVersionSort,
-    'saved_queries_version_id' | 'field_name' | 'descending' | 'order'
+    | 'saved_queries_version_id'
+    | 'field_name'
+    | 'descending'
+    | 'nulls_first'
+    | 'order'
 >;
 
 export const SavedChartVersionSortsTableName = 'saved_queries_version_sorts';

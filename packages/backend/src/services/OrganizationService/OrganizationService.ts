@@ -1,7 +1,8 @@
 import { subject } from '@casl/ability';
 import {
+    Account,
     AllowedEmailDomains,
-    AllowedEmailDomainsRoles,
+    assertIsAccountWithOrg,
     convertProjectRoleToOrganizationRole,
     CreateColorPalette,
     CreateGroup,
@@ -10,7 +11,6 @@ import {
     DbtProjectType,
     DbtVersionOptionLatest,
     ForbiddenError,
-    getOrganizationNameSchema,
     Group,
     GroupWithMembers,
     isUserWithOrg,
@@ -19,8 +19,6 @@ import {
     LightdashMode,
     NotExistsError,
     OnbordingRecord,
-    OpenIdIdentityIssuerType,
-    OpenIdUser,
     Organization,
     OrganizationColorPalette,
     OrganizationColorPaletteWithIsActive,
@@ -30,11 +28,7 @@ import {
     OrganizationMemberRole,
     OrganizationProject,
     ParameterError,
-    ProjectType,
-    RequestMethod,
-    ServiceAccountScope,
     SessionUser,
-    UnexpectedServerError,
     UpdateAllowedEmailDomains,
     UpdateColorPalette,
     UpdateOrganization,
@@ -47,11 +41,7 @@ import fs from 'fs';
 import { groupBy } from 'lodash';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../../config/parseConfig';
-import { ServiceAccountModel } from '../../ee/models/ServiceAccountModel';
-import { PersonalAccessTokenModel } from '../../models/DashboardModel/PersonalAccessTokenModel';
-import { EmailModel } from '../../models/EmailModel';
 import { GroupsModel } from '../../models/GroupsModel';
-import { InviteLinkModel } from '../../models/InviteLinkModel';
 import { OnboardingModel } from '../../models/OnboardingModel/OnboardingModel';
 import { OrganizationAllowedEmailDomainsModel } from '../../models/OrganizationAllowedEmailDomainsModel';
 import { OrganizationMemberProfileModel } from '../../models/OrganizationMemberProfileModel';
@@ -59,7 +49,6 @@ import { OrganizationModel } from '../../models/OrganizationModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { UserModel } from '../../models/UserModel';
 import { BaseService } from '../BaseService';
-import { ProjectService } from '../ProjectService/ProjectService';
 
 type OrganizationServiceArguments = {
     lightdashConfig: LightdashConfig;
@@ -113,16 +102,15 @@ export class OrganizationService extends BaseService {
         this.projectService = projectService;
     }
 
-    async get(user: SessionUser): Promise<Organization> {
-        if (!isUserWithOrg(user)) {
-            throw new ForbiddenError('User is not part of an organization');
-        }
+    async get(account: Account): Promise<Organization> {
+        assertIsAccountWithOrg(account);
+
         const needsProject = !(await this.projectModel.hasProjects(
-            user.organizationUuid,
+            account.organization.organizationUuid,
         ));
 
         const organization = await this.organizationModel.get(
-            user.organizationUuid,
+            account.organization.organizationUuid,
         );
         return {
             ...organization,
@@ -301,8 +289,8 @@ export class OrganizationService extends BaseService {
         };
     }
 
-    async getProjects(user: SessionUser): Promise<OrganizationProject[]> {
-        const { organizationUuid } = user;
+    async getProjects(account: Account): Promise<OrganizationProject[]> {
+        const { organizationUuid } = account.organization;
         if (organizationUuid === undefined) {
             throw new NotExistsError('Organization not found');
         }
@@ -311,7 +299,7 @@ export class OrganizationService extends BaseService {
         );
 
         return projects.filter((project) =>
-            user.ability.can(
+            account.user.ability.can(
                 'view',
                 subject('Project', {
                     organizationUuid,

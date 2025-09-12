@@ -261,6 +261,7 @@ export const isCustomSqlDimension = (
 export type CompiledCustomSqlDimension = CustomSqlDimension & {
     compiledSql: string;
     tablesReferences: Array<string>;
+    parameterReferences?: string[];
 };
 
 export type CompiledCustomDimension =
@@ -345,6 +346,7 @@ export const isTableCalculation = (
 
 export type CompiledTableCalculation = TableCalculation & {
     compiledSql: string;
+    dependsOn: string[]; // Names of other table calculations this depends on
 };
 
 export type FieldUrl = {
@@ -377,6 +379,7 @@ export interface Field {
     urls?: FieldUrl[];
     index?: number;
     tags?: string[];
+    parameterReferences?: string[];
 }
 
 export const isField = (field: AnyType): field is Field =>
@@ -442,16 +445,19 @@ export interface Dimension extends Field {
     isAdditionalDimension?: boolean;
     colors?: Record<string, string>;
     isIntervalBase?: boolean;
+    aiHint?: string | string[];
 }
 
-export interface CompiledDimension extends Dimension {
+type CompiledProperties = {
     compiledSql: string; // sql string with resolved template variables
     tablesReferences: Array<string> | undefined;
     tablesRequiredAttributes?: Record<
         string,
         Record<string, string | string[]>
     >;
-}
+};
+export type CompiledDimension = Dimension & CompiledProperties;
+export type CompiledMetric = Metric & CompiledProperties;
 
 export type CompiledField = CompiledDimension | CompiledMetric;
 
@@ -459,15 +465,6 @@ export const isDimension = (
     field: ItemsMap[string] | AdditionalMetric | undefined, // NOTE: `ItemsMap converts AdditionalMetric to Metric
 ): field is Dimension =>
     isField(field) && field.fieldType === FieldType.DIMENSION;
-
-export interface CompiledMetric extends Metric {
-    compiledSql: string;
-    tablesReferences: Array<string> | undefined;
-    tablesRequiredAttributes?: Record<
-        string,
-        Record<string, string | string[]>
-    >;
-}
 
 export interface FilterableDimension extends Dimension {
     type:
@@ -587,6 +584,7 @@ export interface Metric extends Field {
         visibility: LightdashProjectConfig['spotlight']['default_visibility'];
         categories?: string[]; // yaml_reference
     };
+    aiHint?: string | string[];
 }
 
 export const isFilterableDimension = (

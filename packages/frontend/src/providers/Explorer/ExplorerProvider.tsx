@@ -3,8 +3,13 @@ import {
     ChartType,
     convertFieldRefToFieldId,
     deepEqual,
+    derivePivotConfigurationFromChart,
+    FeatureFlags,
+    getAvailableParametersFromTables,
     getFieldRef,
+    getFieldsFromMetricQuery,
     getItemId,
+    isTimeZone,
     lightdashVariablePattern,
     maybeReplaceFieldsInChartVersion,
     removeEmptyProperties,
@@ -19,12 +24,15 @@ import {
     type FieldId,
     type Metric,
     type MetricQuery,
+    type ParameterDefinitions,
+    type ParameterValue,
+    type PivotConfiguration,
     type ReplaceCustomFields,
     type SavedChart,
     type SortField,
     type TableCalculation,
-    type TimeZone,
 } from '@lightdash/common';
+import { useLocalStorage } from '@mantine/hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { produce } from 'immer';
 import cloneDeep from 'lodash/cloneDeep';
@@ -38,25 +46,31 @@ import {
     type FC,
 } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import {
+    AUTO_FETCH_ENABLED_DEFAULT,
+    AUTO_FETCH_ENABLED_KEY,
+} from '../../components/RunQuerySettings/defaults';
+import { useParameters } from '../../hooks/parameters/useParameters';
 import useDefaultSortField from '../../hooks/useDefaultSortField';
+import { useExplore } from '../../hooks/useExplore';
+import { useFeatureFlag } from '../../hooks/useFeatureFlagEnabled';
 import {
     executeQueryAndWaitForResults,
     useCancelQuery,
-    useGetReadyQueryResults,
-    useInfiniteQueryResults,
     type QueryResultsProps,
 } from '../../hooks/useQueryResults';
 import ExplorerContext from './context';
 import { defaultState } from './defaultState';
 import {
     ActionType,
+    ExplorerSection,
     type Action,
     type ConfigCacheMap,
     type ExplorerContextType,
     type ExplorerReduceState,
-    type ExplorerSection,
 } from './types';
-import { getValidChartConfig } from './utils';
+import { useQueryManager } from './useExplorerQueryManager';
+import { cleanConfig, getValidChartConfig } from './utils';
 
 const calcColumnOrder = (
     columnOrder: FieldId[],
@@ -142,13 +156,8 @@ const getTableCalculationsMetadata = (
 // eslint-disable-next-line react-refresh/only-export-components
 export function reducer(
     state: ExplorerReduceState,
-    action: Action & { options?: { shouldFetchResults: boolean } },
+    action: Action,
 ): ExplorerReduceState {
-    state = {
-        ...state,
-        shouldFetchResults:
-            action.options?.shouldFetchResults || state.shouldFetchResults,
-    };
     switch (action.type) {
         case ActionType.RESET: {
             return action.payload;
@@ -158,11 +167,6 @@ export function reducer(
                 draft.unsavedChartVersion.tableName = action.payload;
                 draft.unsavedChartVersion.metricQuery.exploreName =
                     action.payload;
-            });
-        }
-        case ActionType.SET_FETCH_RESULTS_FALSE: {
-            return produce(state, (draft) => {
-                draft.shouldFetchResults = false;
             });
         }
         case ActionType.SET_PREVIOUSLY_FETCHED_STATE: {
@@ -345,6 +349,16 @@ export function reducer(
                 sorts.splice(destinationIndex, 0, removed);
             });
         }
+        case ActionType.SET_SORT_FIELD_NULLS_FIRST: {
+            return produce(state, (newState) => {
+                newState.unsavedChartVersion.metricQuery.sorts =
+                    newState.unsavedChartVersion.metricQuery.sorts.map((sf) =>
+                        sf.fieldId === action.payload.fieldId
+                            ? { ...sf, nullsFirst: action.payload.nullsFirst }
+                            : sf,
+                    );
+            });
+        }
         case ActionType.SET_ROW_LIMIT: {
             return produce(state, (draft) => {
                 draft.unsavedChartVersion.metricQuery.limit = action.payload;
@@ -358,6 +372,28 @@ export function reducer(
         case ActionType.SET_FILTERS: {
             return produce(state, (draft) => {
                 draft.unsavedChartVersion.metricQuery.filters = action.payload;
+            });
+        }
+        case ActionType.SET_PARAMETER: {
+            return produce(state, (draft) => {
+                if (!draft.unsavedChartVersion.parameters) {
+                    draft.unsavedChartVersion.parameters = {};
+                }
+                if (action.payload.value === null) {
+                    delete draft.unsavedChartVersion.parameters[
+                        action.payload.key
+                    ];
+                } else {
+                    draft.unsavedChartVersion.parameters = {
+                        ...draft.unsavedChartVersion.parameters,
+                        [action.payload.key]: action.payload.value,
+                    };
+                }
+            });
+        }
+        case ActionType.CLEAR_ALL_PARAMETERS: {
+            return produce(state, (draft) => {
+                draft.unsavedChartVersion.parameters = {};
             });
         }
         case ActionType.ADD_ADDITIONAL_METRIC: {
@@ -797,6 +833,21 @@ export function reducer(
             }
             return state;
         }
+        case ActionType.OPEN_VISUALIZATION_CONFIG: {
+            return produce(state, (draft) => {
+                draft.isVisualizationConfigOpen = true;
+            });
+        }
+        case ActionType.CLOSE_VISUALIZATION_CONFIG: {
+            return produce(state, (draft) => {
+                draft.isVisualizationConfigOpen = false;
+            });
+        }
+        case ActionType.SET_PARAMETER_REFERENCES: {
+            return produce(state, (draft) => {
+                draft.parameterReferences = action.payload;
+            });
+        }
         default: {
             return assertUnreachable(
                 action,
@@ -808,6 +859,7 @@ export function reducer(
 
 const ExplorerProvider: FC<
     React.PropsWithChildren<{
+        minimal?: boolean;
         isEditMode?: boolean;
         initialState?: ExplorerReduceState;
         savedChart?: SavedChart;
@@ -816,8 +868,10 @@ const ExplorerProvider: FC<
             | { chartUuid: string; context?: string }
             | { chartUuid: string; chartVersionUuid: string };
         dateZoomGranularity?: DateGranularity;
+        projectUuid?: string;
     }>
 > = ({
+    minimal = false,
     isEditMode = false,
     initialState,
     savedChart,
@@ -825,7 +879,13 @@ const ExplorerProvider: FC<
     children,
     viewModeQueryArgs,
     dateZoomGranularity,
+    projectUuid: propProjectUuid,
 }) => {
+    const [autoFetchEnabled] = useLocalStorage({
+        key: AUTO_FETCH_ENABLED_KEY,
+        defaultValue: AUTO_FETCH_ENABLED_DEFAULT,
+    });
+
     const defaultStateWithConfig = useMemo(
         () => ({
             ...defaultState,
@@ -904,9 +964,6 @@ const ExplorerProvider: FC<
         dispatch({
             type: ActionType.REMOVE_FIELD,
             payload: fieldId,
-            options: {
-                shouldFetchResults: true,
-            },
         });
     }, []);
 
@@ -914,9 +971,6 @@ const ExplorerProvider: FC<
         dispatch({
             type: ActionType.TOGGLE_SORT_FIELD,
             payload: fieldId,
-            options: {
-                shouldFetchResults: true,
-            },
         });
     }, []);
 
@@ -924,9 +978,6 @@ const ExplorerProvider: FC<
         dispatch({
             type: ActionType.SET_SORT_FIELDS,
             payload: sortFields,
-            options: {
-                shouldFetchResults: true,
-            },
         });
     }, []);
 
@@ -934,9 +985,6 @@ const ExplorerProvider: FC<
         dispatch({
             type: ActionType.REMOVE_SORT_FIELD,
             payload: fieldId,
-            options: {
-                shouldFetchResults: true,
-            },
         });
     }, []);
 
@@ -945,9 +993,6 @@ const ExplorerProvider: FC<
             dispatch({
                 type: ActionType.MOVE_SORT_FIELDS,
                 payload: { sourceIndex, destinationIndex },
-                options: {
-                    shouldFetchResults: true,
-                },
             });
         },
         [],
@@ -956,14 +1001,23 @@ const ExplorerProvider: FC<
     const addSortField = useCallback(
         (
             fieldId: FieldId,
-            options: { descending: boolean } = { descending: false },
+            options: {
+                descending: boolean;
+            } = { descending: false },
         ) => {
             dispatch({
                 type: ActionType.ADD_SORT_FIELD,
                 payload: { fieldId, ...options },
-                options: {
-                    shouldFetchResults: true,
-                },
+            });
+        },
+        [],
+    );
+
+    const setSortFieldNullsFirst = useCallback(
+        (fieldId: FieldId, nullsFirst: boolean | undefined) => {
+            dispatch({
+                type: ActionType.SET_SORT_FIELD_NULLS_FIRST,
+                payload: { fieldId, nullsFirst },
             });
         },
         [],
@@ -973,34 +1027,45 @@ const ExplorerProvider: FC<
         dispatch({
             type: ActionType.SET_ROW_LIMIT,
             payload: limit,
-            options: {
-                shouldFetchResults: true,
-            },
         });
     }, []);
 
-    const setTimeZone = useCallback((timezone: TimeZone) => {
-        dispatch({
-            type: ActionType.SET_TIME_ZONE,
-            payload: timezone,
-            options: {
-                shouldFetchResults: true,
-            },
-        });
-    }, []);
-
-    const setFilters = useCallback(
-        (filters: MetricQuery['filters'], shouldFetchResults: boolean) => {
+    const setTimeZone = useCallback((timezone: string | null) => {
+        if (timezone && isTimeZone(timezone)) {
             dispatch({
-                type: ActionType.SET_FILTERS,
-                payload: filters,
-                options: {
-                    shouldFetchResults,
-                },
+                type: ActionType.SET_TIME_ZONE,
+                payload: timezone,
             });
+        }
+    }, []);
+
+    const setFilters = useCallback((filters: MetricQuery['filters']) => {
+        dispatch({
+            type: ActionType.SET_FILTERS,
+            payload: filters,
+        });
+    }, []);
+
+    const setParameter = useCallback(
+        (key: string, value: ParameterValue | null) => {
+            if (value === null) {
+                dispatch({
+                    type: ActionType.SET_PARAMETER,
+                    payload: { key, value: null },
+                });
+            } else {
+                dispatch({
+                    type: ActionType.SET_PARAMETER,
+                    payload: { key, value },
+                });
+            }
         },
         [],
     );
+
+    const clearAllParameters = useCallback(() => {
+        dispatch({ type: ActionType.CLEAR_ALL_PARAMETERS });
+    }, []);
 
     const setPivotFields = useCallback((fields: FieldId[] = []) => {
         dispatch({
@@ -1118,9 +1183,6 @@ const ExplorerProvider: FC<
             dispatch({
                 type: ActionType.ADD_TABLE_CALCULATION,
                 payload: tableCalculation,
-                options: {
-                    shouldFetchResults: true,
-                },
             });
         },
         [unsavedChartVersion],
@@ -1140,9 +1202,6 @@ const ExplorerProvider: FC<
             dispatch({
                 type: ActionType.UPDATE_TABLE_CALCULATION,
                 payload: { oldName, tableCalculation },
-                options: {
-                    shouldFetchResults: true,
-                },
             });
         },
         [unsavedChartVersion],
@@ -1151,9 +1210,6 @@ const ExplorerProvider: FC<
         dispatch({
             type: ActionType.DELETE_TABLE_CALCULATION,
             payload: name,
-            options: {
-                shouldFetchResults: true,
-            },
         });
     }, []);
 
@@ -1162,9 +1218,6 @@ const ExplorerProvider: FC<
             dispatch({
                 type: ActionType.ADD_CUSTOM_DIMENSION,
                 payload: customDimension,
-                options: {
-                    shouldFetchResults: true,
-                },
             });
 
             // TODO: add dispatch toggle
@@ -1180,9 +1233,6 @@ const ExplorerProvider: FC<
             dispatch({
                 type: ActionType.EDIT_CUSTOM_DIMENSION,
                 payload: { customDimension, previousCustomDimensionId },
-                options: {
-                    shouldFetchResults: true,
-                },
             });
             // TODO: add dispatch toggle
         },
@@ -1225,9 +1275,6 @@ const ExplorerProvider: FC<
             dispatch({
                 type: ActionType.UPDATE_METRIC_FORMAT,
                 payload: args,
-                options: {
-                    shouldFetchResults: true,
-                },
             });
         },
         [],
@@ -1250,16 +1297,86 @@ const ExplorerProvider: FC<
             return !deepEqual(
                 removeEmptyProperties({
                     tableName: savedChart.tableName,
-                    chartConfig: savedChart.chartConfig,
+                    chartConfig: cleanConfig(savedChart.chartConfig),
                     metricQuery: savedChart.metricQuery,
                     tableConfig: savedChart.tableConfig,
                     pivotConfig: savedChart.pivotConfig,
+                    parameters: savedChart.parameters,
                 }),
-                removeEmptyProperties(unsavedChartVersion),
+                removeEmptyProperties({
+                    tableName: unsavedChartVersion.tableName,
+                    chartConfig: cleanConfig(unsavedChartVersion.chartConfig),
+                    metricQuery: unsavedChartVersion.metricQuery,
+                    tableConfig: unsavedChartVersion.tableConfig,
+                    pivotConfig: unsavedChartVersion.pivotConfig,
+                    parameters: unsavedChartVersion.parameters,
+                }),
             );
         }
         return isValidQuery;
     }, [unsavedChartVersion, isValidQuery, savedChart]);
+
+    const [validQueryArgs, setValidQueryArgs] =
+        useState<QueryResultsProps | null>(null);
+
+    // State for unpivoted query (for results table when chart is pivoted)
+    const [unpivotedQueryArgs, setUnpivotedQueryArgs] =
+        useState<QueryResultsProps | null>(null);
+
+    const { projectUuid: projectUuidFromParams } = useParams<{
+        projectUuid: string;
+    }>();
+    const projectUuid = propProjectUuid || projectUuidFromParams;
+
+    const { data: projectParameters } = useParameters(
+        projectUuid,
+        reducerState.parameterReferences ?? undefined,
+        {
+            enabled: !!reducerState.parameterReferences?.length,
+        },
+    );
+
+    const { data: explore } = useExplore(unsavedChartVersion.tableName);
+
+    const exploreParameterDefinitions = useMemo(() => {
+        return explore
+            ? getAvailableParametersFromTables(Object.values(explore.tables))
+            : {};
+    }, [explore]);
+
+    const parameterDefinitions: ParameterDefinitions = useMemo(() => {
+        return {
+            ...(projectParameters ?? {}),
+            ...(exploreParameterDefinitions ?? {}),
+        };
+    }, [projectParameters, exploreParameterDefinitions]);
+
+    const missingRequiredParameters = useMemo(() => {
+        // If no required parameters are set, return null, this will disable query execution
+        if (reducerState.parameterReferences === null) return null;
+
+        // If parameters are not the same return null, this will disable query execution until validQueryArgs is updated
+        if (
+            !deepEqual(
+                validQueryArgs?.parameters ?? {},
+                unsavedChartVersion.parameters ?? {},
+            )
+        ) {
+            return null;
+        }
+
+        // Missing required parameters are the ones that are not set and don't have a default value
+        return reducerState.parameterReferences.filter(
+            (parameter) =>
+                !unsavedChartVersion.parameters?.[parameter] &&
+                !parameterDefinitions?.[parameter]?.default,
+        );
+    }, [
+        parameterDefinitions,
+        reducerState.parameterReferences,
+        unsavedChartVersion.parameters,
+        validQueryArgs?.parameters,
+    ]);
 
     const state = useMemo(
         () => ({
@@ -1269,6 +1386,8 @@ const ExplorerProvider: FC<
             isValidQuery,
             hasUnsavedChanges,
             savedChart,
+            missingRequiredParameters,
+            parameterDefinitions,
         }),
         [
             isEditMode,
@@ -1277,22 +1396,36 @@ const ExplorerProvider: FC<
             isValidQuery,
             hasUnsavedChanges,
             savedChart,
+            missingRequiredParameters,
+            parameterDefinitions,
         ],
     );
 
-    const [validQueryArgs, setValidQueryArgs] =
-        useState<QueryResultsProps | null>(null);
-    const query = useGetReadyQueryResults(validQueryArgs);
-    const [queryUuidHistory, setQueryUuidHistory] = useState<string[]>([]);
-    useEffect(() => {
-        if (query.data) {
-            setQueryUuidHistory((prev) => [...prev, query.data.queryUuid]);
-        }
-    }, [query.data]);
-    const queryResults = useInfiniteQueryResults(
-        validQueryArgs?.projectUuid,
-        // get last value from queryUuidHistory
-        queryUuidHistory[queryUuidHistory.length - 1],
+    // Check if results section is open
+    const isResultsOpen = useMemo(
+        () => reducerState.expandedSections.includes(ExplorerSection.RESULTS),
+        [reducerState.expandedSections],
+    );
+
+    // Use custom query manager to reduce duplication
+    const [mainQueryManager, mainSetQueryUuidHistory] = useQueryManager(
+        validQueryArgs,
+        missingRequiredParameters,
+    );
+    const { query, queryResults } = mainQueryManager;
+
+    // Unpivoted query manager for results table
+    const [unpivotedQueryManager, unpivotedSetQueryUuidHistory] =
+        useQueryManager(
+            unpivotedQueryArgs,
+            missingRequiredParameters,
+            isResultsOpen, // Only execute unpivoted query when results panel is open
+        );
+    const { query: unpivotedQuery, queryResults: unpivotedQueryResults } =
+        unpivotedQueryManager;
+
+    const { data: useSqlPivotResults } = useFeatureFlag(
+        FeatureFlags.UseSqlPivotResults,
     );
     const getDownloadQueryUuid = useCallback(
         async (limit: number | null) => {
@@ -1302,12 +1435,15 @@ const ExplorerProvider: FC<
             // 2. limit is different from current totalResults
             if (limit === null || limit !== queryResults.totalResults) {
                 // Create query args with the specified limit
-                const queryArgsWithLimit = validQueryArgs
-                    ? {
-                          ...validQueryArgs,
-                          csvLimit: limit,
-                      }
-                    : null;
+                const queryArgsWithLimit: QueryResultsProps | null =
+                    validQueryArgs
+                        ? {
+                              ...validQueryArgs,
+                              csvLimit: limit,
+                              invalidateCache: minimal,
+                              pivotResults: useSqlPivotResults?.enabled,
+                          }
+                        : null;
                 const downloadQuery = await executeQueryAndWaitForResults(
                     queryArgsWithLimit,
                 );
@@ -1318,14 +1454,69 @@ const ExplorerProvider: FC<
             }
             return queryUuid;
         },
-        [queryResults.queryUuid, queryResults.totalResults, validQueryArgs],
+        [
+            queryResults.queryUuid,
+            queryResults.totalResults,
+            validQueryArgs,
+            minimal,
+            useSqlPivotResults,
+        ],
     );
-    const { projectUuid } = useParams<{ projectUuid: string }>();
-    const { remove: clearQueryResults } = query;
+
+    const queryClient = useQueryClient();
     const resetQueryResults = useCallback(() => {
         setValidQueryArgs(null);
-        clearQueryResults();
-    }, [clearQueryResults]);
+        setUnpivotedQueryArgs(null);
+        mainSetQueryUuidHistory([]);
+        unpivotedSetQueryUuidHistory([]);
+        void queryClient.removeQueries({
+            queryKey: ['create-query'],
+            exact: false,
+        });
+    }, [queryClient, mainSetQueryUuidHistory, unpivotedSetQueryUuidHistory]);
+
+    const defaultSort = useDefaultSortField(unsavedChartVersion);
+
+    // Set default sort in unsavedChartVersion if no query has been run yet (validQueryArgs)
+    // and if there are no existing sorts in the unsavedChartVersion
+    useEffect(() => {
+        if (
+            !validQueryArgs?.query?.sorts.length &&
+            !unsavedChartVersion.metricQuery.sorts.length &&
+            defaultSort
+        ) {
+            setSortFields([defaultSort]);
+        }
+    }, [
+        validQueryArgs,
+        defaultSort,
+        setSortFields,
+        unsavedChartVersion.metricQuery.sorts.length,
+    ]);
+
+    // Check if we need unpivoted data (chart is pivoted)
+    const needsUnpivotedData = useMemo(() => {
+        if (!useSqlPivotResults?.enabled || !explore) return false;
+
+        const metricQuery = unsavedChartVersion.metricQuery;
+        const items = getFieldsFromMetricQuery(metricQuery, explore);
+        const pivotConfiguration = derivePivotConfigurationFromChart(
+            {
+                chartConfig: unsavedChartVersion.chartConfig,
+                pivotConfig: unsavedChartVersion.pivotConfig,
+            },
+            metricQuery,
+            items,
+        );
+
+        return !!pivotConfiguration;
+    }, [
+        useSqlPivotResults?.enabled,
+        explore,
+        unsavedChartVersion.metricQuery,
+        unsavedChartVersion.chartConfig,
+        unsavedChartVersion.pivotConfig,
+    ]);
 
     // Prepares and executes query if all required parameters exist
     const runQuery = useCallback(() => {
@@ -1338,13 +1529,36 @@ const ExplorerProvider: FC<
         ]);
         const hasFields = fields.size > 0;
         if (!!unsavedChartVersion.tableName && hasFields && projectUuid) {
-            setValidQueryArgs({
+            const metricQuery = unsavedChartVersion.metricQuery;
+            let pivotConfiguration: PivotConfiguration | undefined;
+
+            if (useSqlPivotResults?.enabled && explore) {
+                const items = getFieldsFromMetricQuery(metricQuery, explore);
+                pivotConfiguration = derivePivotConfigurationFromChart(
+                    {
+                        chartConfig: unsavedChartVersion.chartConfig,
+                        pivotConfig: unsavedChartVersion.pivotConfig,
+                    },
+                    metricQuery,
+                    items,
+                );
+            }
+
+            // Prepare query args
+            const mainQueryArgs = {
                 projectUuid,
                 tableId: unsavedChartVersion.tableName,
-                query: unsavedChartVersion.metricQuery,
+                query: metricQuery,
                 ...(isEditMode ? {} : viewModeQueryArgs),
                 dateZoomGranularity,
-            });
+                invalidateCache: minimal,
+                parameters: unsavedChartVersion.parameters || {},
+                pivotConfiguration,
+            };
+
+            // Set main query args (with pivot configuration for chart)
+            setValidQueryArgs(mainQueryArgs);
+
             dispatch({
                 type: ActionType.SET_PREVIOUSLY_FETCHED_STATE,
                 payload: cloneDeep(unsavedChartVersion.metricQuery),
@@ -1360,19 +1574,44 @@ const ExplorerProvider: FC<
     }, [
         unsavedChartVersion.metricQuery,
         unsavedChartVersion.tableName,
+        unsavedChartVersion.parameters,
+        unsavedChartVersion.chartConfig,
+        unsavedChartVersion.pivotConfig,
+        explore,
+        useSqlPivotResults,
         projectUuid,
         isEditMode,
         viewModeQueryArgs,
         dateZoomGranularity,
+        minimal,
     ]);
 
     useEffect(() => {
-        if (!state.shouldFetchResults) return;
-        runQuery();
-        dispatch({ type: ActionType.SET_FETCH_RESULTS_FALSE });
-    }, [runQuery, state.shouldFetchResults]);
+        if (!validQueryArgs) {
+            setUnpivotedQueryArgs(null);
+            return;
+        }
 
-    const queryClient = useQueryClient();
+        if (needsUnpivotedData && isResultsOpen) {
+            // Only set unpivoted args if results panel is actually open
+            // This prevents setting args that won't be executed
+            setUnpivotedQueryArgs({
+                ...validQueryArgs,
+                pivotConfiguration: undefined, // No pivot for results table in explore page
+                pivotResults: false, // No pivot for results table in chart page
+            });
+        } else {
+            setUnpivotedQueryArgs(null);
+        }
+    }, [validQueryArgs, needsUnpivotedData, isResultsOpen]);
+
+    useEffect(() => {
+        // If auto-fetch is disabled or the query hasn't been fetched yet, don't run the query
+        // This will stop auto-fetching until the first query is run
+        if ((!autoFetchEnabled || !query.isFetched) && isEditMode) return;
+        runQuery();
+    }, [runQuery, autoFetchEnabled, isEditMode, query.isFetched]);
+
     const clearExplore = useCallback(async () => {
         resetCachedChartConfig();
         // cancel query creation
@@ -1380,14 +1619,20 @@ const ExplorerProvider: FC<
             queryKey: ['create-query'],
             exact: false,
         });
-        // reset query history
-        setQueryUuidHistory([]);
+        mainSetQueryUuidHistory([]);
+        unpivotedSetQueryUuidHistory([]);
         dispatch({
             type: ActionType.RESET,
             payload: defaultStateWithConfig,
         });
         resetQueryResults();
-    }, [queryClient, resetQueryResults, defaultStateWithConfig]);
+    }, [
+        queryClient,
+        resetQueryResults,
+        defaultStateWithConfig,
+        mainSetQueryUuidHistory,
+        unpivotedSetQueryUuidHistory,
+    ]);
 
     const navigate = useNavigate();
     const clearQuery = useCallback(async () => {
@@ -1416,23 +1661,11 @@ const ExplorerProvider: FC<
         unsavedChartVersion.tableName,
     ]);
 
-    const defaultSort = useDefaultSortField(unsavedChartVersion);
-
     const fetchResults = useCallback(() => {
-        if (unsavedChartVersion.metricQuery.sorts.length <= 0 && defaultSort) {
-            setSortFields([defaultSort]);
-        } else {
-            // force new results even when query is the same
-            clearQueryResults();
-            runQuery();
-        }
-    }, [
-        unsavedChartVersion.metricQuery.sorts.length,
-        defaultSort,
-        setSortFields,
-        clearQueryResults,
-        runQuery,
-    ]);
+        // force new results even when query is the same
+        resetQueryResults();
+        runQuery();
+    }, [resetQueryResults, runQuery]);
 
     const { mutate: cancelQueryMutation } = useCancelQuery(
         projectUuid,
@@ -1442,21 +1675,49 @@ const ExplorerProvider: FC<
     const cancelQuery = useCallback(() => {
         // cancel query creation
         void queryClient.cancelQueries({
-            queryKey: ['create-query', validQueryArgs],
+            queryKey: [
+                'create-query',
+                validQueryArgs,
+                missingRequiredParameters,
+            ],
         });
 
         if (query.data?.queryUuid) {
-            // remove current queryUuid from setQueryUuidHistory
-            setQueryUuidHistory((prev) => {
+            // remove current queryUuid from query history
+            mainSetQueryUuidHistory((prev: string[]) => {
                 return prev.filter(
-                    (queryUuid) => queryUuid !== query.data.queryUuid,
+                    (queryUuid: string) => queryUuid !== query.data.queryUuid,
                 );
             });
             // mark query as cancelled
             cancelQueryMutation();
         }
-    }, [queryClient, validQueryArgs, query.data, cancelQueryMutation]);
+    }, [
+        queryClient,
+        validQueryArgs,
+        missingRequiredParameters,
+        query.data,
+        cancelQueryMutation,
+        mainSetQueryUuidHistory,
+    ]);
 
+    const openVisualizationConfig = useCallback(() => {
+        dispatch({ type: ActionType.OPEN_VISUALIZATION_CONFIG });
+    }, []);
+
+    const closeVisualizationConfig = useCallback(() => {
+        dispatch({ type: ActionType.CLOSE_VISUALIZATION_CONFIG });
+    }, []);
+
+    const setParameterReferences = useCallback(
+        (parameterReferences: string[] | null) => {
+            dispatch({
+                type: ActionType.SET_PARAMETER_REFERENCES,
+                payload: parameterReferences,
+            });
+        },
+        [],
+    );
     const actions = useMemo(
         () => ({
             clearExplore,
@@ -1470,7 +1731,10 @@ const ExplorerProvider: FC<
             addSortField,
             removeSortField,
             moveSortFields,
+            setSortFieldNullsFirst,
             setFilters,
+            setParameter,
+            clearAllParameters,
             setRowLimit,
             setTimeZone,
             setColumnOrder,
@@ -1496,6 +1760,9 @@ const ExplorerProvider: FC<
             updateMetricFormat,
             replaceFields,
             getDownloadQueryUuid,
+            openVisualizationConfig,
+            closeVisualizationConfig,
+            setParameterReferences,
         }),
         [
             clearExplore,
@@ -1509,7 +1776,10 @@ const ExplorerProvider: FC<
             addSortField,
             removeSortField,
             moveSortFields,
+            setSortFieldNullsFirst,
             setFilters,
+            setParameter,
+            clearAllParameters,
             setRowLimit,
             setTimeZone,
             setColumnOrder,
@@ -1535,6 +1805,9 @@ const ExplorerProvider: FC<
             toggleWriteBackModal,
             replaceFields,
             getDownloadQueryUuid,
+            openVisualizationConfig,
+            closeVisualizationConfig,
+            setParameterReferences,
         ],
     );
 
@@ -1543,9 +1816,18 @@ const ExplorerProvider: FC<
             state,
             query,
             queryResults,
+            unpivotedQuery,
+            unpivotedQueryResults,
             actions,
         }),
-        [actions, query, queryResults, state],
+        [
+            actions,
+            query,
+            queryResults,
+            unpivotedQuery,
+            unpivotedQueryResults,
+            state,
+        ],
     );
     return (
         <ExplorerContext.Provider value={value}>

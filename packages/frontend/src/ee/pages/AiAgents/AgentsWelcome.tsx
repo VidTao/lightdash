@@ -22,7 +22,7 @@ import {
 import { Link, Navigate, useParams } from 'react-router';
 import MantineIcon from '../../../components/common/MantineIcon';
 import { useFeatureFlag } from '../../../hooks/useFeatureFlagEnabled';
-import { AiAgentPageLayout } from '../../features/aiCopilot/components/AiAgentPageLayout';
+import { AiAgentPageLayout } from '../../features/aiCopilot/components/AiAgentPageLayout/AiAgentPageLayout';
 import { useAiAgentPermission } from '../../features/aiCopilot/hooks/useAiAgentPermission';
 import { useProjectAiAgents } from '../../features/aiCopilot/hooks/useProjectAiAgents';
 import { useGetUserAgentPreferences } from '../../features/aiCopilot/hooks/useUserAgentPreferences';
@@ -74,8 +74,12 @@ const AgentsWelcome = () => {
     const isAiAgentEnabled =
         aiCopilotFlagQuery.isSuccess && aiCopilotFlagQuery.data.enabled;
 
-    const agentsQuery = useProjectAiAgents(projectUuid, {
-        enabled: isAiAgentEnabled,
+    const agentsQuery = useProjectAiAgents({
+        projectUuid,
+        redirectOnUnauthorized: true,
+        options: {
+            enabled: isAiAgentEnabled,
+        },
     });
     const userAgentPreferencesQuery = useGetUserAgentPreferences(projectUuid, {
         enabled: isAiAgentEnabled,

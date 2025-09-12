@@ -125,6 +125,45 @@ services:
     networks:
       - default
 
+    ssh-server:
+        image: linuxserver/openssh-server:latest
+        restart: always
+        depends_on:
+            - db-dev
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=UTC
+            - PUBLIC_KEY=${DEV_SSH_PUBLIC_KEY:-}
+            - USER_NAME=sshuser
+            - SUDO_ACCESS=true
+            - PASSWORD_ACCESS=false
+            - LOG_STDOUT=true
+        ports:
+            - '2222:2222'
+        volumes:
+            - ./dev-configs/sshd_config:/config/sshd/sshd_config
+
+    headless-browser:
+        image: ghcr.io/browserless/chromium:v2.24.3
+        restart: always
+        ports:
+            - '3001:3000'
+
+    prometheus:
+        image: prom/prometheus:latest
+        restart: always
+        ports:
+            - '9091:9090'
+        volumes:
+            - ./dev-configs/prometheus.dev.yml:/etc/prometheus/prometheus.yml
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.console.libraries=/etc/prometheus/console_libraries'
+            - '--web.console.templates=/etc/prometheus/consoles'
+            - '--storage.tsdb.retention.time=200h'
+            - '--web.enable-lifecycle'
   headless-browser:
     image: ghcr.io/browserless/chromium:v2.24.3
     restart: always

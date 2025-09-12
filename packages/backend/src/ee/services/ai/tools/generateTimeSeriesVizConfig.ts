@@ -1,11 +1,14 @@
 import {
+    Explore,
     getTotalFilterRules,
     isSlackPrompt,
     toolTimeSeriesArgsSchema,
     toolTimeSeriesArgsSchemaTransformed,
+    ToolTimeSeriesArgsTransformed,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import type {
+    CreateOrUpdateArtifactFn,
     GetExploreFn,
     GetPromptFn,
     RunMiniMetricQueryFn,
@@ -15,7 +18,7 @@ import type {
 } from '../types/aiAgentDependencies';
 import { renderEcharts } from '../utils/renderEcharts';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
-import { validateFilterRules } from '../utils/validators';
+import { validateTimeSeriesVizConfig } from '../utils/validateTimeSeriesVizConfig';
 import { renderTimeSeriesViz } from '../visualizations/vizTimeSeries';
 
 type Dependencies = {
@@ -25,6 +28,7 @@ type Dependencies = {
     getPrompt: GetPromptFn;
     updatePrompt: UpdatePromptFn;
     sendFile: SendFileFn;
+    createOrUpdateArtifact: CreateOrUpdateArtifactFn;
     maxLimit: number;
 };
 export const getGenerateTimeSeriesVizConfig = ({
@@ -34,12 +38,13 @@ export const getGenerateTimeSeriesVizConfig = ({
     getPrompt,
     sendFile,
     updatePrompt,
+    createOrUpdateArtifact,
     maxLimit,
 }: Dependencies) => {
     const schema = toolTimeSeriesArgsSchema;
 
     return tool({
-        description: `Use this tool to generate a Time Series Chart.`,
+        description: toolTimeSeriesArgsSchema.description,
         parameters: schema,
         execute: async (toolArgs) => {
             try {
@@ -48,18 +53,22 @@ export const getGenerateTimeSeriesVizConfig = ({
                 // TODO: common for all viz tools. find a way to reuse this code.
                 const vizTool =
                     toolTimeSeriesArgsSchemaTransformed.parse(toolArgs);
-
-                const filterRules = getTotalFilterRules(vizTool.filters);
                 const explore = await getExplore({
                     exploreName: vizTool.vizConfig.exploreName,
                 });
-                validateFilterRules(explore, filterRules);
+                validateTimeSeriesVizConfig(vizTool, explore);
                 // end of TODO
 
                 const prompt = await getPrompt();
-                await updatePrompt({
+
+                // Create or update artifact
+                await createOrUpdateArtifact({
+                    threadUuid: prompt.threadUuid,
                     promptUuid: prompt.promptUuid,
-                    vizConfigOutput: toolArgs,
+                    artifactType: 'chart',
+                    title: toolArgs.title,
+                    description: toolArgs.description,
+                    vizConfig: toolArgs,
                 });
 
                 if (isSlackPrompt(prompt)) {

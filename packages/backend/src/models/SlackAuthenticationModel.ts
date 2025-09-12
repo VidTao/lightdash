@@ -7,7 +7,6 @@ import {
 import { Installation, InstallationQuery } from '@slack/bolt';
 import { Knex } from 'knex';
 import isNil from 'lodash/isNil';
-import { DbOrganization } from '../database/entities/organizations';
 import {
     DbSlackAuthTokens,
     SlackAuthTokensTableName,
@@ -112,7 +111,6 @@ export class SlackAuthenticationModel {
 
     async getInstallationFromOrganizationUuid(
         organizationUuid: string,
-        includeAiThreadAccessConsent = false,
     ): Promise<Omit<SlackSettings, 'hasRequiredScopes'> | undefined> {
         const [row] = await this.database(SlackAuthTokensTableName)
             .leftJoin(
@@ -133,12 +131,6 @@ export class SlackAuthenticationModel {
             scopes: row.installation?.bot?.scopes || [],
             notificationChannel: row.notification_channel ?? undefined,
             appProfilePhotoUrl: row.app_profile_photo_url ?? undefined,
-            ...(includeAiThreadAccessConsent
-                ? {
-                      aiThreadAccessConsent:
-                          row.ai_thread_access_consent ?? false,
-                  }
-                : {}),
         };
     }
 

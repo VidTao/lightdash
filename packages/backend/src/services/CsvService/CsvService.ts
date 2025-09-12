@@ -5,6 +5,7 @@ import {
     ApiSqlQueryResults,
     applyDimensionOverrides,
     CustomSqlQueryForbiddenError,
+    DashboardFilterRule,
     DashboardFilters,
     DateGranularity,
     DimensionType,
@@ -34,14 +35,16 @@ import {
     ItemsMap,
     MetricQuery,
     MissingConfigError,
+    ParameterError,
+    ParametersValuesMap,
     PivotConfig,
     pivotResultsAsCsv,
     QueryExecutionContext,
     SCHEDULER_TASKS,
     SchedulerCsvOptions,
-    SchedulerFilterRule,
     SchedulerFormat,
     SessionUser,
+    validateSelectedTabs,
     type RunQueryTags,
 } from '@lightdash/common';
 import archiver from 'archiver';
@@ -49,6 +52,7 @@ import { stringify } from 'csv-stringify';
 import * as fs from 'fs';
 import * as fsPromise from 'fs/promises';
 
+import { warehouseSqlBuilderFromType } from '@lightdash/warehouses';
 import isNil from 'lodash/isNil';
 import moment from 'moment';
 import { nanoid } from 'nanoid';
@@ -65,6 +69,7 @@ import {
     LightdashAnalytics,
     parseAnalyticsLimit,
 } from '../../analytics/LightdashAnalytics';
+import * as Account from '../../auth/account';
 import { S3Client } from '../../clients/Aws/S3Client';
 import { AttachmentUrl } from '../../clients/EmailClient/EmailClient';
 import { S3ResultsFileStorageClient } from '../../clients/ResultsFileStorageClients/S3ResultsFileStorageClient';
@@ -85,7 +90,9 @@ import {
     sanitizeGenericFileName,
     streamJsonlData,
 } from '../../utils/FileDownloadUtils/FileDownloadUtils';
+import { PivotQueryBuilder } from '../../utils/QueryBuilder/PivotQueryBuilder';
 import { BaseService } from '../BaseService';
+import { PivotTableService } from '../PivotTableService/PivotTableService';
 import { ProjectService } from '../ProjectService/ProjectService';
 
 type CsvServiceArguments = {
@@ -100,6 +107,7 @@ type CsvServiceArguments = {
     downloadFileModel: DownloadFileModel;
     schedulerClient: SchedulerClient;
     projectModel: ProjectModel;
+    pivotTableService: PivotTableService;
 };
 
 export const convertSqlToCsv = (
@@ -208,6 +216,8 @@ export class CsvService extends BaseService {
 
     projectModel: ProjectModel;
 
+    pivotTableService: PivotTableService;
+
     constructor({
         lightdashConfig,
         analytics,
@@ -220,6 +230,7 @@ export class CsvService extends BaseService {
         downloadFileModel,
         schedulerClient,
         projectModel,
+        pivotTableService,
     }: CsvServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
@@ -233,6 +244,7 @@ export class CsvService extends BaseService {
         this.downloadFileModel = downloadFileModel;
         this.schedulerClient = schedulerClient;
         this.projectModel = projectModel;
+        this.pivotTableService = pivotTableService;
     }
 
     static convertRowToCsv(
@@ -585,93 +597,27 @@ export class CsvService extends BaseService {
         };
     }
 
-    /*  
-This pivot method returns directly the final CSV result as a string
-This method can be memory intensive
-*/
-    async downloadPivotTableCsv({
-        name,
-        projectUuid,
-        rows,
-        itemMap,
-        metricQuery,
-        pivotConfig,
-        exploreId,
-        onlyRaw,
-        truncated,
-        customLabels,
+    async getCsvForChart({
+        user,
+        chartUuid,
+        options,
+        jobId,
+        tileUuid,
+        dashboardFilters,
+        dateZoomGranularity,
+        invalidateCache,
+        schedulerParameters,
     }: {
-        name?: string;
-        projectUuid: string;
-        rows: Record<string, AnyType>[];
-        itemMap: ItemsMap;
-        metricQuery: MetricQuery;
-        pivotConfig: PivotConfig;
-        exploreId: string;
-        onlyRaw: boolean;
-        truncated: boolean;
-        customLabels: Record<string, string> | undefined;
-        metricsAsRows?: boolean;
-    }) {
-        return wrapSentryTransaction<AttachmentUrl>(
-            'downloadPivotTableCsv',
-            {
-                numberRows: rows.length,
-                projectUuid,
-                pivotColumns: pivotConfig.pivotDimensions,
-            },
-            async () => {
-                // PivotQueryResults expects a formatted ResultRow[] type, so we need to convert it first
-                // TODO: refactor pivotQueryResults to accept a Record<string, any>[] simple row type for performance
-                const formattedRows = formatRows(rows, itemMap);
-
-                const csvResults = pivotResultsAsCsv({
-                    pivotConfig,
-                    rows: formattedRows,
-                    itemMap,
-                    metricQuery,
-                    customLabels,
-                    onlyRaw,
-                    maxColumnLimit:
-                        this.lightdashConfig.pivotTable.maxColumnLimit,
-                });
-
-                const csvContent = await new Promise<string>(
-                    (resolve, reject) => {
-                        stringify(
-                            csvResults,
-                            {
-                                delimiter: ',',
-                            },
-                            (err, output) => {
-                                if (err) {
-                                    reject(new Error(getErrorMessage(err)));
-                                }
-                                resolve(output);
-                            },
-                        );
-                    },
-                );
-
-                return this.downloadCsvFile({
-                    csvContent,
-                    fileName: name || exploreId,
-                    projectUuid,
-                    truncated,
-                });
-            },
-        );
-    }
-
-    async getCsvForChart(
-        user: SessionUser,
-        chartUuid: string,
-        options: SchedulerCsvOptions | undefined,
-        jobId?: string,
-        tileUuid?: string,
-        dashboardFilters?: DashboardFilters,
-        dateZoomGranularity?: DateGranularity,
-    ): Promise<AttachmentUrl> {
+        user: SessionUser;
+        chartUuid: string;
+        options: SchedulerCsvOptions | undefined;
+        jobId?: string;
+        tileUuid?: string;
+        dashboardFilters?: DashboardFilters;
+        dateZoomGranularity?: DateGranularity;
+        invalidateCache?: boolean;
+        schedulerParameters?: ParametersValuesMap;
+    }): Promise<AttachmentUrl> {
         const chart = await this.savedChartModel.get(chartUuid);
         const {
             metricQuery,
@@ -706,8 +652,9 @@ This method can be memory intensive
             });
         }
 
+        const account = Account.fromSession(user);
         const explore = await this.projectService.getExplore(
-            user,
+            account,
             chart.projectUuid,
             exploreId,
         );
@@ -739,7 +686,7 @@ This method can be memory intensive
         };
 
         const { rows, fields } = await this.projectService.runMetricQuery({
-            user,
+            account,
             metricQuery: metricQueryWithDashboardFilters,
             projectUuid: chart.projectUuid,
             exploreName: exploreId,
@@ -750,6 +697,8 @@ This method can be memory intensive
             },
             chartUuid,
             queryTags,
+            invalidateCache,
+            parameters: schedulerParameters,
         });
         const numberRows = rows.length;
 
@@ -773,7 +722,7 @@ This method can be memory intensive
             );
             const customLabels = getCustomLabelsFromTableConfig(config);
 
-            const downloadUrl = this.downloadPivotTableCsv({
+            const downloadUrl = this.pivotTableService.downloadPivotTableCsv({
                 pivotConfig,
                 name: chart.name,
                 projectUuid: chart.projectUuid,
@@ -872,7 +821,7 @@ This method can be memory intensive
             });
         }
 
-        const { type: warehouseType } =
+        const { type: warehouseType, startOfWeek } =
             await this.projectModel.getWarehouseCredentialsForProject(
                 projectUuid,
             );
@@ -884,17 +833,26 @@ This method can be memory intensive
             isVizCartesianChartConfig(sqlChart.config) &&
             sqlChart.config.fieldConfig
         ) {
-            sql = ProjectService.applyPivotToSqlQuery({
+            const warehouseSqlBuilder = warehouseSqlBuilderFromType(
                 warehouseType,
+                startOfWeek,
+            );
+
+            const pivotQueryBuilder = new PivotQueryBuilder(
                 sql,
-                limit: sqlChart.limit,
-                indexColumn: sqlChart.config.fieldConfig.x,
-                valuesColumns: sqlChart.config.fieldConfig.y.filter(
-                    (col): col is Required<typeof col> => !!col.aggregation,
-                ),
-                groupByColumns: sqlChart.config.fieldConfig.groupBy,
-                sortBy: undefined,
-            });
+                {
+                    indexColumn: sqlChart.config.fieldConfig.x,
+                    valuesColumns: sqlChart.config.fieldConfig.y.filter(
+                        (col): col is Required<typeof col> => !!col.aggregation,
+                    ),
+                    groupByColumns: sqlChart.config.fieldConfig.groupBy,
+                    sortBy: undefined,
+                },
+                warehouseSqlBuilder,
+                sqlChart.limit,
+            );
+
+            sql = pivotQueryBuilder.toSql();
         }
 
         const resultsFileUrl = await this.projectService.runSqlQuery(
@@ -937,22 +895,27 @@ This method can be memory intensive
         selectedTabs,
         overrideDashboardFilters,
         dateZoomGranularity,
+        invalidateCache,
+        schedulerParameters,
     }: {
         user: SessionUser;
         dashboardUuid: string;
         options: SchedulerCsvOptions | undefined;
         jobId?: string;
-        schedulerFilters?: SchedulerFilterRule[];
-        selectedTabs?: string[] | undefined;
+        schedulerFilters?: DashboardFilterRule[];
+        selectedTabs: string[] | null;
         overrideDashboardFilters?: DashboardFilters;
         dateZoomGranularity?: DateGranularity;
+        invalidateCache?: boolean;
+        schedulerParameters?: ParametersValuesMap;
     }): Promise<AttachmentUrl[]> {
         const dashboard = await this.dashboardModel.getById(dashboardUuid);
 
         const dashboardFilters = overrideDashboardFilters || dashboard.filters;
 
+        validateSelectedTabs(selectedTabs, dashboard.tiles);
+
         if (schedulerFilters) {
-            // Scheduler filters can only override existing filters from the dashboard
             dashboardFilters.dimensions = applyDimensionOverrides(
                 dashboard.filters,
                 schedulerFilters,
@@ -983,7 +946,7 @@ This method can be memory intensive
         );
         const csvForChartPromises = chartTileUuidsWithChartUuids.map(
             ({ tileUuid, chartUuid }) =>
-                this.getCsvForChart(
+                this.getCsvForChart({
                     user,
                     chartUuid,
                     options,
@@ -991,7 +954,9 @@ This method can be memory intensive
                     tileUuid,
                     dashboardFilters,
                     dateZoomGranularity,
-                ),
+                    invalidateCache,
+                    schedulerParameters,
+                }),
         );
         this.logger.info(
             `Downloading ${sqlChartTileUuids.length} sql chart CSVs for dashboard ${dashboardUuid}`,
@@ -1035,8 +1000,10 @@ This method can be memory intensive
             tableConfig,
             chartConfig,
         } = chart;
+
+        const account = Account.fromSession(user);
         const explore = await this.projectService.getExplore(
-            user,
+            account,
             projectUuid,
             tableName,
         );
@@ -1224,8 +1191,9 @@ This method can be memory intensive
                 explore_name: exploreId,
             };
 
+            const account = Account.fromSession(user);
             const { rows, fields } = await this.projectService.runMetricQuery({
-                user,
+                account,
                 metricQuery,
                 projectUuid,
                 exploreName: exploreId,
@@ -1238,18 +1206,19 @@ This method can be memory intensive
             const truncated = this.couldBeTruncated(rows);
 
             if (pivotConfig) {
-                const downloadUrl = await this.downloadPivotTableCsv({
-                    pivotConfig,
-                    name: chartName,
-                    projectUuid,
-                    rows,
-                    itemMap: fields,
-                    metricQuery,
-                    exploreId,
-                    onlyRaw,
-                    truncated,
-                    customLabels,
-                });
+                const downloadUrl =
+                    await this.pivotTableService.downloadPivotTableCsv({
+                        pivotConfig,
+                        name: chartName,
+                        projectUuid,
+                        rows,
+                        itemMap: fields,
+                        metricQuery,
+                        exploreId,
+                        onlyRaw,
+                        truncated,
+                        customLabels,
+                    });
 
                 this.analytics.track({
                     event: 'download_results.completed',
@@ -1440,6 +1409,7 @@ This method can be memory intensive
             options,
             overrideDashboardFilters: dashboardFilters,
             dateZoomGranularity,
+            selectedTabs: null,
         }).then((urls) => urls.filter((url) => url.path !== '#no-results'));
 
         this.logger.info(
@@ -1465,96 +1435,5 @@ This method can be memory intensive
             fs.createReadStream(zipFile),
             zipFileName,
         );
-    }
-
-    /**
-     * Downloads pivot table CSV from async query results file
-     * Handles loading data from JSONL storage file and generating pivot CSV
-     */
-    async downloadAsyncPivotTableCsv({
-        resultsFileName,
-        fields,
-        metricQuery,
-        projectUuid,
-        storageClient,
-        options,
-    }: {
-        resultsFileName: string;
-        fields: ItemsMap;
-        metricQuery: MetricQuery;
-        projectUuid: string;
-        storageClient: S3ResultsFileStorageClient;
-        options: {
-            onlyRaw: boolean;
-            showTableNames: boolean;
-            customLabels: Record<string, string>;
-            columnOrder: string[];
-            hiddenFields: string[];
-            pivotConfig: PivotConfig;
-            attachmentDownloadName?: string;
-        };
-    }): Promise<{ fileUrl: string; truncated: boolean }> {
-        const {
-            onlyRaw,
-            showTableNames,
-            customLabels,
-            columnOrder,
-            hiddenFields,
-            pivotConfig,
-        } = options;
-
-        // Load rows from the results file using shared streaming utility
-        // Use the same logic as regular CSV exports - respect csvCellsLimit with field count
-        const readStream = await storageClient.getDowloadStream(
-            resultsFileName,
-        );
-
-        const fieldCount = Object.keys(fields).length;
-        const cellsLimit = this.lightdashConfig.query?.csvCellsLimit || 100000;
-
-        // Use standard csvCellsLimit calculation - same as original downloadPivotTableCsv
-        const maxRows = Math.floor(cellsLimit / fieldCount);
-
-        const { results: rows, truncated } = await streamJsonlData<
-            Record<string, unknown>
-        >({
-            readStream,
-            onRow: (parsedRow: Record<string, unknown>) => parsedRow, // Just collect all rows
-            maxLines: maxRows, // Use standard csvCellsLimit logic
-        });
-
-        if (rows.length === 0) {
-            throw new Error('No data found in results file');
-        }
-
-        // Use same truncation logic as original downloadPivotTableCsv
-        const finalTruncated = truncated || this.couldBeTruncated(rows);
-
-        if (finalTruncated) {
-            Logger.warn(
-                `Pivot CSV export truncated: loaded ${rows.length} rows (csvCellsLimit: ${cellsLimit}, fieldCount: ${fieldCount})`,
-            );
-        }
-
-        const fileName =
-            options.attachmentDownloadName || `pivot-${resultsFileName}`;
-
-        const attachmentUrl = await this.downloadPivotTableCsv({
-            name: fileName,
-            projectUuid,
-            rows,
-            itemMap: fields,
-            metricQuery,
-            pivotConfig,
-            exploreId: metricQuery.exploreName || 'explore',
-            onlyRaw,
-            truncated: finalTruncated,
-            customLabels,
-        });
-
-        return {
-            fileUrl: attachmentUrl.path,
-            truncated: finalTruncated,
-        };
     }
 }

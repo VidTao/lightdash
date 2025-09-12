@@ -1,4 +1,6 @@
 import {
+    Account,
+    ForbiddenError,
     NotFoundError,
     QueryHistory,
     QueryHistoryStatus,
@@ -15,29 +17,14 @@ import {
 function convertDbQueryHistoryToQueryHistory(
     queryHistory: DbQueryHistory,
 ): QueryHistory {
-    function getPivotValuesColumns() {
-        if (!queryHistory.pivot_configuration) {
-            return null;
-        }
-
-        const { groupByColumns, valuesColumns: valuesColumnsConfig } =
-            queryHistory.pivot_configuration;
-
-        // From ProjectService.pivotQueryWorkerTask
-        return groupByColumns && groupByColumns.length > 0
-            ? Object.values(queryHistory.pivot_values_columns ?? {})
-            : valuesColumnsConfig.map((col) => ({
-                  referenceField: col.reference,
-                  pivotColumnName: `${col.reference}_${col.aggregation}`,
-                  aggregation: col.aggregation,
-                  pivotValues: [],
-              }));
-    }
-
     return {
         queryUuid: queryHistory.query_uuid,
         createdAt: queryHistory.created_at,
+        createdBy:
+            queryHistory.created_by_user_uuid ??
+            queryHistory.created_by_account,
         createdByUserUuid: queryHistory.created_by_user_uuid,
+        createdByAccount: queryHistory.created_by_account,
         organizationUuid: queryHistory.organization_uuid,
         projectUuid: queryHistory.project_uuid,
         compiledSql: queryHistory.compiled_sql,
@@ -54,7 +41,7 @@ function convertDbQueryHistoryToQueryHistory(
         error: queryHistory.error,
         cacheKey: queryHistory.cache_key,
         pivotConfiguration: queryHistory.pivot_configuration,
-        pivotValuesColumns: getPivotValuesColumns(),
+        pivotValuesColumns: queryHistory.pivot_values_columns,
         pivotTotalColumnCount: queryHistory.pivot_total_column_count,
         resultsFileName: queryHistory.results_file_name,
         resultsCreatedAt: queryHistory.results_created_at,
@@ -92,6 +79,7 @@ export class QueryHistoryModel {
     }
 
     async create(
+        account: Account,
         queryHistory: Omit<
             QueryHistory,
             | 'status'
@@ -111,12 +99,20 @@ export class QueryHistoryModel {
             | 'resultsExpiresAt'
             | 'columns'
             | 'originalColumns'
+            | 'createdByAccount'
+            | 'createdByUserUuid'
+            | 'createdBy'
         >,
     ) {
         const [result] = await this.database(QueryHistoryTableName)
             .insert({
                 status: QueryHistoryStatus.PENDING,
-                created_by_user_uuid: queryHistory.createdByUserUuid,
+                created_by_user_uuid: account.isRegisteredUser()
+                    ? account.user.id
+                    : null,
+                created_by_account: account.isAnonymousUser()
+                    ? account.user.id
+                    : null,
                 organization_uuid: queryHistory.organizationUuid,
                 project_uuid: queryHistory.projectUuid,
                 compiled_sql: queryHistory.compiledSql,
@@ -151,14 +147,21 @@ export class QueryHistoryModel {
     async update(
         queryUuid: string,
         projectUuid: string,
-        userUuid: string,
         update: DbQueryHistoryUpdate,
+        account: Pick<Account, 'isRegisteredUser'> & {
+            user: Pick<Account['user'], 'id'>;
+        },
     ) {
         const query = this.database(QueryHistoryTableName)
             .where('query_uuid', queryUuid)
             .andWhere('project_uuid', projectUuid)
-            .andWhere('created_by_user_uuid', userUuid)
             .update(update);
+
+        const createdByColumn = account.isRegisteredUser()
+            ? 'created_by_user_uuid'
+            : 'created_by_account';
+        void query.andWhere(createdByColumn, account.user.id);
+
         // only update pending queries to ready
         if (update.status === QueryHistoryStatus.READY) {
             void query.andWhere('status', QueryHistoryStatus.PENDING);
@@ -166,12 +169,18 @@ export class QueryHistoryModel {
         return query;
     }
 
-    async get(queryUuid: string, projectUuid: string, userUuid: string) {
-        const result = await this.database(QueryHistoryTableName)
+    async get(queryUuid: string, projectUuid: string, account: Account) {
+        const query = this.database(QueryHistoryTableName)
             .where('query_uuid', queryUuid)
-            .andWhere('project_uuid', projectUuid)
-            .andWhere('created_by_user_uuid', userUuid)
-            .first();
+            .andWhere('project_uuid', projectUuid);
+
+        const createdByColumn = account.isRegisteredUser()
+            ? 'created_by_user_uuid'
+            : 'created_by_account';
+
+        void query.andWhere(createdByColumn, account.user.id);
+
+        const result = await query.first();
 
         if (!result) {
             throw new NotFoundError(
@@ -179,7 +188,15 @@ export class QueryHistoryModel {
             );
         }
 
-        return convertDbQueryHistoryToQueryHistory(result);
+        const queryHistory = convertDbQueryHistoryToQueryHistory(result);
+
+        if (queryHistory.createdBy !== account.user.id) {
+            throw new ForbiddenError(
+                'User is not authorized to access this query',
+            );
+        }
+
+        return queryHistory;
     }
 
     async findMostRecentByCacheKey(cacheKey: string, projectUuid: string) {
@@ -206,5 +223,66 @@ export class QueryHistoryModel {
             columns: result.columns,
             originalColumns: result.original_columns,
         };
+    }
+
+    async cleanupBatch(
+        cutoffDate: Date,
+        batchSize: number,
+        delayMs: number,
+        maxBatches?: number,
+        totalDeleted: number = 0,
+        batchCount: number = 0,
+    ): Promise<{ totalDeleted: number; batchCount: number }> {
+        // Get IDs to delete
+        const idsToDelete = await this.database(QueryHistoryTableName)
+            .select('query_uuid')
+            .where('created_at', '<', cutoffDate)
+            .orderBy('created_at', 'asc')
+            .limit(batchSize);
+
+        if (idsToDelete.length === 0) {
+            return { totalDeleted, batchCount };
+        }
+
+        // Delete by IDs
+        const deletedCount = await this.database(QueryHistoryTableName)
+            .whereIn(
+                'query_uuid',
+                idsToDelete.map((row) => row.query_uuid),
+            )
+            .del();
+
+        if (deletedCount === 0) {
+            return { totalDeleted, batchCount };
+        }
+
+        const newTotalDeleted = totalDeleted + deletedCount;
+        const newBatchCount = batchCount + 1;
+
+        // Check if we've reached the maximum number of batches
+        if (maxBatches !== undefined && newBatchCount >= maxBatches) {
+            return { totalDeleted: newTotalDeleted, batchCount: newBatchCount };
+        }
+
+        // Add delay between batches to prevent database overload
+        if (deletedCount === batchSize) {
+            await new Promise<void>((resolve) => {
+                setTimeout(() => resolve(), delayMs);
+            });
+        }
+
+        // Continue with next batch if we deleted a full batch
+        if (deletedCount === batchSize) {
+            return this.cleanupBatch(
+                cutoffDate,
+                batchSize,
+                delayMs,
+                maxBatches,
+                newTotalDeleted,
+                newBatchCount,
+            );
+        }
+
+        return { totalDeleted: newTotalDeleted, batchCount: newBatchCount };
     }
 }

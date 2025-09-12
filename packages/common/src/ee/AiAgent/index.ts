@@ -6,9 +6,14 @@ import type {
     ApiSuccessEmpty,
     CacheMetadata,
     ItemsMap,
+    ToolDashboardArgs,
+    ToolTableVizArgs,
+    ToolTimeSeriesArgs,
+    ToolVerticalBarArgs,
 } from '../..';
 import { type AiMetricQuery, type AiResultType } from './types';
 
+export * from './adminTypes';
 export * from './constants';
 export * from './filterExploreByTags';
 export * from './followUpTools';
@@ -44,12 +49,14 @@ export const baseAgentSchema = z.object({
     instruction: z
         .string()
         .max(
-            4096,
-            'Custom instruction is too long. Maximum allowed is 4,000 characters.',
+            8192, // 8kb
+            'Custom instruction is too long. Maximum allowed is 8,100 characters.',
         )
         .nullable(),
     provider: z.string(),
     model: z.string(),
+    groupAccess: z.array(z.string()),
+    userAccess: z.array(z.string()),
 });
 
 export type BaseAiAgent = z.infer<typeof baseAgentSchema>;
@@ -66,6 +73,8 @@ export type AiAgent = Pick<
     | 'updatedAt'
     | 'instruction'
     | 'imageUrl'
+    | 'groupAccess'
+    | 'userAccess'
 >;
 
 export type AiAgentSummary = Pick<
@@ -80,6 +89,8 @@ export type AiAgentSummary = Pick<
     | 'updatedAt'
     | 'instruction'
     | 'imageUrl'
+    | 'groupAccess'
+    | 'userAccess'
 >;
 
 export type AiAgentUser = {
@@ -108,13 +119,19 @@ export type AiAgentMessageAssistant = {
     // we check for null before creating the agent message
     createdAt: string;
 
-    vizConfigOutput: object | null;
-    filtersOutput: object | null;
-    metricQuery: object | null;
     humanScore: number | null;
 
     toolCalls: AiAgentToolCall[];
     savedQueryUuid: string | null;
+
+    artifact: {
+        uuid: string;
+        versionNumber: number;
+        versionUuid: string;
+        title: string | null;
+        description: string | null;
+        artifactType: 'chart' | 'dashboard';
+    } | null;
 };
 
 export type AiAgentMessage<TUser extends AiAgentUser = AiAgentUser> =
@@ -126,7 +143,12 @@ export type AiAgentThreadSummary<TUser extends AiAgentUser = AiAgentUser> = {
     agentUuid: string;
     createdAt: string;
     createdFrom: string;
-    firstMessage: string;
+    title: string | null;
+    titleGeneratedAt: string | null;
+    firstMessage: {
+        uuid: string;
+        message: string;
+    };
     user: TUser;
 };
 
@@ -153,6 +175,8 @@ export type ApiCreateAiAgent = Pick<
     | 'name'
     | 'instruction'
     | 'imageUrl'
+    | 'groupAccess'
+    | 'userAccess'
 >;
 
 export type ApiUpdateAiAgent = Partial<
@@ -164,6 +188,8 @@ export type ApiUpdateAiAgent = Partial<
         | 'name'
         | 'instruction'
         | 'imageUrl'
+        | 'groupAccess'
+        | 'userAccess'
     >
 > & {
     uuid: string;
@@ -203,6 +229,20 @@ export type ApiAiAgentStartThreadResponse = {
     results: {
         jobId: string;
         threadUuid: string;
+    };
+};
+
+export type ApiAiAgentThreadGenerateResponse = {
+    status: 'ok';
+    results: {
+        response: string;
+    };
+};
+
+export type ApiAiAgentThreadGenerateTitleResponse = {
+    status: 'ok';
+    results: {
+        title: string;
     };
 };
 
@@ -259,3 +299,48 @@ export type AiAgentToolCall = {
     toolName: string; // ToolName zod enum
     toolArgs: object;
 };
+
+export type AiAgentExploreAccessSummary = {
+    exploreName: string;
+    joinedTables: string[];
+    dimensions: string[];
+    metrics: string[];
+};
+
+export type ApiAiAgentExploreAccessSummaryResponse = ApiSuccess<
+    AiAgentExploreAccessSummary[]
+>;
+
+export type AiArtifact = {
+    artifactUuid: string;
+    threadUuid: string;
+    promptUuid: string | null;
+    artifactType: 'chart' | 'dashboard';
+    savedQueryUuid: string | null;
+    savedDashboardUuid: string | null;
+    createdAt: Date;
+    versionNumber: number;
+    versionUuid: string;
+    title: string | null;
+    description: string | null;
+    // We store raw tool calls
+    chartConfig:
+        | ToolTableVizArgs
+        | ToolTimeSeriesArgs
+        | ToolVerticalBarArgs
+        | null;
+    dashboardConfig: ToolDashboardArgs | null;
+    versionCreatedAt: Date;
+};
+
+export type AiArtifactTSOACompat = Omit<
+    AiArtifact,
+    'chartConfig' | 'dashboardConfig'
+> & {
+    chartConfig: Record<string, unknown> | null;
+    dashboardConfig: Record<string, unknown> | null;
+};
+
+export type ApiAiAgentArtifactResponse = ApiSuccess<AiArtifact>;
+export type ApiAiAgentArtifactResponseTSOACompat =
+    ApiSuccess<AiArtifactTSOACompat>;

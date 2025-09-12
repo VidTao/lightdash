@@ -2,20 +2,35 @@ import {
     AgentToolCallArgsSchema,
     type AiAgentToolCall,
     AiResultType,
-    type ApiCompiledQueryResults,
     assertUnreachable,
     TOOL_DISPLAY_MESSAGES,
     TOOL_DISPLAY_MESSAGES_AFTER_TOOL_CALL,
     type ToolName,
     ToolNameSchema,
 } from '@lightdash/common';
-import { Badge, Stack, Text, Timeline } from '@mantine-8/core';
 import {
+    Badge,
+    Collapse,
+    Group,
+    Paper,
+    rem,
+    Stack,
+    Text,
+    Timeline,
+    Title,
+    UnstyledButton,
+} from '@mantine-8/core';
+import { useDisclosure } from '@mantine-8/hooks';
+import {
+    IconChartDots3,
     IconChartHistogram,
     IconChartLine,
+    IconDashboard,
     IconDatabase,
     IconSearch,
+    IconSelector,
     IconTable,
+    IconTools,
     type TablerIconsProps,
 } from '@tabler/icons-react';
 import { type FC, type JSX } from 'react';
@@ -30,48 +45,104 @@ const getToolIcon = (toolName: ToolName) => {
             generateBarVizConfig: IconChartHistogram,
             generateTimeSeriesVizConfig: IconChartLine,
             generateTableVizConfig: IconTable,
+            generateDashboard: IconDashboard,
+            findDashboards: IconDashboard,
+            findCharts: IconChartDots3,
         };
 
     return iconMap[toolName];
 };
 
-type ToolCallDisplayType = 'streaming' | 'persisted';
+type ToolCallDisplayType = 'streaming' | 'finished-streaming' | 'persisted';
 type ToolCallSummary = Omit<
     AiAgentToolCall,
     'createdAt' | 'uuid' | 'promptUuid'
 >;
 
+const ToolCallContainer = ({
+    children,
+    defaultOpened = true,
+}: {
+    children: React.ReactNode;
+    defaultOpened?: boolean;
+}) => {
+    const [opened, { toggle }] = useDisclosure(defaultOpened);
+
+    return (
+        <Paper
+            withBorder
+            p="xs"
+            radius="md"
+            style={{ borderStyle: 'dashed' }}
+            // default shadow is subtler than the ones we can set
+            shadow={opened ? 'none' : undefined}
+        >
+            <UnstyledButton onClick={toggle} w="100%" h="18px">
+                <Group justify="space-between" w="100%" h="100%">
+                    <Group gap="xs">
+                        <MantineIcon
+                            icon={IconTools}
+                            size="sm"
+                            strokeWidth={1.2}
+                            color="gray.6"
+                        />
+                        <Title order={6} c="gray.6" size="xs">
+                            How it is calculated
+                        </Title>
+                    </Group>
+                    <MantineIcon icon={IconSelector} size={12} color="gray.6" />
+                </Group>
+            </UnstyledButton>
+            <Collapse in={opened}>{children}</Collapse>
+        </Paper>
+    );
+};
+
 const ToolCallDescription: FC<{
     toolCall: ToolCallSummary;
-    compiledSql: ApiCompiledQueryResults | undefined;
-}> = ({ toolCall, compiledSql }) => {
-    const toolName = ToolNameSchema.parse(toolCall.toolName);
-    const toolArgs = AgentToolCallArgsSchema.parse(toolCall.toolArgs);
+}> = ({ toolCall }) => {
+    const toolNameParsed = ToolNameSchema.safeParse(toolCall.toolName);
+    const toolArgsParsed = AgentToolCallArgsSchema.safeParse(toolCall.toolArgs);
+
+    if (!toolNameParsed.success || !toolArgsParsed.success) {
+        console.error(
+            `Failed to parse tool call ${toolCall.toolName} ${toolCall.toolCallId}`,
+            toolNameParsed.error ?? toolArgsParsed.error,
+        );
+        return null;
+    }
+
+    const toolName = toolNameParsed.data;
+    const toolArgs = toolArgsParsed.data;
 
     switch (toolArgs.type) {
         case 'find_explores':
-            return null;
-        case 'find_fields':
-            const { exploreName } = toolArgs;
-
             return (
-                <>
-                    <Text c="dimmed" size="xs">
-                        Found relevant fields in{' '}
+                <Text c="dimmed" size="xs">
+                    Searched relevant explores
+                </Text>
+            );
+        case 'find_fields':
+            return (
+                <Text c="dimmed" size="xs">
+                    Searched for fields{' '}
+                    {toolArgs.fieldSearchQueries.map((query) => (
                         <Badge
+                            key={query.label}
                             color="gray"
                             variant="light"
                             size="xs"
+                            mx={rem(2)}
                             radius="sm"
                             style={{
                                 textTransform: 'none',
                                 fontWeight: 400,
                             }}
                         >
-                            {exploreName}
+                            {query.label}
                         </Badge>
-                    </Text>
-                </>
+                    ))}
+                </Text>
             );
         case AiResultType.VERTICAL_BAR_RESULT:
             const barVizConfigToolArgs = toolArgs;
@@ -84,10 +155,8 @@ const ToolCallDescription: FC<{
                     breakdownByDimension={
                         barVizConfigToolArgs.vizConfig.breakdownByDimension
                     }
-                    sql={compiledSql}
                 />
             );
-
         case AiResultType.TABLE_RESULT:
             const tableVizConfigToolArgs = toolArgs;
             return (
@@ -97,7 +166,6 @@ const ToolCallDescription: FC<{
                         tableVizConfigToolArgs.vizConfig.dimensions ?? []
                     }
                     metrics={tableVizConfigToolArgs.vizConfig.metrics}
-                    sql={compiledSql}
                 />
             );
         case AiResultType.TIME_SERIES_RESULT:
@@ -110,11 +178,65 @@ const ToolCallDescription: FC<{
                     breakdownByDimension={
                         timeSeriesToolCallArgs.vizConfig.breakdownByDimension
                     }
-                    sql={compiledSql}
                 />
             );
-        case AiResultType.ONE_LINE_RESULT:
-            return null;
+        case 'find_dashboards':
+            const findDashboardsToolArgs = toolArgs;
+            return (
+                <Text c="dimmed" size="xs">
+                    Searched for dashboards{' '}
+                    {findDashboardsToolArgs.dashboardSearchQueries.map(
+                        (query) => (
+                            <Badge
+                                key={query.label}
+                                color="gray"
+                                variant="light"
+                                size="xs"
+                                mx={rem(2)}
+                                radius="sm"
+                                style={{
+                                    textTransform: 'none',
+                                    fontWeight: 400,
+                                }}
+                            >
+                                {query.label}
+                            </Badge>
+                        ),
+                    )}
+                </Text>
+            );
+        case 'find_charts':
+            const findChartsToolArgs = toolArgs;
+            return (
+                <Text c="dimmed" size="xs">
+                    Searched for charts{' '}
+                    {findChartsToolArgs.chartSearchQueries.map((query) => (
+                        <Badge
+                            key={query.label}
+                            color="gray"
+                            variant="light"
+                            size="xs"
+                            mx={rem(2)}
+                            radius="sm"
+                            style={{
+                                textTransform: 'none',
+                                fontWeight: 400,
+                            }}
+                        >
+                            {query.label}
+                        </Badge>
+                    ))}
+                </Text>
+            );
+        case AiResultType.DASHBOARD_RESULT:
+            const dashboardToolArgs = toolArgs;
+            return (
+                <Text c="dimmed" size="xs">
+                    Generated dashboard: "{dashboardToolArgs.title}" with{' '}
+                    {dashboardToolArgs.visualizations.length} visualization
+                    {dashboardToolArgs.visualizations.length !== 1 ? 's' : ''}
+                </Text>
+            );
         default:
             return assertUnreachable(toolArgs, `Unknown tool name ${toolName}`);
     }
@@ -122,71 +244,72 @@ const ToolCallDescription: FC<{
 
 type AiChartToolCallsProps = {
     toolCalls: ToolCallSummary[] | undefined;
-    compiledSql?: ApiCompiledQueryResults;
     type: ToolCallDisplayType;
 };
 
 export const AiChartToolCalls: FC<AiChartToolCallsProps> = ({
     toolCalls,
-    compiledSql,
     type,
 }) => {
-    if (!toolCalls || toolCalls.length === 0) return null;
-
     const texts =
         type === 'streaming'
             ? TOOL_DISPLAY_MESSAGES
             : TOOL_DISPLAY_MESSAGES_AFTER_TOOL_CALL;
 
+    if (!toolCalls || toolCalls.length === 0) return null;
     return (
-        <Stack>
-            <Timeline
-                active={toolCalls.length - 1}
-                bulletSize={20}
-                lineWidth={2}
-                color="indigo.6"
-            >
-                {toolCalls.map((toolCall) => {
-                    const toolNameParsed = ToolNameSchema.safeParse(
-                        toolCall.toolName,
-                    );
-                    if (!toolNameParsed.success) {
-                        return null;
-                    }
+        <ToolCallContainer defaultOpened={type !== 'persisted'}>
+            <Stack pt="xs">
+                <Timeline
+                    active={toolCalls.length - 1}
+                    bulletSize={16}
+                    lineWidth={1}
+                    color="gray"
+                >
+                    {toolCalls.map((toolCall) => {
+                        const toolNameParsed = ToolNameSchema.safeParse(
+                            toolCall.toolName,
+                        );
+                        if (!toolNameParsed.success) {
+                            return null;
+                        }
 
-                    const toolName = toolNameParsed.data;
-                    const IconComponent = getToolIcon(toolName);
+                        const toolName = toolNameParsed.data;
+                        const IconComponent = getToolIcon(toolName);
 
-                    return (
-                        <Timeline.Item
-                            key={toolCall.toolCallId}
-                            radius="md"
-                            bullet={
-                                <MantineIcon
-                                    icon={IconComponent}
-                                    size={12}
-                                    stroke={1.5}
-                                />
-                            }
-                            title={
-                                <Text fw={500} size="sm">
-                                    {texts[toolName]}
-                                </Text>
-                            }
-                            lineVariant={'solid'}
-                        >
-                            <ToolCallDescription
-                                toolCall={toolCall}
-                                compiledSql={
-                                    type === 'persisted'
-                                        ? compiledSql
-                                        : undefined
+                        return (
+                            <Timeline.Item
+                                key={toolCall.toolCallId}
+                                radius="sm"
+                                bullet={
+                                    <Paper
+                                        bg="white"
+                                        p="two"
+                                        radius="sm"
+                                        shadow="subtle"
+                                    >
+                                        <MantineIcon
+                                            icon={IconComponent}
+                                            size={12}
+                                            stroke={1.8}
+                                            color="indigo.3"
+                                        />
+                                    </Paper>
                                 }
-                            />
-                        </Timeline.Item>
-                    );
-                })}
-            </Timeline>
-        </Stack>
+                                mt="xs"
+                                title={
+                                    <Text fw={400} size="xs" c="gray.7">
+                                        {texts[toolName]}
+                                    </Text>
+                                }
+                                lineVariant={'dashed'}
+                            >
+                                <ToolCallDescription toolCall={toolCall} />
+                            </Timeline.Item>
+                        );
+                    })}
+                </Timeline>
+            </Stack>
+        </ToolCallContainer>
     );
 };

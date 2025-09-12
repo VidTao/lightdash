@@ -1,6 +1,6 @@
 /// <reference path="../@types/rudder-sdk-node.d.ts" />
-import { Type } from '@aws-sdk/client-s3';
 import {
+    Account,
     AnyType,
     CacheMetadata,
     CartesianSeriesType,
@@ -20,11 +20,9 @@ import {
     QueryHistoryStatus,
     RequestMethod,
     SchedulerFormat,
-    SqlRunnerQuery,
     TableSelectionType,
     ValidateProjectPayload,
     WarehouseTypes,
-    getErrorMessage,
     getRequestMethod,
 } from '@lightdash/common';
 import Analytics, {
@@ -33,7 +31,6 @@ import Analytics, {
 import { Request } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { LightdashConfig } from '../config/parseConfig';
-import Logger from '../logging/logger';
 import { VERSION } from '../version';
 
 type Identify = {
@@ -230,6 +227,7 @@ export type MetricQueryExecutionProperties = {
     virtualViewId?: string;
     metricOverridesCount: number;
     limit: number;
+    parametersCount: number;
 };
 
 type PaginatedMetricQueryExecutionProperties =
@@ -274,7 +272,7 @@ type QueryErrorEvent = BaseTrack & {
     properties: {
         queryId: string;
         projectId: string;
-        warehouseType: WarehouseTypes;
+        warehouseType: WarehouseTypes | undefined;
     };
 };
 
@@ -497,6 +495,7 @@ export type CreateSavedChartVersionEvent = BaseTrack & {
         numFixedBinsBinCustomDimensions: number;
         numCustomRangeBinCustomDimensions: number;
         numCustomSqlDimensions: number;
+        parametersCount: number;
     };
 };
 
@@ -653,6 +652,7 @@ export type CreateDashboardOrVersionEvent = BaseTrack & {
         loomTilesCount: number;
         duplicated?: boolean;
         tabsCount?: number;
+        parametersCount: number;
     };
 };
 
@@ -795,11 +795,12 @@ type ShareSlack = BaseTrack & {
 
 type SavedChartView = BaseTrack & {
     event: 'saved_chart.view';
-    userId: string;
+    userId?: string;
     properties: {
         savedChartId: string;
         projectId: string;
         organizationId: string;
+        parametersCount: number;
     };
 };
 
@@ -810,6 +811,7 @@ type DashboardView = BaseTrack & {
         dashboardId: string;
         projectId: string;
         organizationId: string;
+        parametersCount: number;
     };
 };
 
@@ -1359,6 +1361,16 @@ export type SupportShareEvent = BaseTrack & {
     };
 };
 
+export type McpToolCallEvent = BaseTrack & {
+    event: 'mcp_tool_call';
+    userId: string;
+    properties: {
+        organizationId: string;
+        projectId?: string;
+        toolName: string;
+    };
+};
+
 type TypedEvent =
     | TrackSimpleEvent
     | CreateUserEvent
@@ -1452,7 +1464,8 @@ type TypedEvent =
     | AiAgentDeletedEvent
     | AiAgentUpdatedEvent
     | AiAgentPromptCreatedEvent
-    | AiAgentPromptFeedbackEvent;
+    | AiAgentPromptFeedbackEvent
+    | McpToolCallEvent;
 
 type UntypedEvent<T extends BaseTrack> = Omit<BaseTrack, 'event'> &
     T & {
@@ -1563,5 +1576,34 @@ export class LightdashAnalytics extends Analytics {
             ...payload,
             context: { ...this.lightdashContext }, // NOTE: spread because rudderstack manipulates arg
         });
+    }
+
+    /**
+     * Track events from an account. This lets us centralize common properties that are found in req.account.
+     */
+    trackAccount<T extends BaseTrack>(
+        account: Account,
+        basePayload: TypedEvent | UntypedEvent<T>,
+    ) {
+        const payload = {
+            ...basePayload,
+        };
+
+        if (!payload.properties) {
+            payload.properties = {};
+        }
+
+        if (account.user.type === 'registered') {
+            payload.userId = account.user.id;
+        } else {
+            payload.anonymousId = 'embed';
+            payload.properties.externalId = account.user.id;
+        }
+
+        // TODO: Could these be top-level fields rather than properties?
+        payload.properties.organizationId =
+            account.organization.organizationUuid;
+
+        this.track(payload);
     }
 }
