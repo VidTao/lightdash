@@ -456,17 +456,7 @@ export class ServiceRepository
                 }),
         );
     }
-
-    public getPermissionsService(): PermissionsService {
-        return this.getService(
-            'permissionsService',
-            () =>
-                new PermissionsService({
-                    dashboardModel: this.models.getDashboardModel(),
-                }),
-        );
-    }
-
+    
     public getPersonalAccessTokenService(): PersonalAccessTokenService {
         return this.getService(
             'personalAccessTokenService',

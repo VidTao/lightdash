@@ -632,7 +632,7 @@ export class ProjectService extends BaseService {
         // Inject organizationUuid into user attributes for filtering
         const userAttributesWithOrg = {
             ...userAttributes,
-            organizationUuid: [organizationUuid], // User attributes are arrays
+            organizationUuid: organizationUuid ? [organizationUuid] : [], // User attributes are arrays
         };
 
         // DEBUG: Log what we're injecting
@@ -640,7 +640,7 @@ export class ProjectService extends BaseService {
             originalUserAttributes: userAttributes,
             injectedUserAttributes: userAttributesWithOrg,
             organizationUuid,
-            userUuid: user.userUuid
+            userUuid: user?.userUuid
         });
 
         const emailStatus = await this.emailModel.getPrimaryEmailStatus(userId);

@@ -101,7 +101,8 @@ const App = () => {
             </MantineProvider>
             <ReactQueryDevtools initialIsOpen={false} />
         </ReactQueryProvider>
-    </>
-);
+        </>
+    );
+};
 
 export default App;

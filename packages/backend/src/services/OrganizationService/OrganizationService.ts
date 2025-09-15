@@ -35,6 +35,8 @@ import {
     validateOrganizationEmailDomains,
     validateOrganizationNameOrThrow,
     WarehouseTypes,
+    ProjectType,
+    RequestMethod,
 } from '@lightdash/common';
 import { Scope } from '@sentry/core';
 import fs from 'fs';
@@ -49,6 +51,7 @@ import { OrganizationModel } from '../../models/OrganizationModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { UserModel } from '../../models/UserModel';
 import { BaseService } from '../BaseService';
+import { ProjectService } from '../ProjectService/ProjectService';
 
 type OrganizationServiceArguments = {
     lightdashConfig: LightdashConfig;
