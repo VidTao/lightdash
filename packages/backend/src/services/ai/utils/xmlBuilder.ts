@@ -27,3 +27,14 @@ export function xmlBuilder(
     return `<${tag}${attributeString}>${childrenString}</${tag}>`;
 }
 
+// JSX namespace declaration for TypeScript
+declare global {
+    namespace JSX {
+        interface IntrinsicElements {
+            [elemName: string]: Record<
+                string,
+                string | number | boolean
+            > | null;
+        }
+    }
+}

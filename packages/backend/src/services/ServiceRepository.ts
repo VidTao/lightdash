@@ -50,6 +50,7 @@ import { UnfurlService } from './UnfurlService/UnfurlService';
 import { UserAttributesService } from './UserAttributesService/UserAttributesService';
 import { UserService } from './UserService';
 import { ValidationService } from './ValidationService/ValidationService';
+import { McpService } from './McpService/McpService';
 /**
  * Interface outlining all services available under the `ServiceRepository`. Add new services to
  * this list (in alphabetical order, please!) to have typescript help ensure you've updated the
@@ -109,7 +110,7 @@ interface ServiceManifest {
     serviceAccountService: unknown;
     instanceConfigurationService: unknown;
     libreChatIntegrationService: LibreChatIntegrationService;
-    mcpService: unknown;
+    mcpService: McpService;
     rolesService: RolesService;
     slackService: SlackService;
 }
@@ -928,8 +929,24 @@ export class ServiceRepository
         return this.getService('supportService');
     }
 
-    public getMcpService<McpServiceImplT>(): McpServiceImplT {
-        return this.getService('mcpService');
+    public getMcpService(): McpService {
+        return this.getService(
+            'mcpService',
+            () =>
+                new McpService({
+                    lightdashConfig: this.context.lightdashConfig,
+                    analytics: this.context.lightdashAnalytics,
+                    catalogService: this.getCatalogService(),
+                    projectService: this.getProjectService(),
+                    userAttributesModel: this.models.getUserAttributesModel(),
+                    searchModel: this.models.getSearchModel(),
+                    spaceModel: this.models.getSpaceModel(),
+                    spaceService: this.getSpaceService(),
+                    mcpContextModel: this.models.getMcpContextModel(),
+                    projectModel: this.models.getProjectModel(),
+                    featureFlagService: this.getFeatureFlagService(),
+                }),
+        );
     }
 
     public getSpotlightService(): SpotlightService {

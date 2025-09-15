@@ -17,9 +17,8 @@ import {
     allowOauthAuthentication,
     isAuthenticated,
 } from '../controllers/authentication';
-import { ExtraContext, McpService } from '../ee/services/McpService/McpService';
 import Logger from '../logging/logger';
-
+import { ExtraContext, McpService } from '../services/McpService/McpService';
 const mcpRouter = express.Router({ mergeParams: true });
 
 function getMcpService(req: express.Request): McpService {
