@@ -377,17 +377,23 @@ export const oauthAuthorizationServerHandler = (
     res.json(oauthConfig(baseUrl));
 };
 
-oauthRouter.get(
-    '/.well-known/oauth-authorization-server',
-    oauthAuthorizationServerHandler,
-);
+// Disable ALL OAuth discovery for MCP
+oauthRouter.get('/.well-known/oauth-authorization-server*', (req, res) => {
+    return res.status(404).json({ error: 'Not found' });
+});
+
+oauthRouter.get('/.well-known/oauth-protected-resource*', (req, res) => {
+    return res.status(404).json({ error: 'Not found' });
+});
 
 // MCP server discovery endpoint
 // This endpoint is used to discover the MCP server
 // Required by some tools
 oauthRouter.get(
     '/.well-known/oauth-authorization-server/api/v1/mcp',
-    oauthAuthorizationServerHandler,
+    (req, res) => {
+        return res.status(404).json({ error: 'Not found' });
+    },
 );
 
 // OAuth2 Protected Resource configuration
@@ -416,17 +422,39 @@ export const oauthProtectedResourceHandler = (
     res.json(oauthProtectedResourceConfig(baseUrl));
 };
 
+// Disable the protected resource metadata endpoint
 oauthRouter.get(
     '/.well-known/oauth-protected-resource',
-    oauthProtectedResourceHandler,
+    (req, res) => {
+        // Check if request is coming from MCP client
+        const userAgent = req.headers['user-agent'] || '';
+        const referer = req.headers.referer || '';
+        
+        if (userAgent.toLowerCase().includes('mcp') || 
+            referer.includes('/mcp') ||
+            req.headers.accept?.includes('application/json')) {
+            return res.status(404).json({ error: 'Not found' });
+        }
+        
+        const oauthService = req.services.getOauthService();
+        const baseUrl = oauthService.getSiteUrl();
+        res.json({
+            resource: `${baseUrl}/api/v1/mcp`,
+            authorization_servers: [`${baseUrl}/api/v1/oauth`],
+            resource_documentation: `${baseUrl}/api/v1/oauth/.well-known/oauth-authorization-server`,
+            bearer_methods_supported: ['header'],
+            resource_signing_alg_values_supported: ['RS256'],
+        });
+    },
 );
 
-// MCP server protected resource discovery endpoint
-// This endpoint is used to discover the protected resource for MCP
-// Required by some MCP clients
+// Also disable the MCP-specific protected resource endpoint
 oauthRouter.get(
     '/.well-known/oauth-protected-resource/api/v1/mcp',
-    oauthProtectedResourceHandler,
+    (req, res) => {
+        // Always return 404 for MCP-specific protected resource discovery
+        return res.status(404).json({ error: 'Not found' });
+    },
 );
 
 export default oauthRouter;

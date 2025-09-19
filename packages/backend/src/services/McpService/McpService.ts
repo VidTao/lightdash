@@ -9,6 +9,7 @@ import {
     getItemId,
     MissingConfigError,
     OauthAccount,
+    ApiKeyAccount,
     ParameterError,
     QueryExecutionContext,
     SessionUser,
@@ -100,7 +101,11 @@ type McpServiceArguments = {
     featureFlagService: FeatureFlagService;
 };
 
-export type ExtraContext = { user: SessionUser; account: OauthAccount };
+// Update the ExtraContext type to support both account types
+export type ExtraContext = { 
+    user: SessionUser; 
+    account: OauthAccount | ApiKeyAccount; // ← Support both account types
+};
 type McpProtocolContext = {
     authInfo?: AuthInfo & {
         extra: ExtraContext;
@@ -108,7 +113,7 @@ type McpProtocolContext = {
 };
 
 export class McpService extends BaseService {
-    private lightdashConfig: LightdashConfig;
+    public lightdashConfig: LightdashConfig;
 
     private analytics: LightdashAnalytics;
 
@@ -310,6 +315,11 @@ export class McpService extends BaseService {
                 ) as AnyType,
             },
             async (_args, context) => {
+                // Require authentication for actual tool calls
+                if (!context.authInfo?.extra) {
+                    throw new ForbiddenError('Authentication required for tool calls');
+                }
+                
                 const args = _args as ToolFindDashboardsArgs;
 
                 const projectUuid = await this.resolveProjectUuid(
@@ -1220,6 +1230,7 @@ export class McpService extends BaseService {
         return { user, organizationUuid, account };
     }
 
+    // Update the canAccessMcp method
     public canAccessMcp(context: McpProtocolContext): boolean {
         if (!context.authInfo) {
             throw new ForbiddenError('Invalid authInfo context');
@@ -1227,18 +1238,33 @@ export class McpService extends BaseService {
 
         const user = context.authInfo.extra?.user;
         const account = context.authInfo.extra?.account;
-        const { scopes } = account.authentication;
-
-        // TODO replace with CASL ability check
-        // Do not enforce client scopes for now until more MCP clients support this
-        /*
-        if (
-            !scopes.includes(OAuthScope.MCP_READ) &&
-            !scopes.includes(OAuthScope.MCP_WRITE)
-        ) {
-            throw new ForbiddenError('You are not allowed to access MCP');
+        
+        if (!user || !account) {
+            throw new ForbiddenError('Missing user or account in context');
         }
-        */
+
+        // Handle both OAuth and API Key accounts
+        if (account.isOauthUser()) {
+            const oauthAccount = account as OauthAccount;
+            const { scopes } = oauthAccount.authentication;
+            
+            // TODO replace with CASL ability check
+            // Do not enforce client scopes for now until more MCP clients support this
+            /*
+            if (
+                !scopes.includes(OAuthScope.MCP_READ) &&
+                !scopes.includes(OAuthScope.MCP_WRITE)
+            ) {
+                throw new ForbiddenError('You are not allowed to access MCP');
+            }
+            */
+        } else if (account.isPatUser()) {
+            // API Key/PAT accounts automatically have MCP access if MCP is enabled
+            // Additional permissions are checked via CASL in individual methods
+            // The PAT already went through authentication, so the user is valid
+        } else {
+            throw new ForbiddenError('Invalid account type for MCP access');
+        }
 
         if (!this.lightdashConfig.mcp.enabled) {
             throw new MissingConfigError('MCP is not enabled');

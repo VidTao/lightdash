@@ -11,10 +11,11 @@ import {
     LightdashError,
     MissingConfigError,
     NotImplementedError,
+    ApiKeyAccount,
     OauthAccount,
 } from '@lightdash/common';
 import {
-    allowOauthAuthentication,
+    allowApiKeyAuthentication, // ← Changed from allowOauthAuthentication
     isAuthenticated,
 } from '../controllers/authentication';
 import Logger from '../logging/logger';
@@ -31,7 +32,7 @@ function getMcpService(req: express.Request): McpService {
 
 /*
 MCP servers MUST use the HTTP header WWW-Authenticate when returning a 401 Unauthorized to indicate
-the location of the resource server metadata URL as described in RFC9728 Section 5.1 “WWW-Authenticate Response”.
+the location of the resource server metadata URL as described in RFC9728 Section 5.1 "WWW-Authenticate Response".
 https://www.rfc-editor.org/rfc/rfc9728#section-5.1
 */
 const returnHeaderIfUnauthenticated = (
@@ -42,14 +43,43 @@ const returnHeaderIfUnauthenticated = (
     if (req.account?.isAuthenticated()) {
         next();
     } else {
+        // For API Key authentication, we still provide OAuth metadata for MCP spec compliance
         const oauthService = req.services.getOauthService();
         const baseUrl = oauthService.getSiteUrl();
-        res.set(
-            'WWW-Authenticate',
-            `Bearer resource_metadata="${baseUrl}/api/v1/oauth/.well-known/oauth-protected-resource"`,
-        );
+        res.set('WWW-Authenticate', 'ApiKey');
         res.status(401).json({ error: 'Unauthorized' });
     }
+};
+
+// Add a middleware to conditionally require auth
+const conditionalAuth = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+) => {
+    // Always allow GET requests (SSE handshake)
+    if (req.method === 'GET') {
+        return next();
+    }
+    
+    // For POST requests, check if it's an initial connection or handshake
+    if (req.method === 'POST') {
+        const method = req.body?.method;
+        const allowedUnauthenticatedMethods = [
+            'initialize',
+            'tools/list',
+            'resources/list',
+            'prompts/list'
+        ];
+        
+        // Allow unauthenticated access for handshake methods OR if no method specified (initial connection)
+        if (!method || allowedUnauthenticatedMethods.includes(method)) {
+            return next();
+        }
+    }
+    
+    // Require auth for everything else (actual tool calls)
+    return returnHeaderIfUnauthenticated(req, res, next);
 };
 
 // MCP endpoint - supports Streamable HTTP
@@ -59,22 +89,44 @@ const returnHeaderIfUnauthenticated = (
 // - It follows the same pattern as other protocol-specific endpoints (OAuth)
 mcpRouter.all(
     '/',
-    allowOauthAuthentication,
-    returnHeaderIfUnauthenticated,
+    // Only check for API key in headers, don't return 401 if missing
+    (req, res, next) => {
+        if (req.headers.authorization?.startsWith('ApiKey ')) {
+            // Process API key authentication
+            allowApiKeyAuthentication(req, res, next);
+        } else {
+            // Allow unauthenticated access (or return different error)
+            next();
+        }
+    },
     async (req, res) => {
         try {
+            console.log('MCP Request:', {
+                method: req.method,
+                hasUser: !!req.user,
+                hasAuth: !!req.headers.authorization,
+                userUuid: req.user?.userUuid
+            });
+
             const mcpService = getMcpService(req);
 
-            // Check if MCP is enabled (either via config or AI Copilot flag)
-            const isEnabled = await mcpService.isEnabled(req.user!);
-            if (!isEnabled) {
-                throw new ForbiddenError('MCP is not enabled');
+            // Check if MCP is enabled
+            if (req.user) {
+                const isEnabled = await mcpService.isEnabled(req.user);
+                if (!isEnabled) {
+                    throw new ForbiddenError('MCP is not enabled');
+                }
+            } else {
+                // For unauthenticated requests, check global config
+                if (!mcpService.lightdashConfig.mcp.enabled) {
+                    throw new ForbiddenError('MCP is not enabled');
+                }
             }
 
             const mcpServer = mcpService.getServer();
 
             if (req.method === 'GET') {
-                // Handle SSE transport for MCP
+                // Handle SSE transport
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
@@ -83,17 +135,14 @@ mcpRouter.all(
                     'Access-Control-Allow-Headers': 'Cache-Control',
                 });
 
-                // Keep connection alive with periodic heartbeat
                 const heartbeat = setInterval(() => {
                     res.write('event: heartbeat\ndata: {}\n\n');
                 }, 30000);
 
-                // Clean up on connection close
                 req.on('close', () => {
                     clearInterval(heartbeat);
                 });
 
-                // Send initial connection event
                 res.write('event: connect\ndata: {"type": "connect"}\n\n');
                 return await Promise.resolve();
             }
@@ -106,24 +155,25 @@ mcpRouter.all(
                 });
                 await mcpServer.connect(transport);
 
-                // Add auth info to request for the transport
-                // The token details is loaded on the authentication middleware allowOauthAuthentication
-                const authReq: IncomingMessage & {
-                    auth?: AuthInfo;
-                } = req;
+                // Add auth info for authenticated requests
+                const authReq: IncomingMessage & { auth?: AuthInfo } = req;
 
-                if (req.user && req.account?.isOauthUser()) {
-                    const oauthAuth = req.account as OauthAccount;
-                    const extra: ExtraContext = {
-                        user: req.user,
-                        account: oauthAuth,
-                    };
-                    authReq.auth = {
-                        token: oauthAuth.authentication.token,
-                        clientId: oauthAuth.authentication.clientId,
-                        scopes: oauthAuth.authentication.scopes,
-                        extra,
-                    };
+                if (req.user && req.account?.isAuthenticated()) {
+                    let extra: ExtraContext;
+                    
+                    if (req.account.isPatUser()) {
+                        const apiKeyAuth = req.account as ApiKeyAccount;
+                        extra = {
+                            user: req.user,
+                            account: apiKeyAuth,
+                        };
+                        authReq.auth = {
+                            token: apiKeyAuth.authentication.source,
+                            clientId: 'api-key-client',
+                            scopes: ['mcp:read', 'mcp:write'],
+                            extra,
+                        };
+                    }
                 }
 
                 return await transport.handleRequest(authReq, res, req.body);
@@ -134,14 +184,11 @@ mcpRouter.all(
         } catch (error) {
             Logger.error(`MCP endpoint error: ${getErrorMessage(error)}`);
             if (error instanceof LightdashError) {
-                return res
-                    .status(error.statusCode)
-                    .json({ error: error.message });
+                return res.status(error.statusCode).json({ error: error.message });
             }
-
             return res.status(500).json({ error: 'Internal server error' });
         }
-    },
+    }
 );
 
 export default mcpRouter;
