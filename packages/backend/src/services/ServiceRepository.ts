@@ -50,7 +50,8 @@ import { UnfurlService } from './UnfurlService/UnfurlService';
 import { UserAttributesService } from './UserAttributesService/UserAttributesService';
 import { UserService } from './UserService';
 import { ValidationService } from './ValidationService/ValidationService';
-import { McpService } from './McpService/McpService';
+import { McpServiceMain } from './McpService/McpServiceMain';
+import { McpService } from '../ee/services/McpService/McpService';
 /**
  * Interface outlining all services available under the `ServiceRepository`. Add new services to
  * this list (in alphabetical order, please!) to have typescript help ensure you've updated the
@@ -110,6 +111,7 @@ interface ServiceManifest {
     serviceAccountService: unknown;
     instanceConfigurationService: unknown;
     libreChatIntegrationService: LibreChatIntegrationService;
+    mcpServiceMain: McpServiceMain;
     mcpService: McpService;
     rolesService: RolesService;
     slackService: SlackService;
@@ -929,11 +931,11 @@ export class ServiceRepository
         return this.getService('supportService');
     }
 
-    public getMcpService(): McpService {
+    public getMcpServiceMain(): McpServiceMain {
         return this.getService(
-            'mcpService',
+            'mcpServiceMain',
             () =>
-                new McpService({
+                new McpServiceMain({
                     lightdashConfig: this.context.lightdashConfig,
                     analytics: this.context.lightdashAnalytics,
                     catalogService: this.getCatalogService(),
@@ -945,8 +947,14 @@ export class ServiceRepository
                     mcpContextModel: this.models.getMcpContextModel(),
                     projectModel: this.models.getProjectModel(),
                     featureFlagService: this.getFeatureFlagService(),
+                    services: this,
+                    savedChartModel: this.models.getSavedChartModel(),
                 }),
         );
+    }
+
+    public getMcpService(): McpService {
+        return this.getService('mcpService');
     }
 
     public getSpotlightService(): SpotlightService {

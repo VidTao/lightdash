@@ -25,6 +25,9 @@ import {
     toolRunMetricQueryArgsSchema,
     ToolSearchFieldValuesArgs,
     toolSearchFieldValuesArgsSchema,
+    NotFoundError,
+    ToolGetEmbedUrlArgs,
+    toolGetEmbedUrlArgsSchema
 } from '@lightdash/common';
 // eslint-disable-next-line import/extensions
 import { subject } from '@casl/ability';
@@ -73,6 +76,9 @@ import {
     SearchFieldValuesFn,
 } from '../ai/types/aiAgentDependencies';
 import { McpSchemaCompatLayer } from './McpSchemaCompatLayer';
+import { ServiceRepository } from '../../services/ServiceRepository';
+import { EmbedService } from '../../ee/services/EmbedService/EmbedService';
+import { SavedChartModel } from '../../models/SavedChartModel';
 
 export enum McpToolName {
     GET_LIGHTDASH_VERSION = 'get_lightdash_version',
@@ -85,6 +91,7 @@ export enum McpToolName {
     GET_CURRENT_PROJECT = 'get_current_project',
     RUN_METRIC_QUERY = 'run_metric_query',
     SEARCH_FIELD_VALUES = 'search_field_values',
+    GET_EMBED_URL = 'get_embed_url', // ← Add this new tool
 }
 
 type McpServiceArguments = {
@@ -99,6 +106,8 @@ type McpServiceArguments = {
     spaceService: SpaceService;
     mcpContextModel: McpContextModel;
     featureFlagService: FeatureFlagService;
+    services: ServiceRepository; // ← Add this
+    savedChartModel: SavedChartModel; // ← Add this
 };
 
 // Update the ExtraContext type to support both account types
@@ -112,7 +121,7 @@ type McpProtocolContext = {
     };
 };
 
-export class McpService extends BaseService {
+export class McpServiceMain extends BaseService {
     public lightdashConfig: LightdashConfig;
 
     private analytics: LightdashAnalytics;
@@ -139,6 +148,10 @@ export class McpService extends BaseService {
 
     private mcpCompatLayer: McpSchemaCompatLayer;
 
+    private services: ServiceRepository; // ← Add this
+
+    private savedChartModel: SavedChartModel; // ← Add this
+
     constructor({
         lightdashConfig,
         analytics,
@@ -151,6 +164,8 @@ export class McpService extends BaseService {
         projectModel,
         mcpContextModel,
         featureFlagService,
+        services, // ← Add this
+        savedChartModel, // ← Add this
     }: McpServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
@@ -164,6 +179,8 @@ export class McpService extends BaseService {
         this.spaceService = spaceService;
         this.mcpContextModel = mcpContextModel;
         this.featureFlagService = featureFlagService;
+        this.services = services; // ← Add this
+        this.savedChartModel = savedChartModel; // ← Add this
         this.mcpCompatLayer = new McpSchemaCompatLayer();
         try {
             this.mcpServer = new McpServer({
@@ -172,6 +189,7 @@ export class McpService extends BaseService {
             });
             this.setupHandlers();
         } catch (error) {
+            console.log('error initializing MCP server:', error);
             this.logger.error('Error initializing MCP server:', error);
             throw error;
         }
@@ -690,6 +708,46 @@ export class McpService extends BaseService {
                 };
             },
         );
+        console.log('registering get_embed_url tool');
+        // Remove the try-catch wrapper and just register the tool directly
+        this.mcpServer.registerTool(
+            McpToolName.GET_EMBED_URL,
+            {
+                description: toolGetEmbedUrlArgsSchema.description,
+                inputSchema: this.getMcpCompatibleSchema(
+                    toolGetEmbedUrlArgsSchema,
+                ) as AnyType,
+            },
+            async (_args, context) => {
+                const args = _args as ToolGetEmbedUrlArgs;
+
+                const projectUuid = await this.resolveProjectUuid(
+                    context as McpProtocolContext,
+                );
+
+                this.trackToolCall(
+                    context as McpProtocolContext,
+                    McpToolName.GET_EMBED_URL,
+                    projectUuid,
+                );
+
+                const result = await this.generateEmbedUrl(
+                    args,
+                    projectUuid,
+                    context as McpProtocolContext,
+                );
+
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: result,
+                        },
+                    ],
+                };
+            },
+        );
+        console.log('registered get_embed_url tool!');
     }
 
     async getProjectUuidFromContext(
@@ -1209,6 +1267,217 @@ export class McpService extends BaseService {
             );
 
         return searchFieldValues;
+    }
+
+    async generateEmbedUrl(
+        args: {
+            resource_uuid: string;
+            resource_type?: 'chart' | 'dashboard';
+            expires_in?: string;
+            dashboard_filters_interactivity?: any;
+            can_export_csv?: boolean;
+            can_export_images?: boolean;
+            return_markdown?: boolean;
+            raw_directive?: boolean;
+            height?: number;
+        },
+        projectUuid: string,
+        context: McpProtocolContext,
+    ): Promise<string> {
+        const { user, account } = context.authInfo!.extra;
+        const { organizationUuid } = user;
+
+        if (!user || !organizationUuid || !account) {
+            throw new ForbiddenError('Authentication required');
+        }
+
+        // Set defaults (match Python exactly)
+        const resourceType = args.resource_type || 'chart';
+        const expiresIn = args.expires_in || '8h';
+        const canExportCsv = args.can_export_csv || false;
+        const canExportImages = args.can_export_images || false;
+        const returnMarkdown = args.return_markdown !== false; // default true
+        const rawDirective = args.raw_directive || false;
+        const defaultHeight = 600;
+        const embedHeight = args.height || defaultHeight;
+
+        try {
+            let embedUrl: string;
+            let title: string;
+
+            if (resourceType === 'dashboard') {
+                // Dashboard embedding (existing JWT-based logic)
+                const embedService = this.services.getEmbedService<EmbedService>();
+
+                const embedJwtData: any = {
+                    content: {
+                        type: 'dashboard' as const,
+                        dashboardUuid: args.resource_uuid,
+                        canExportCsv,
+                        canExportImages,
+                    },
+                    userAttributes: {
+                        organizationUuid,
+                    },
+                    expiresIn,
+                };
+
+                // Add optional dashboard filter interactivity
+                if (args.dashboard_filters_interactivity) {
+                    embedJwtData.content.dashboardFiltersInteractivity = args.dashboard_filters_interactivity;
+                }
+
+                // Generate the embed URL
+                const embedUrlResult = await embedService.getEmbedUrl(
+                    user,
+                    projectUuid,
+                    embedJwtData,
+                );
+
+                embedUrl = embedUrlResult.url;
+
+                // Try to get dashboard details for title
+                title = `Dashboard ${args.resource_uuid}`;
+                try {
+                    const dashboardService = this.services.getDashboardService();
+                    const dashboard = await dashboardService.getById(
+                        user,
+                        args.resource_uuid,
+                    );
+                    title = dashboard.name;
+                } catch (error) {
+                    this.logger.warn(`Failed to get dashboard details: ${error}. Using default title.`);
+                }
+
+            } else if (resourceType === 'chart') {
+                // Chart embedding (new logic - direct URL access)
+                try {
+                    // Get chart details using savedChartModel directly (like EmbedService does)
+                    const chart = await this.savedChartModel.get(args.resource_uuid);
+                    
+                    // Check if user has access to this chart
+                    const space = await this.spaceModel.getSpaceSummary(chart.spaceUuid);
+                    const access = await this.spaceModel.getUserSpaceAccess(
+                        user.userUuid,
+                        chart.spaceUuid,
+                    );
+
+                    if (
+                        user.ability.cannot(
+                            'view',
+                            subject('SavedChart', {
+                                organizationUuid,
+                                projectUuid: chart.projectUuid,
+                                isPrivate: space.isPrivate,
+                                access,
+                            }),
+                        )
+                    ) {
+                        throw new ForbiddenError('You do not have access to this chart');
+                    }
+                    
+                    title = chart.name;
+                    
+                    // Create URL for individual chart viewing
+                    const baseUrl = this.lightdashConfig.siteUrl;
+                    embedUrl = `${baseUrl}/projects/${projectUuid}/saved/${args.resource_uuid}`;
+                    
+                } catch (error) {
+                    if (error instanceof ForbiddenError) {
+                        throw error;
+                    }
+                    throw new NotFoundError(`Chart with UUID ${args.resource_uuid} not found`);
+                }
+
+            } else {
+                throw new ParameterError(`Unsupported resource type: ${resourceType}. Supported types: 'chart', 'dashboard'`);
+            }
+
+            // Format the response (match Python logic)
+            if (rawDirective) {
+                // Return HTML artifact instruction
+                const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe 
+        src="${embedUrl}" 
+        title="${title}"
+        allow="fullscreen"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals">
+    </iframe>
+</body>
+</html>`;
+
+                const artifactInstruction = `Please create an artifact with the following properties:
+
+:::artifact identifier="lightdash-embed-${args.resource_uuid.substring(0, 8)}" type="text/html" title="${title}"
+${htmlContent}
+:::
+
+This will embed the Lightdash ${resourceType} directly in the chat.
+
+If the embed doesn't display due to security restrictions, you can open it directly at: ${embedUrl}`;
+
+                return artifactInstruction;
+            }
+
+            if (returnMarkdown) {
+                // Return ONLY the directive, no extra text or formatting
+                // Use the exact format that works - simple title and line break before closing :::
+                const simpleTitle = `Dashboard ${args.resource_uuid}`;
+                const lightdashDirective = `:::lightdash-${resourceType}{url="${embedUrl}" title="${simpleTitle}" height="${embedHeight}"}\n:::`;
+                return lightdashDirective;
+            } else {
+                // Return JSON response
+                const result = {
+                    url: embedUrl,
+                    title,
+                    resource_type: resourceType,
+                    resource_uuid: args.resource_uuid,
+                    height: embedHeight,
+                    expires_in: resourceType === 'dashboard' ? expiresIn : null, // Charts don't use JWT expiration
+                };
+                return JSON.stringify(result, null, 2);
+            }
+
+        } catch (error) {
+            if (error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ParameterError) {
+                throw error;
+            }
+            
+            let errorMsg = error instanceof Error ? error.message : String(error);
+            
+            // Provide helpful error messages
+            if (errorMsg.includes('embedService') && errorMsg.includes('no factory or provider')) {
+                errorMsg = 'Dashboard embedding is not available in your Lightdash instance. This feature requires an enterprise license.';
+            } else if (errorMsg.includes('422')) {
+                errorMsg = `Invalid request: ${errorMsg}`;
+            } else if (errorMsg.includes('404')) {
+                errorMsg = `${resourceType === 'dashboard' ? 'Dashboard' : 'Chart'} not found. Please check the UUID.`;
+            } else {
+                errorMsg = `Failed to generate embed URL: ${errorMsg}`;
+            }
+            
+            throw new ParameterError(errorMsg);
+        }
     }
 
     public getServer(): McpServer {

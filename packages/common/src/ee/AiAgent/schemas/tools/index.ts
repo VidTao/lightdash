@@ -8,3 +8,5 @@ export * from './toolSearchFieldValuesArgs';
 export * from './toolTableVizArgs';
 export * from './toolTimeSeriesArgs';
 export * from './toolVerticalBarArgs';
+export * from './toolGetEmbedUrlArgs';
+

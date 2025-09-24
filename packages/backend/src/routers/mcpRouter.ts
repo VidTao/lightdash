@@ -19,12 +19,12 @@ import {
     isAuthenticated,
 } from '../controllers/authentication';
 import Logger from '../logging/logger';
-import { ExtraContext, McpService } from '../services/McpService/McpService';
+import { ExtraContext, McpServiceMain } from '../services/McpService/McpServiceMain';
 const mcpRouter = express.Router({ mergeParams: true });
 
-function getMcpService(req: express.Request): McpService {
+function getMcpService(req: express.Request): McpServiceMain {
     try {
-        return req.services.getMcpService();
+        return req.services.getMcpServiceMain();
     } catch (e) {
         throw new MissingConfigError('MCP service not available');
     }

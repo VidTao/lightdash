@@ -165,6 +165,8 @@ export class McpService extends BaseService {
                 name: 'Lightdash MCP Server',
                 version: VERSION,
             });
+            console.log('initialized MCP server Drasko!');
+            this.logger.info('initialized MCP server Drasko!');
             this.setupHandlers();
         } catch (error) {
             this.logger.error('Error initializing MCP server:', error);
@@ -253,53 +255,53 @@ export class McpService extends BaseService {
             },
         );
 
-        this.mcpServer.registerTool(
-            McpToolName.FIND_FIELDS,
-            {
-                description: toolFindFieldsArgsSchema.description,
-                inputSchema: this.getMcpCompatibleSchema(
-                    toolFindFieldsArgsSchema,
-                ) as AnyType,
-            },
-            async (_args, context) => {
-                const args = _args as ToolFindFieldsArgs;
+        // this.mcpServer.registerTool(
+        //     McpToolName.FIND_FIELDS,
+        //     {
+        //         description: toolFindFieldsArgsSchema.description,
+        //         inputSchema: this.getMcpCompatibleSchema(
+        //             toolFindFieldsArgsSchema,
+        //         ) as AnyType,
+        //     },
+        //     async (_args, context) => {
+        //         const args = _args as ToolFindFieldsArgs;
 
-                const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
-                );
-                const argsWithProject = { ...args, projectUuid };
+        //         const projectUuid = await this.resolveProjectUuid(
+        //             context as McpProtocolContext,
+        //         );
+        //         const argsWithProject = { ...args, projectUuid };
 
-                this.trackToolCall(
-                    context as McpProtocolContext,
-                    McpToolName.FIND_FIELDS,
-                    projectUuid,
-                );
+        //         this.trackToolCall(
+        //             context as McpProtocolContext,
+        //             McpToolName.FIND_FIELDS,
+        //             projectUuid,
+        //         );
 
-                const findFields: FindFieldFn =
-                    await this.getFindFieldsFunction(
-                        argsWithProject,
-                        context as McpProtocolContext,
-                    );
+        //         const findFields: FindFieldFn =
+        //             await this.getFindFieldsFunction(
+        //                 argsWithProject,
+        //                 context as McpProtocolContext,
+        //             );
 
-                const findFieldsTool = getFindFields({
-                    findFields,
-                    pageSize: 15,
-                });
-                const result = await findFieldsTool.execute(argsWithProject, {
-                    toolCallId: '',
-                    messages: [],
-                });
+        //         const findFieldsTool = getFindFields({
+        //             findFields,
+        //             pageSize: 15,
+        //         });
+        //         const result = await findFieldsTool.execute(argsWithProject, {
+        //             toolCallId: '',
+        //             messages: [],
+        //         });
 
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: result,
-                        },
-                    ],
-                };
-            },
-        );
+        //         return {
+        //             content: [
+        //                 {
+        //                     type: 'text',
+        //                     text: result,
+        //                 },
+        //             ],
+        //         };
+        //     },
+        // );
 
         this.mcpServer.registerTool(
             McpToolName.FIND_DASHBOARDS,
