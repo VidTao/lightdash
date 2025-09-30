@@ -106,7 +106,7 @@ export interface AmazonProduct {
 
 export interface ShippingProfile {
   profileId: number;
-  writeKey: string;
+  writeKeyId: number;
   profileName: string;
   isWorldwide: boolean;
   regions: Region[];
@@ -124,7 +124,7 @@ export interface Region {
 
 export interface PaymentGatewaySettings {
   gatewayId: number;
-  writeKey: string;
+  writeKeyId: number;
   gatewayName: string;
   fixedFee: number | string;
   percentageFee: number;

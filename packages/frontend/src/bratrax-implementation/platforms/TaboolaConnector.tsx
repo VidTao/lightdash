@@ -1,21 +1,22 @@
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useCrmConnections } from '../hooks/useCrmConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
+import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-const TaboolaConnector = () => {
+interface TaboolaConnectorProps {
+    crmConnections: CrmConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const TaboolaConnector = ({ 
+    crmConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: TaboolaConnectorProps) => {
     const [isLoading, setIsLoading] = useState(false);
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'Taboola',
-        setIsLoading,
-    });
-    const { crmConnections } = useCrmConnections({
-        platformName: 'Taboola',
-        setIsLoading,
-    });
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
 
     const handleConnect = async () => {
@@ -38,7 +39,7 @@ const TaboolaConnector = () => {
                     setIsCrmConnectionsOpen(true);
                 }}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                isLoading={isLoading}
+                isLoading={propsLoading || isLoading}
                 isConnected={!!platformConnection}
                 platformName="Taboola"
                 logoPath="taboola-logo.png"
@@ -47,7 +48,7 @@ const TaboolaConnector = () => {
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
-                crmConnections={crmConnections ?? []}
+                crmConnections={crmConnections}
             />
         </>
     );

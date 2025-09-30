@@ -1,26 +1,37 @@
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
+import { formatDate } from '../helpers/date';
+import { PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-const GoHighLevelConnector = () => {
-    const [isLoading, setIsLoading] = useState(true);
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'GoHighLevel',
-        setIsLoading,
-    });
+interface GoHighLevelConnectorProps {
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const GoHighLevelConnector = ({ 
+    platformConnection, 
+    isLoading: propsLoading 
+}: GoHighLevelConnectorProps) => {
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleLogin = async () => {
         setIsLoading(true);
-        const authUrl = await apiService.getGoHighLevelAuthUrl();
-        window.location.href = authUrl.toString();
+        try {
+            const authUrl = await apiService.getGoHighLevelAuthUrl();
+            window.location.href = authUrl.toString();
+        } catch (error) {
+            console.error('Error getting GoHighLevel auth URL:', error);
+            setIsLoading(false);
+        }
     };
 
     return (
         <PlatformCard
             handleLogin={handleLogin}
-            isLoading={isLoading}
+            isLoading={propsLoading || isLoading}
             isConnected={!!platformConnection}
+            connectedOn={formatDate(platformConnection?.created_at ?? '')}
             platformName="GoHighLevel"
             logoPath="ghl-logo.svg"
             description="Connect your GoHighLevel account to get started"

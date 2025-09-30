@@ -2,27 +2,27 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useCrmConnections } from '../hooks/useCrmConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
+import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
 interface AmazonSpProps {
     region: string;
+    crmConnections: CrmConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
 }
 
-export const AmazonSPConnector = ({ region }: AmazonSpProps) => {
-    const [isLoading, setIsLoading] = useState(true);
+export const AmazonSPConnector = ({ 
+    region, 
+    crmConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: AmazonSpProps) => {
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
-    const { platformConnection } = usePlatformConnection({
-        platformName: `AmazonSP-${region.toUpperCase()}`,
-        setIsLoading,
-    });
-    const { crmConnections } = useCrmConnections({
-        platformName: `AmazonSP-${region.toUpperCase()}`,
-        setIsLoading,
-    });
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
+
     const handleConnect = async () => {
         try {
             setIsLoading(true);
@@ -46,7 +46,7 @@ export const AmazonSPConnector = ({ region }: AmazonSpProps) => {
                     setIsCrmConnectionsOpen(true);
                 }}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                isLoading={isLoading}
+                isLoading={propsLoading || isLoading}
                 isConnected={!!platformConnection}
                 platformName={`Amazon SP (${region.toUpperCase()})`}
                 logoPath="amazon-logo.jpg"
@@ -55,7 +55,7 @@ export const AmazonSPConnector = ({ region }: AmazonSpProps) => {
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
-                crmConnections={crmConnections ?? []}
+                crmConnections={crmConnections}
             />
         </>
     );

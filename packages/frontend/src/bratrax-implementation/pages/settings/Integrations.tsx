@@ -8,6 +8,7 @@ import ClaviyoConnector from '../../platforms/KlaviyoConnector';
 import PinterestConnector from '../../platforms/PinterestConnector';
 import ShopifyConnector from '../../platforms/ShopifyConnector';
 import StripeConnector from '../../platforms/StripeConnector';
+import Dashboard from '../Dashboard';
 
 const Integrations: React.FC = () => {
     return (
@@ -28,14 +29,7 @@ const Integrations: React.FC = () => {
                 </Stack>
 
                 <Group align="center" spacing="lg" grow>
-                    <GoogleAdsConnector />
-                    <FacebookAdsConnector />
-                    <GoHighLevelConnector />
-                    <PinterestConnector />
-                    <ClickFunnel2Connector />
-                    <ShopifyConnector />
-                    <ClaviyoConnector />
-                    <StripeConnector />
+                    <Dashboard />
                 </Group>
             </Paper>
         </Box>

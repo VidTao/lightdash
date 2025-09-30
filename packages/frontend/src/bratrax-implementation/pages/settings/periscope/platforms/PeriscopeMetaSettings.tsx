@@ -1,7 +1,7 @@
 import { Box, Group, Stack, Tabs, Title, UnstyledButton } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import React, { useState } from 'react';
-import { useAdConnections } from '../../../../hooks/useAdConnections';
+import { useAdConnection } from '../../../../hooks/useAdConnection';
 import { usePeriscopeEvents } from '../../../../hooks/usePeriscopeEvents';
 import DeliveryOverview from '../components/DeliveryOverview';
 import PlatformSettings from '../components/PlatformSettings';
@@ -12,7 +12,7 @@ const PeriscopeMetaSettings: React.FC<PlatformSettingsProps> = ({
     onBack,
     defaultTab = 'overview',
 }) => {
-    const { adConnections } = useAdConnections({
+    const { adConnections } = useAdConnection({
         platformName: 'Facebook',
         setIsLoading: () => {},
     });

@@ -1,35 +1,39 @@
-import { useEffect } from 'react';
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useApp from '../../providers/App/useApp';
 import { AdvertisingConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-interface useAdConnectionsProps {
-    platformName: string;
-    setIsLoading: (isLoading: boolean) => void;
-}
-
-export const useAdConnections = ({
-    platformName,
-    setIsLoading,
-}: useAdConnectionsProps) => {
-    const { health, user } = useApp();
-    const [adConnections, setAdConnections] = useState<
-        AdvertisingConnection[] | []
-    >([]);
+export const useAdConnections = () => {
+    const { isAuthSet } = useApp();
+    const [adConnections, setAdConnections] = useState<Record<string, AdvertisingConnection[]>>({});
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (user.data?.organizationUuid) fetchCrmConnections();
-    }, [user]);
+        if (isAuthSet) {
+            fetchAllAdConnections();
+        }
+    }, [isAuthSet]);
 
-    const fetchCrmConnections = async () => {
-        const adConnections = await apiService.getAdvertisingConnections(
-            platformName,
-        );
-        setAdConnections(adConnections.data);
-        setIsLoading(false);
+    const fetchAllAdConnections = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const response = await apiService.getAllAdvertisingConnections();
+            if (response.success) {
+                setAdConnections(response.data);
+            } else {
+                setError('Failed to fetch advertising connections');
+                setAdConnections({});
+            }
+        } catch (error) {
+            console.error('Error fetching advertising connections:', error);
+            setError('Failed to fetch advertising connections');
+            setAdConnections({});
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    return { adConnections };
+    return { adConnections, isLoading, error, refetch: fetchAllAdConnections };
 };

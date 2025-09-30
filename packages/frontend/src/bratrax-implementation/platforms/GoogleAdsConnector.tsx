@@ -4,32 +4,33 @@ import { useRefetchUser } from '../../hooks/user/useRefetchUser';
 import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useAdConnections } from '../hooks/useAdConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
 import SelectAccountModal from '../modals/SelectAccountModal';
-import { AdPlatformAccountInfo } from '../models/interfaces';
+import { AdPlatformAccountInfo, AdvertisingConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-const GoogleAdsConnector = () => {
+interface GoogleAdsConnectorProps {
+    adConnections: AdvertisingConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const GoogleAdsConnector = ({ 
+    adConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: GoogleAdsConnectorProps) => {
     const { user } = useApp();
     const refetchUser = useRefetchUser();
     const [googleUser, setGoogleUser] = useState<any>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
     const [isAccountsDataLoading, setIsAccountsDataLoading] = useState(false);
     const [accountsData, setAccountsData] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAccounts, setSelectedAccounts] = useState<
         AdPlatformAccountInfo[]
     >([]);
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'Google',
-        setIsLoading,
-    });
-    const { adConnections } = useAdConnections({
-        platformName: 'Google',
-        setIsLoading,
-    });
+
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
 
     useEffect(() => {
@@ -130,7 +131,7 @@ const GoogleAdsConnector = () => {
                 handleNavigate={() => {
                     setIsAdConnectionsOpen(true);
                 }}
-                isLoading={isLoading}
+                isLoading={propsLoading || isLoading}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
                 isConnected={!!platformConnection}
                 platformName="Google ads"
@@ -148,7 +149,7 @@ const GoogleAdsConnector = () => {
             <DisplayAdConnectionsData
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
-                advertisingConnections={adConnections ?? []}
+                advertisingConnections={adConnections}
             />
         </>
     );

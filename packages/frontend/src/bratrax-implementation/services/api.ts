@@ -315,7 +315,7 @@ export class ApiService {
         return response.data;
     };
 
-    getCRMConnections = async (platformType: string) => {
+    getCRMConnection = async (platformType: string) => {
         const response = await axios.get(
             `${apiUrl}/users/get-crm-connections`,
             {
@@ -325,7 +325,7 @@ export class ApiService {
         return response.data;
     };
 
-    getAdvertisingConnections = async (platformType: string) => {
+    getAdvertisingConnection = async (platformType: string) => {
         const response = await axios.get(`${apiUrl}/users/get-ad-connections`, {
             params: { platform_type: platformType },
         });
@@ -633,15 +633,22 @@ export class ApiService {
         return response.data;
     };
 
-    getStoreCogsSettings = async (platformType: string): Promise<any> => {
+    getStoreCogsSettings = async (
+        platformType: string, 
+        writeKeyId?: number
+    ): Promise<any> => {
         try {
+            const params: any = {
+                platform_type: platformType,
+            };
+            
+            if (writeKeyId) {
+                params.write_key_id = writeKeyId;
+            }
+            
             const response = await axios.get(
                 `${apiUrl}/cost-settings/store-cogs`,
-                {
-                    params: {
-                        platform_type: platformType,
-                    },
-                },
+                { params }
             );
             return response.data; // Return the store COGS settings from the response
         } catch (error) {
@@ -653,16 +660,18 @@ export class ApiService {
     getProductsWithCogsSettings = async (
         platformType: string,
         marketplace: string,
+        writeKeyId: number,
     ): Promise<any> => {
         try {
+            const params: any = {
+                platform_type: platformType,
+                marketplace: marketplace,
+                write_key_id: writeKeyId,
+            };
+
             const response = await axios.get(
                 `${apiUrl}/cost-settings/products-with-cogs`,
-                {
-                    params: {
-                        platform_type: platformType,
-                        marketplace: marketplace,
-                    },
-                },
+                { params }
             );
             return response.data; // Return the combined product and COGS settings data
         } catch (error) {
@@ -678,7 +687,7 @@ export class ApiService {
             const response = await axios.post(
                 `${apiUrl}/cost-settings/insert-shipping-profile`,
                 {
-                    write_key: shippingProfile.writeKey,
+                    write_key_id: shippingProfile.writeKeyId,
                     profile_name: shippingProfile.profileName,
                     is_worldwide: shippingProfile.isWorldwide,
                     regions: shippingProfile.regions,
@@ -715,7 +724,7 @@ export class ApiService {
             const response = await axios.post(
                 `${apiUrl}/cost-settings/insert-payment-gateway`,
                 {
-                    write_key: settings.writeKey,
+                    write_key_id: settings.writeKeyId,
                     gateway_name: settings.gatewayName,
                     percentage_fee: settings.percentageFee,
                     fixed_fee: settings.fixedFee,
@@ -818,16 +827,21 @@ export class ApiService {
     updateStoreCogsSettings = async (
         platformType: string,
         cogsSettings: COGSSettings,
+        writeKeyId?: number,
     ): Promise<any> => {
         try {
+            const params: any = {
+                platform_type: platformType,
+            };
+            
+            if (writeKeyId) {
+                params.write_key_id = writeKeyId;
+            }
+            
             const response = await axios.put(
                 `${apiUrl}/cost-settings/store-cogs`,
                 cogsSettings,
-                {
-                    params: {
-                        platform_type: platformType,
-                    },
-                },
+                { params }
             );
             return response.data;
         } catch (error) {
@@ -839,18 +853,23 @@ export class ApiService {
     updateProductCogsSettings = async (
         platformType: string,
         productCogsSettings: any[],
+        writeKeyId?: number,
     ): Promise<any> => {
         try {
+            const params: any = {
+                platform_type: platformType,
+            };
+            
+            if (writeKeyId) {
+                params.write_key_id = writeKeyId;
+            }
+            
             const response = await axios.put(
                 `${apiUrl}/cost-settings/products-cogs`,
                 {
                     products: productCogsSettings,
                 },
-                {
-                    params: {
-                        platform_type: platformType,
-                    },
-                },
+                { params }
             );
             return response.data;
         } catch (error) {
@@ -907,6 +926,59 @@ export class ApiService {
             return response.data.url; // Return the URL from the response
         } catch (error) {
             console.error('Error getting Pinterest auth URL:', error);
+            throw error;
+        }
+    };
+
+    getWriteKeys = async (source: string): Promise<any> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/credentials/write-keys`,
+                {
+                    params: {
+                        source: source,
+                    },
+                },
+            );
+            return response.data; // Return the response data { success: true, data: [...] }
+        } catch (error) {
+            console.error('Error fetching write keys:', error);
+            throw error;
+        }
+    };
+
+    getAllCRMConnections = async (): Promise<any> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/users/get-all-crm-connections`
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching all CRM connections:', error);
+            throw error;
+        }
+    };
+
+    getAllAdvertisingConnections = async (): Promise<any> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/users/get-all-ad-connections`
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching all advertising connections:', error);
+            throw error;
+        }
+    };
+
+    getAllPlatformConnections = async (): Promise<any> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/users/get-all-platform-connections`
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching all platform connections:', error);
             throw error;
         }
     };

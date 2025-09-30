@@ -3,6 +3,7 @@ import {
     IconBuildingBank,
     IconDatabase,
     IconSettings,
+    IconBuildingStore,
 } from '@tabler/icons-react';
 import { type FC } from 'react';
 
@@ -76,6 +77,16 @@ const SettingsMenu: FC = () => {
                         to={`/generalSettings/organization`}
                     >
                         Organization settings
+                    </Menu.Item>
+                )}
+
+                {userCanViewOrganization && (
+                    <Menu.Item
+                        component={Link}
+                        icon={<MantineIcon icon={IconBuildingStore} />}
+                        to={`/storeSettings`}
+                    >
+                        Store settings
                     </Menu.Item>
                 )}
             </Menu.Dropdown>

@@ -15,14 +15,16 @@ interface AddPaymentGatewayModalProps {
     opened: boolean;
     onClose: () => void;
     refetchPaymentGateways: () => void;
+    writeKeyId: number;
 }
 
 const AddPaymentGatewayModal = ({
     opened,
     onClose,
     refetchPaymentGateways,
+    writeKeyId,
 }: AddPaymentGatewayModalProps) => {
-    const [writeKey] = useState<string>('b6175fb3-dc45-45b6-9da8-5fc0f4d0e21d');
+    // const [writeKey] = useState<string>('b6175fb3-dc45-45b6-9da8-5fc0f4d0e21d');
 
     const form = useForm({
         initialValues: {
@@ -41,7 +43,7 @@ const AddPaymentGatewayModal = ({
         try {
             const paymentGatewaySettings: PaymentGatewaySettings = {
                 gatewayId: 0,
-                writeKey: writeKey,
+                writeKeyId: writeKeyId,
                 gatewayName: values.Name,
                 percentageFee: values.Fee,
                 fixedFee: values.Cost,

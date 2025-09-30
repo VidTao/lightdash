@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useCrmConnections } from '../hooks/useCrmConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
 import { EnterShopifyShopUrl } from '../modals/EnterShopifyShopUrl';
+import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
-const ShopifyConnector = () => {
-    const [isLoading, setIsLoading] = useState(true);
+
+interface ShopifyConnectorProps {
+    crmConnections: CrmConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const ShopifyConnector = ({ 
+    crmConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: ShopifyConnectorProps) => {
+    const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'Shopify',
-        setIsLoading,
-    });
-    const { crmConnections } = useCrmConnections({
-        platformName: 'Shopify',
-        setIsLoading,
-    });
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
 
     const handleLogin = async () => {
@@ -30,8 +32,13 @@ const ShopifyConnector = () => {
     };
 
     const modalSubmitted = async (shopUrl: string) => {
-        const shopAuthUrl = await apiService.getShopifyShopAuthUrl(shopUrl);
-        window.location.href = shopAuthUrl;
+        try {
+            const shopAuthUrl = await apiService.getShopifyShopAuthUrl(shopUrl);
+            window.location.href = shopAuthUrl;
+        } catch (error) {
+            console.error('Error getting Shopify shop auth URL:', error);
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -47,8 +54,8 @@ const ShopifyConnector = () => {
                     setIsCrmConnectionsOpen(true);
                 }}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                isLoading={isLoading}
-                isConnected={false}
+                isLoading={propsLoading || isLoading}
+                isConnected={!!platformConnection}
                 platformName="Shopify"
                 logoPath="shopify-logo.webp"
                 description="Connect your Shopify account to get started"
@@ -56,7 +63,7 @@ const ShopifyConnector = () => {
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
-                crmConnections={crmConnections ?? []}
+                crmConnections={crmConnections}
             />
         </>
     );

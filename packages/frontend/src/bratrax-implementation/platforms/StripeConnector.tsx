@@ -1,21 +1,31 @@
 import { useEffect, useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
+import { formatDate } from '../helpers/date';
 import useQueryParams from '../hooks/useQueryParams';
+import { PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-const StripeConnector = () => {
+interface StripeConnectorProps {
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const StripeConnector = ({ 
+    platformConnection, 
+    isLoading: propsLoading 
+}: StripeConnectorProps) => {
     const { code, shop } = useQueryParams();
-    const [isLoading, setIsLoading] = useState(true);
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'Stripe',
-        setIsLoading,
-    });
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleLogin = async () => {
         setIsLoading(true);
-        const authUrl = await apiService.getStripeAuthUrl();
-        window.location.href = authUrl;
+        try {
+            const authUrl = await apiService.getStripeAuthUrl();
+            window.location.href = authUrl;
+        } catch (error) {
+            console.error('Error getting Stripe auth URL:', error);
+            setIsLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -31,8 +41,9 @@ const StripeConnector = () => {
     return (
         <PlatformCard
             handleLogin={handleLogin}
-            isLoading={isLoading}
+            isLoading={propsLoading || isLoading}
             isConnected={!!platformConnection}
+            connectedOn={formatDate(platformConnection?.created_at ?? '')}
             platformName="Stripe"
             logoPath="stripe-logo.webp"
             description="Connect your Stripe account to get started"

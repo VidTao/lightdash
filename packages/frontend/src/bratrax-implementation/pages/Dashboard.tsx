@@ -1,13 +1,16 @@
 import { Box, Container, SimpleGrid, Title } from '@mantine/core';
 import { useEffect } from 'react';
 import useApp from '../../providers/App/useApp';
+import { useAdConnections } from '../hooks/useAdConnections';
+import { useCrmConnections } from '../hooks/useCrmConnections';
+import { usePlatformConnections } from '../hooks/usePlatformConnections';
 import { AmazonAdsConnector } from '../platforms/AmazonAdsConnector';
 import { AmazonSPConnector } from '../platforms/AmazonSPConnector';
 import ClickFunnel2Connector from '../platforms/ClickFunnel2Connector';
 import FacebookAdsConnector from '../platforms/FacebookAdsConnector';
 import GoHighLevelConnector from '../platforms/GoHighLevelConnector';
 import GoogleAdsConnector from '../platforms/GoogleAdsConnector';
-import ClaviyoConnector from '../platforms/KlaviyoConnector';
+import KlaviyoConnector from '../platforms/KlaviyoConnector';
 import OutbrainConnector from '../platforms/OutbrainConnector';
 import PinterestConnector from '../platforms/PinterestConnector';
 import ShopifyConnector from '../platforms/ShopifyConnector';
@@ -17,6 +20,12 @@ import { apiService } from '../services/api';
 
 const Dashboard = () => {
     const { user } = useApp();
+    
+    // Call hooks at the top level
+    const { crmConnections, isLoading: crmLoading, error: crmError } = useCrmConnections();
+    const { adConnections, isLoading: adLoading, error: adError } = useAdConnections();
+    const { platformConnections, isLoading: platformLoading, error: platformError } = usePlatformConnections();
+
     useEffect(() => {
         const handlePendingShopifyAuth = async () => {
             const pendingShopifyAuth =
@@ -86,53 +95,69 @@ const Dashboard = () => {
                         marginTop: 50,
                     }}
                 >
+                    {/* Pass data as props to connector components */}
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <GoogleAdsConnector />
+                        <GoogleAdsConnector 
+                            adConnections={adConnections['Google'] || []}
+                            platformConnection={platformConnections['Google']}
+                            isLoading={adLoading || platformLoading}
+                        />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <FacebookAdsConnector />
+                        <FacebookAdsConnector 
+                            adConnections={adConnections['Facebook'] || []}
+                            platformConnection={platformConnections['Facebook']}
+                            isLoading={adLoading || platformLoading}
+                        />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <GoHighLevelConnector />
+                        <GoHighLevelConnector 
+                            platformConnection={platformConnections['GoHighLevel']}
+                            isLoading={platformLoading}
+                        />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <PinterestConnector />
+                        <PinterestConnector platformConnection={platformConnections['Pinterest']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <ClickFunnel2Connector />
+                        <ClickFunnel2Connector platformConnection={platformConnections['ClickFunnel2']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <ShopifyConnector />
+                        <ShopifyConnector 
+                            crmConnections={crmConnections['Shopify'] || []}
+                            platformConnection={platformConnections['Shopify']}
+                            isLoading={crmLoading || platformLoading}
+                        />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <ClaviyoConnector />
+                        <KlaviyoConnector platformConnection={platformConnections['Klaviyo']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <StripeConnector />
+                        <StripeConnector platformConnection={platformConnections['Stripe']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <AmazonSPConnector region="us" />
+                        <AmazonSPConnector region="us" crmConnections={crmConnections['AmazonSP-US'] || []} platformConnection={platformConnections['AmazonSP-US']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <AmazonSPConnector region="eu" />
+                        <AmazonSPConnector region="eu" crmConnections={crmConnections['AmazonSP-EU'] || []} platformConnection={platformConnections['AmazonSP-EU']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <AmazonSPConnector region="fe" />
+                        <AmazonSPConnector region="fe" crmConnections={crmConnections['AmazonSP-FE'] || []} platformConnection={platformConnections['AmazonSP-FE']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <AmazonAdsConnector region="us" />
+                        <AmazonAdsConnector region="us" adConnections={adConnections['AmazonAds-US'] || []} platformConnection={platformConnections['AmazonAds-US']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <AmazonAdsConnector region="eu" />
+                        <AmazonAdsConnector region="eu" adConnections={adConnections['AmazonAds-EU'] || []} platformConnection={platformConnections['AmazonAds-EU']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <AmazonAdsConnector region="fe" />
+                        <AmazonAdsConnector region="fe" adConnections={adConnections['AmazonAds-FE'] || []} platformConnection={platformConnections['AmazonAds-FE']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <OutbrainConnector />
+                        <OutbrainConnector crmConnections={crmConnections['Outbrain'] || []} platformConnection={platformConnections['Outbrain']} isLoading={platformLoading} />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <TaboolaConnector />
+                        <TaboolaConnector crmConnections={crmConnections['Taboola'] || []} platformConnection={platformConnections['Taboola']} isLoading={platformLoading} />
                     </Box>
                 </SimpleGrid>
             </Container>

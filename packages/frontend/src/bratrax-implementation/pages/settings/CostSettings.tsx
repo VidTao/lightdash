@@ -39,6 +39,7 @@ import { usePaymentGateways } from '../../hooks/usePaymentGetaways';
 import { useProductsCogsSettings } from '../../hooks/useProductsCogsSettings';
 import { useShippingProfiles } from '../../hooks/useShippingProfiles';
 import { useStoreCogsSettings } from '../../hooks/useStoreCogsSettings';
+import { useWriteKeys } from '../../hooks/useWriteKeys';
 import AddPaymentGatewayModal from '../../modals/AddPaymentGatewayModal';
 import AddShippingProfileModal from '../../modals/AddShippingProfileModal';
 import {
@@ -54,6 +55,14 @@ const CostSettings: React.FC = () => {
     const [selectedTabKey, setSelectedTabKey] = useState<string>('Shopify');
     const [selectedMarketplace, setSelectedMarketplace] =
         useState<string>('ATVPDKIKX0DER');
+    
+    // Move these state definitions and hooks before useStoreCogsSettings
+    const [selectedWriteKey, setSelectedWriteKey] = useState<string>('');
+    const { writeKeys, isLoading: writeKeysLoading } = useWriteKeys({
+        source: selectedTabKey
+    });
+    const selectedWriteKeyId = selectedWriteKey ? parseInt(selectedWriteKey) : 0;
+    
     const {
         cogsSettings,
         setCogsSettings,
@@ -61,6 +70,7 @@ const CostSettings: React.FC = () => {
         isLoading: isStoreCogsSettingsLoading,
     } = useStoreCogsSettings({
         selectedTabKey: selectedTabKey,
+        writeKeyId: selectedWriteKeyId,
     });
     const {
         productsCogsSettings,
@@ -70,6 +80,7 @@ const CostSettings: React.FC = () => {
     } = useProductsCogsSettings({
         selectedTabKey: selectedTabKey,
         selectedMarketplace: selectedMarketplace,
+        writeKeyId: selectedWriteKeyId,
     });
     const [selectedShippingOption, setSelectedShippingOption] =
         useState<string>('shipping-charges');
@@ -622,624 +633,411 @@ const CostSettings: React.FC = () => {
 
     return (
         <Box p="xl">
-            <Stack mb="md">
-                <Title order={2}>Cost Settings</Title>
-                <Text c="dimmed">
-                    Manage and configure your business cost tracking
-                </Text>
-            </Stack>
+            <Group position="apart" mb="md">
+                <Stack spacing="xs">
+                    <Title order={2}>Cost Settings</Title>
+                    <Text c="dimmed">
+                        Manage and configure your business cost tracking
+                    </Text>
+                </Stack>
 
-            <Stack spacing="lg">
-                <Accordion defaultValue="costOfGoods">
-                    <Accordion.Item value="costOfGoods">
-                        <Accordion.Control
-                            icon={<IconShoppingCart size={20} />}
-                        >
-                            <Group position="apart">
-                                <Box>
-                                    <Text weight={500}>Cost of Goods</Text>
-                                    <Text size="sm" c="dimmed">
-                                        Track product costs and inventory
-                                        expenses
-                                    </Text>
-                                </Box>
-                                <IconCheck size={20} color="green" />
-                            </Group>
-                        </Accordion.Control>
-                        <Accordion.Panel>
-                            <Tabs
-                                value={selectedTabKey}
-                                onTabChange={(value) =>
-                                    setSelectedTabKey(value || 'Shopify')
-                                }
+                <Select
+                    placeholder="Select store"
+                    label="Store"
+                    data={writeKeys.map(key => ({
+                        value: key.writeKeyId.toString(),
+                        label: key.storeName || key.writeKey
+                    }))}
+                    value={selectedWriteKey}
+                    onChange={(value) => setSelectedWriteKey(value || '')}
+                    style={{ minWidth: 300 }}
+                />
+            </Group>
+
+            {/* Only show content if a write key is selected */}
+            {selectedWriteKeyId > 0 && (
+                <Stack spacing="lg">
+                    <Accordion defaultValue="costOfGoods">
+                        <Accordion.Item value="costOfGoods">
+                            <Accordion.Control
+                                icon={<IconShoppingCart size={20} />}
                             >
-                                <Tabs.List>
-                                    {tabItems.map((item) => (
-                                        <Tabs.Tab
-                                            key={item.value}
-                                            value={item.value}
-                                        >
-                                            {item.label}
-                                        </Tabs.Tab>
-                                    ))}
-                                </Tabs.List>
+                                <Group position="apart">
+                                    <Box>
+                                        <Text weight={500}>Cost of Goods</Text>
+                                        <Text size="sm" c="dimmed">
+                                            Track product costs and inventory
+                                            expenses
+                                        </Text>
+                                    </Box>
+                                    <IconCheck size={20} color="green" />
+                                </Group>
+                            </Accordion.Control>
+                            <Accordion.Panel>
+                                <Tabs
+                                    value={selectedTabKey}
+                                    onTabChange={(value) =>
+                                        setSelectedTabKey(value || 'Shopify')
+                                    }
+                                >
+                                    <Tabs.List>
+                                        {tabItems.map((item) => (
+                                            <Tabs.Tab
+                                                key={item.value}
+                                                value={item.value}
+                                            >
+                                                {item.label}
+                                            </Tabs.Tab>
+                                        ))}
+                                    </Tabs.List>
 
+                                    <Box p="md">
+                                        {tabItems.map((item) => (
+                                            <Tabs.Panel
+                                                key={item.value}
+                                                value={item.value}
+                                                pt="md"
+                                            >
+                                                {item.content}
+                                            </Tabs.Panel>
+                                        ))}
+                                    </Box>
+                                </Tabs>
+                            </Accordion.Panel>
+                        </Accordion.Item>
+
+                        {/* Shipping */}
+                        <Accordion.Item value="shipping">
+                            <Accordion.Control icon={<IconTruck size={20} />}>
+                                <Group position="apart">
+                                    <Box>
+                                        <Text weight={500}>Shipping</Text>
+                                        <Text size="sm" c="dimmed">
+                                            Manage shipping and delivery costs
+                                        </Text>
+                                    </Box>
+                                    <IconCheck size={20} color="green" />
+                                </Group>
+                            </Accordion.Control>
+                            <Accordion.Panel>
                                 <Box p="md">
-                                    {tabItems.map((item) => (
-                                        <Tabs.Panel
-                                            key={item.value}
-                                            value={item.value}
-                                            pt="md"
-                                        >
-                                            {item.content}
-                                        </Tabs.Panel>
-                                    ))}
-                                </Box>
-                            </Tabs>
-                        </Accordion.Panel>
-                    </Accordion.Item>
-
-                    {/* Shipping */}
-                    <Accordion.Item value="shipping">
-                        <Accordion.Control icon={<IconTruck size={20} />}>
-                            <Group position="apart">
-                                <Box>
-                                    <Text weight={500}>Shipping</Text>
-                                    <Text size="sm" c="dimmed">
-                                        Manage shipping and delivery costs
-                                    </Text>
-                                </Box>
-                                <IconCheck size={20} color="green" />
-                            </Group>
-                        </Accordion.Control>
-                        <Accordion.Panel>
-                            <Box p="md">
-                                <Stack spacing="xl">
-                                    <Radio.Group
-                                        onChange={(e) =>
-                                            setSelectedShippingOption(e)
-                                        }
-                                        value={selectedShippingOption}
-                                    >
-                                        <Stack spacing="xl">
-                                            {/* Use Shipping Charges Option */}
-                                            <Stack spacing="sm">
-                                                <Radio
-                                                    value="shipping-charges"
-                                                    label={
-                                                        <Box>
-                                                            <Text weight={500}>
-                                                                Use Shipping
-                                                                Charges for
-                                                                Shipping Costs
-                                                            </Text>
-                                                            <Text
-                                                                size="sm"
-                                                                c="dimmed"
-                                                                ml="lg"
-                                                            >
-                                                                Enable this
-                                                                setting if your
-                                                                shipping costs
-                                                                are equal to
-                                                                what your
-                                                                customers have
-                                                                been charged for
-                                                                shipping
-                                                            </Text>
-                                                        </Box>
-                                                    }
-                                                />
-
-                                                {selectedShippingOption ===
-                                                    'shipping-charges' && (
-                                                    <Box ml="lg" mt="xs">
-                                                        <Select
-                                                            style={{
-                                                                width: '100%',
-                                                            }}
-                                                            placeholder="Select shipping charge options"
-                                                            data={[]}
-                                                        />
-                                                    </Box>
-                                                )}
-                                            </Stack>
-
-                                            {/* Default Shipping Costs Option */}
-                                            <Stack spacing="sm">
-                                                <Radio
-                                                    value="default-costs"
-                                                    label={
-                                                        <Box>
-                                                            <Text weight={500}>
-                                                                Default Shipping
-                                                                Costs
-                                                            </Text>
-                                                            <Text
-                                                                size="sm"
-                                                                c="dimmed"
-                                                                ml="lg"
-                                                            >
-                                                                Set default
-                                                                shipping costs
-                                                                for your orders
-                                                            </Text>
-                                                        </Box>
-                                                    }
-                                                />
-
-                                                {selectedShippingOption ===
-                                                    'default-costs' && (
-                                                    <Box ml="lg" mt="md">
-                                                        <Stack spacing="md">
-                                                            <Paper
-                                                                p="md"
-                                                                radius="md"
-                                                                sx={(
-                                                                    theme,
-                                                                ) => ({
-                                                                    backgroundColor:
-                                                                        theme
-                                                                            .colors
-                                                                            .blue[0],
-                                                                })}
-                                                            >
-                                                                <Group spacing="xs">
-                                                                    <IconInfoCircle
-                                                                        size={
-                                                                            16
-                                                                        }
-                                                                        color="blue"
-                                                                    />
-                                                                    <Text c="dimmed">
-                                                                        If you
-                                                                        use
-                                                                        multiple
-                                                                        default
-                                                                        shipping
-                                                                        options,
-                                                                        they
-                                                                        will be
-                                                                        prioritized
-                                                                        according
-                                                                        to the
-                                                                        order
-                                                                        below.
-                                                                    </Text>
-                                                                </Group>
-                                                            </Paper>
-
-                                                            <Group position="apart">
-                                                                <TextInput
-                                                                    placeholder="Search shipping profiles..."
-                                                                    style={{
-                                                                        width: 300,
-                                                                    }}
-                                                                />
-                                                                <Group>
-                                                                    <Button
-                                                                        leftIcon={
-                                                                            <IconUpload
-                                                                                size={
-                                                                                    16
-                                                                                }
-                                                                            />
-                                                                        }
-                                                                    >
-                                                                        Import
-                                                                        Costs
-                                                                    </Button>
-                                                                    <Button
-                                                                        variant="filled"
-                                                                        leftIcon={
-                                                                            <IconPlus
-                                                                                size={
-                                                                                    16
-                                                                                }
-                                                                            />
-                                                                        }
-                                                                        onClick={
-                                                                            handleAddShippingProfile
-                                                                        }
-                                                                    >
-                                                                        Create a
-                                                                        Shipping
-                                                                        Profile
-                                                                    </Button>
-                                                                </Group>
-                                                            </Group>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-                                            </Stack>
-                                        </Stack>
-                                    </Radio.Group>
-                                </Stack>
-                            </Box>
-                        </Accordion.Panel>
-                    </Accordion.Item>
-
-                    {/* Gateway Costs */}
-                    <Accordion.Item value="gatewayCosts">
-                        <Accordion.Control icon={<IconCreditCard size={20} />}>
-                            <Group position="apart">
-                                <Box>
-                                    <Text weight={500}>Gateway Costs</Text>
-                                    <Text size="sm" c="dimmed">
-                                        Set up payment processing fees
-                                    </Text>
-                                </Box>
-                                <IconCheck size={20} color="green" />
-                            </Group>
-                        </Accordion.Control>
-                        <Accordion.Panel>
-                            <Box p="md">
-                                <Stack spacing="md">
-                                    <Group
-                                        position="apart"
-                                        align="center"
-                                        mb="sm"
-                                    >
-                                        <Box>
-                                            <Title order={5} mb="xs">
-                                                Payment Gateway Costs
-                                            </Title>
-                                            <Text c="dimmed">
-                                                Configure costs for each payment
-                                                gateway
-                                            </Text>
-                                        </Box>
-                                        <Button
-                                            leftIcon={<IconPlus size={16} />}
-                                            onClick={() =>
-                                                setIsAddPaymentGatewayModalOpen(
-                                                    true,
-                                                )
+                                    <Stack spacing="xl">
+                                        <Radio.Group
+                                            onChange={(e) =>
+                                                setSelectedShippingOption(e)
                                             }
+                                            value={selectedShippingOption}
                                         >
-                                            Add Payment Provider
-                                        </Button>
-                                    </Group>
-
-                                    <Table>
-                                        <thead>
-                                            <tr>
-                                                <th>Payment Gateway Name</th>
-                                                <th>Cost</th>
-                                                <th>Fee</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {paymentGateways.map((record) => (
-                                                <tr key={record.gatewayId}>
-                                                    <td>
-                                                        {record.gatewayName}
-                                                    </td>
-                                                    <td>
-                                                        {record.isShopifyPayments ? (
-                                                            <Group spacing="xs">
-                                                                <IconInfoCircle
-                                                                    className="text-gray-400"
-                                                                    size={16}
-                                                                />
-                                                                <Text c="dimmed">
-                                                                    {
-                                                                        record.fixedFee
-                                                                    }
+                                            <Stack spacing="xl">
+                                                {/* Use Shipping Charges Option */}
+                                                <Stack spacing="sm">
+                                                    <Radio
+                                                        value="shipping-charges"
+                                                        label={
+                                                            <Box>
+                                                                <Text weight={500}>
+                                                                    Use Shipping
+                                                                    Charges for
+                                                                    Shipping Costs
                                                                 </Text>
-                                                            </Group>
-                                                        ) : (
-                                                            <Group spacing="xs">
-                                                                <span>%</span>
-                                                                <NumberInput
-                                                                    value={Number(
-                                                                        record.fixedFee,
-                                                                    )}
-                                                                    style={{
-                                                                        width: '100%',
-                                                                    }}
-                                                                    hideControls
-                                                                    onChange={(
-                                                                        newValue,
-                                                                    ) => {
-                                                                        const updatedGateways =
-                                                                            paymentGateways.map(
-                                                                                (
-                                                                                    gateway,
-                                                                                ) =>
-                                                                                    gateway.gatewayId ===
-                                                                                    record.gatewayId
-                                                                                        ? {
-                                                                                              ...gateway,
-                                                                                              fixedFee:
-                                                                                                  newValue ??
-                                                                                                  0,
-                                                                                          }
-                                                                                        : gateway,
-                                                                            ) as PaymentGatewaySettings[];
-                                                                        setPaymentGateways(
-                                                                            updatedGateways,
-                                                                        );
-                                                                    }}
-                                                                />
-                                                            </Group>
-                                                        )}
-                                                    </td>
-                                                    <td>
-                                                        {!record.isShopifyPayments && (
-                                                            <Group spacing="xs">
-                                                                <span>$</span>
-                                                                <NumberInput
-                                                                    value={
-                                                                        record.percentageFee
-                                                                    }
-                                                                    style={{
-                                                                        width: '100%',
-                                                                    }}
-                                                                    hideControls
-                                                                    onChange={(
-                                                                        newValue,
-                                                                    ) => {
-                                                                        const updatedGateways =
-                                                                            paymentGateways.map(
-                                                                                (
-                                                                                    gateway,
-                                                                                ) =>
-                                                                                    gateway.gatewayId ===
-                                                                                    record.gatewayId
-                                                                                        ? {
-                                                                                              ...gateway,
-                                                                                              percentageFee:
-                                                                                                  newValue ??
-                                                                                                  0,
-                                                                                          }
-                                                                                        : gateway,
-                                                                            ) as PaymentGatewaySettings[];
-                                                                        setPaymentGateways(
-                                                                            updatedGateways,
-                                                                        );
-                                                                    }}
-                                                                />
-                                                            </Group>
-                                                        )}
-                                                    </td>
-                                                    <td>
-                                                        {!record.isShopifyPayments && (
-                                                            <Group spacing="xs">
-                                                                <Button
-                                                                    variant="subtle"
-                                                                    leftIcon={
-                                                                        <IconTrash
+                                                                <Text
+                                                                    size="sm"
+                                                                    c="dimmed"
+                                                                    ml="lg"
+                                                                >
+                                                                    Enable this
+                                                                    setting if your
+                                                                    shipping costs
+                                                                    are equal to
+                                                                    what your
+                                                                    customers have
+                                                                    been charged for
+                                                                    shipping
+                                                                </Text>
+                                                            </Box>
+                                                        }
+                                                    />
+
+                                                    {selectedShippingOption ===
+                                                        'shipping-charges' && (
+                                                        <Box ml="lg" mt="xs">
+                                                            <Select
+                                                                style={{
+                                                                    width: '100%',
+                                                                }}
+                                                                placeholder="Select shipping charge options"
+                                                                data={shippingProfiles.map(profile => ({
+                                                                    value: profile.profileId.toString(),
+                                                                    label: profile.profileName
+                                                                }))}
+                                                                disabled={isShippingProfilesLoading}
+                                                            />
+                                                        </Box>
+                                                    )}
+                                                </Stack>
+
+                                                {/* Default Shipping Costs Option */}
+                                                <Stack spacing="sm">
+                                                    <Radio
+                                                        value="default-costs"
+                                                        label={
+                                                            <Box>
+                                                                <Text weight={500}>
+                                                                    Default Shipping
+                                                                    Costs
+                                                                </Text>
+                                                                <Text
+                                                                    size="sm"
+                                                                    c="dimmed"
+                                                                    ml="lg"
+                                                                >
+                                                                    Set default
+                                                                    shipping costs
+                                                                    for your orders
+                                                                </Text>
+                                                            </Box>
+                                                        }
+                                                    />
+
+                                                    {selectedShippingOption ===
+                                                        'default-costs' && (
+                                                        <Box ml="lg" mt="md">
+                                                            <Stack spacing="md">
+                                                                <Paper
+                                                                    p="md"
+                                                                    radius="md"
+                                                                    sx={(
+                                                                        theme,
+                                                                    ) => ({
+                                                                        backgroundColor:
+                                                                            theme
+                                                                                .colors
+                                                                                .blue[0],
+                                                                    })}
+                                                                >
+                                                                    <Group spacing="xs">
+                                                                        <IconInfoCircle
                                                                             size={
                                                                                 16
                                                                             }
+                                                                            color="blue"
                                                                         />
-                                                                    }
-                                                                    color="red"
-                                                                />
-                                                                <Button
-                                                                    variant="filled"
-                                                                    size="sm"
-                                                                    onClick={() =>
-                                                                        handleUpdatePaymentGateway(
-                                                                            record,
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    Save
-                                                                </Button>
-                                                            </Group>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </Table>
-                                </Stack>
-                            </Box>
-                        </Accordion.Panel>
-                    </Accordion.Item>
+                                                                        <Text c="dimmed">
+                                                                            If you
+                                                                            use
+                                                                            multiple
+                                                                            default
+                                                                            shipping
+                                                                            options,
+                                                                            they
+                                                                            will be
+                                                                            prioritized
+                                                                            according
+                                                                            to the
+                                                                            order
+                                                                            below.
+                                                                        </Text>
+                                                                    </Group>
+                                                                </Paper>
 
-                    {/* Custom Expenses */}
-                    <Accordion.Item value="customExpenses">
-                        <Accordion.Control icon={<IconCurrency size={20} />}>
-                            <Group position="apart">
-                                <Box>
-                                    <Text weight={500}>Custom Expenses</Text>
-                                    <Text size="sm" c="dimmed">
-                                        Add and manage additional business
-                                        expenses
-                                    </Text>
+                                                                <Group position="apart">
+                                                                    <TextInput
+                                                                        placeholder="Search shipping profiles..."
+                                                                        style={{
+                                                                            width: 300,
+                                                                        }}
+                                                                    />
+                                                                    <Group>
+                                                                        <Button
+                                                                            leftIcon={
+                                                                                <IconUpload
+                                                                                    size={
+                                                                                        16
+                                                                                    }
+                                                                                />
+                                                                            }
+                                                                        >
+                                                                            Import
+                                                                            Costs
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="filled"
+                                                                            leftIcon={
+                                                                                <IconPlus
+                                                                                    size={
+                                                                                        16
+                                                                                    }
+                                                                                />
+                                                                            }
+                                                                            onClick={
+                                                                                handleAddShippingProfile
+                                                                            }
+                                                                        >
+                                                                            Create a
+                                                                            Shipping
+                                                                            Profile
+                                                                        </Button>
+                                                                    </Group>
+                                                                </Group>
+                                                            </Stack>
+                                                        </Box>
+                                                    )}
+                                                </Stack>
+                                            </Stack>
+                                        </Radio.Group>
+                                    </Stack>
                                 </Box>
-                                <IconCheck size={20} color="green" />
-                            </Group>
-                        </Accordion.Control>
-                        <Accordion.Panel>
-                            <Box p="md">
-                                <Stack spacing="md">
-                                    <Text mb="sm">
-                                        There is a maximum limit of 5000 custom
-                                        expenses per shop
-                                    </Text>
+                            </Accordion.Panel>
+                        </Accordion.Item>
 
-                                    <Group spacing="sm" mb="md">
-                                        <Button>Add Fixed Expense</Button>
-                                        <Button>Add Variable Expense</Button>
-                                        <Button>Export CSV</Button>
-                                        <Button>
-                                            Import Fixed Expenses from Google
-                                            Sheets
-                                        </Button>
-                                    </Group>
-
-                                    <Group align="center" spacing="sm" mb="md">
-                                        <IconSettings size={16} color="gray" />
-                                        <Checkbox
-                                            checked={includeInPixel}
-                                            onChange={(e) =>
-                                                setIncludeInPixel(
-                                                    e.target.checked,
-                                                )
-                                            }
-                                            label="Include in pixel"
-                                        />
-                                        <Text size="sm" c="dimmed">
-                                            Include custom ad spend in all
-                                            calculations on the pixel page
-                                        </Text>
-                                    </Group>
-
-                                    <Group spacing="md" mb="lg">
-                                        <TextInput
-                                            placeholder="Filter by spend name"
-                                            style={{ width: 300 }}
-                                        />
-                                        <Select
-                                            defaultValue="All"
-                                            style={{ width: 200 }}
-                                            data={[
-                                                { value: 'all', label: 'All' },
-                                                {
-                                                    value: 'fixed',
-                                                    label: 'Fixed',
-                                                },
-                                                {
-                                                    value: 'variable',
-                                                    label: 'Variable',
-                                                },
-                                            ]}
-                                        />
-                                    </Group>
-
+                        {/* Gateway Costs */}
+                        <Accordion.Item value="gatewayCosts">
+                            <Accordion.Control icon={<IconCreditCard size={20} />}>
+                                <Group position="apart">
                                     <Box>
-                                        <Title order={5} mb="md">
-                                            Variable Expenses
-                                        </Title>
+                                        <Text weight={500}>Gateway Costs</Text>
+                                        <Text size="sm" c="dimmed">
+                                            Set up payment processing fees
+                                        </Text>
+                                    </Box>
+                                    <IconCheck size={20} color="green" />
+                                </Group>
+                            </Accordion.Control>
+                            <Accordion.Panel>
+                                <Box p="md">
+                                    <Stack spacing="md">
+                                        <Group
+                                            position="apart"
+                                            align="center"
+                                            mb="sm"
+                                        >
+                                            <Box>
+                                                <Title order={5} mb="xs">
+                                                    Payment Gateway Costs
+                                                </Title>
+                                                <Text c="dimmed">
+                                                    Configure costs for each payment
+                                                    gateway
+                                                </Text>
+                                            </Box>
+                                            <Button
+                                                leftIcon={<IconPlus size={16} />}
+                                                onClick={() =>
+                                                    setIsAddPaymentGatewayModalOpen(
+                                                        true,
+                                                    )
+                                                }
+                                            >
+                                                Add Payment Provider
+                                            </Button>
+                                        </Group>
+
                                         <Table>
                                             <thead>
                                                 <tr>
-                                                    <th>Category</th>
-                                                    <th>Name</th>
-                                                    <th>Metric</th>
-                                                    <th>Percent</th>
-                                                    <th>Start Date</th>
-                                                    <th>End Date</th>
-                                                    <th>Ad Spend</th>
+                                                    <th>Payment Gateway Name</th>
+                                                    <th>Cost</th>
+                                                    <th>Fee</th>
                                                     <th></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {variableExpenses.map(
-                                                    (expense) => (
-                                                        <tr key={expense.key}>
-                                                            <td>
-                                                                {
-                                                                    expense.category
-                                                                }
-                                                            </td>
-                                                            <td>
-                                                                {expense.name}
-                                                            </td>
-                                                            <td>
-                                                                <Select
-                                                                    defaultValue={
-                                                                        expense.metric
-                                                                    }
-                                                                    style={{
-                                                                        width: '100%',
-                                                                    }}
-                                                                    data={[
-                                                                        {
-                                                                            value: 'total_revenue',
-                                                                            label: 'Total Revenue',
-                                                                        },
-                                                                        {
-                                                                            value: 'net_sales',
-                                                                            label: 'Net Sales',
-                                                                        },
-                                                                        {
-                                                                            value: 'gross_profit',
-                                                                            label: 'Gross Profit',
-                                                                        },
-                                                                    ]}
-                                                                />
-                                                            </td>
-                                                            <td>
-                                                                <NumberInput
-                                                                    value={
-                                                                        expense.percent
-                                                                    }
-                                                                    formatter={(
-                                                                        value,
-                                                                    ) =>
-                                                                        `${value}%`
-                                                                    }
-                                                                    parser={(
-                                                                        value,
-                                                                    ) =>
-                                                                        value!.replace(
-                                                                            '%',
-                                                                            '',
-                                                                        )
-                                                                    }
-                                                                    style={{
-                                                                        width: '100%',
-                                                                    }}
-                                                                />
-                                                            </td>
-                                                            <td>
-                                                                <Select
-                                                                    defaultValue={
-                                                                        expense.startDate
-                                                                    }
-                                                                    style={{
-                                                                        width: '100%',
-                                                                    }}
-                                                                    data={[
-                                                                        {
-                                                                            value: '2023-12-31',
-                                                                            label: 'Dec 31, 2023',
-                                                                        },
-                                                                    ]}
-                                                                />
-                                                            </td>
-                                                            <td>
-                                                                <Select
-                                                                    defaultValue={
-                                                                        expense.endDate
-                                                                    }
-                                                                    style={{
-                                                                        width: '100%',
-                                                                    }}
-                                                                    data={[
-                                                                        {
-                                                                            value: 'no_end_date',
-                                                                            label: 'No end date',
-                                                                        },
-                                                                    ]}
-                                                                />
-                                                            </td>
-                                                            <td>
-                                                                <Checkbox
-                                                                    checked={
-                                                                        expense.adSpend
-                                                                    }
-                                                                />
-                                                            </td>
-                                                            <td>
+                                                {paymentGateways.map((record) => (
+                                                    <tr key={record.gatewayId}>
+                                                        <td>
+                                                            {record.gatewayName}
+                                                        </td>
+                                                        <td>
+                                                            {record.isShopifyPayments ? (
                                                                 <Group spacing="xs">
-                                                                    <Button
-                                                                        variant="subtle"
-                                                                        leftIcon={
-                                                                            <IconEdit
-                                                                                size={
-                                                                                    16
-                                                                                }
-                                                                            />
-                                                                        }
-                                                                        color="blue"
+                                                                    <IconInfoCircle
+                                                                        className="text-gray-400"
+                                                                        size={16}
                                                                     />
+                                                                    <Text c="dimmed">
+                                                                        {
+                                                                            record.fixedFee
+                                                                        }
+                                                                    </Text>
+                                                                </Group>
+                                                            ) : (
+                                                                <Group spacing="xs">
+                                                                    <span>%</span>
+                                                                    <NumberInput
+                                                                        value={Number(
+                                                                            record.fixedFee,
+                                                                        )}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                        }}
+                                                                        hideControls
+                                                                        onChange={(
+                                                                            newValue,
+                                                                        ) => {
+                                                                            const updatedGateways =
+                                                                                paymentGateways.map(
+                                                                                    (
+                                                                                        gateway,
+                                                                                    ) =>
+                                                                                        gateway.gatewayId ===
+                                                                                        record.gatewayId
+                                                                                            ? {
+                                                                                                  ...gateway,
+                                                                                                  fixedFee:
+                                                                                                      newValue ??
+                                                                                                      0,
+                                                                                              }
+                                                                                            : gateway,
+                                                                                ) as PaymentGatewaySettings[];
+                                                                            setPaymentGateways(
+                                                                                updatedGateways,
+                                                                            );
+                                                                        }}
+                                                                    />
+                                                                </Group>
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {!record.isShopifyPayments && (
+                                                                <Group spacing="xs">
+                                                                    <span>$</span>
+                                                                    <NumberInput
+                                                                        value={
+                                                                            record.percentageFee
+                                                                        }
+                                                                        style={{
+                                                                            width: '100%',
+                                                                        }}
+                                                                        hideControls
+                                                                        onChange={(
+                                                                            newValue,
+                                                                        ) => {
+                                                                            const updatedGateways =
+                                                                                paymentGateways.map(
+                                                                                    (
+                                                                                        gateway,
+                                                                                    ) =>
+                                                                                        gateway.gatewayId ===
+                                                                                        record.gatewayId
+                                                                                            ? {
+                                                                                                  ...gateway,
+                                                                                                  percentageFee:
+                                                                                                      newValue ??
+                                                                                                      0,
+                                                                                              }
+                                                                                            : gateway,
+                                                                                ) as PaymentGatewaySettings[];
+                                                                            setPaymentGateways(
+                                                                                updatedGateways,
+                                                                            );
+                                                                        }}
+                                                                    />
+                                                                </Group>
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {!record.isShopifyPayments && (
+                                                                <Group spacing="xs">
                                                                     <Button
                                                                         variant="subtle"
                                                                         leftIcon={
@@ -1251,32 +1049,277 @@ const CostSettings: React.FC = () => {
                                                                         }
                                                                         color="red"
                                                                     />
+                                                                    <Button
+                                                                        variant="filled"
+                                                                        size="sm"
+                                                                        onClick={() =>
+                                                                            handleUpdatePaymentGateway(
+                                                                                record,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Save
+                                                                    </Button>
                                                                 </Group>
-                                                            </td>
-                                                        </tr>
-                                                    ),
-                                                )}
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
                                             </tbody>
                                         </Table>
+                                    </Stack>
+                                </Box>
+                            </Accordion.Panel>
+                        </Accordion.Item>
+
+                        {/* Custom Expenses */}
+                        <Accordion.Item value="customExpenses">
+                            <Accordion.Control icon={<IconCurrency size={20} />}>
+                                <Group position="apart">
+                                    <Box>
+                                        <Text weight={500}>Custom Expenses</Text>
+                                        <Text size="sm" c="dimmed">
+                                            Add and manage additional business
+                                            expenses
+                                        </Text>
                                     </Box>
-                                </Stack>
-                            </Box>
-                        </Accordion.Panel>
-                    </Accordion.Item>
-                </Accordion>
+                                    <IconCheck size={20} color="green" />
+                                </Group>
+                            </Accordion.Control>
+                            <Accordion.Panel>
+                                <Box p="md">
+                                    <Stack spacing="md">
+                                        <Text mb="sm">
+                                            There is a maximum limit of 5000 custom
+                                            expenses per shop
+                                        </Text>
 
-                <Group position="right">
-                    <Button
-                        loading={isSavingChanges}
-                        onClick={handleSaveChanges}
-                        size="md"
-                    >
-                        Save Changes
-                    </Button>
-                </Group>
-            </Stack>
+                                        <Group spacing="sm" mb="md">
+                                            <Button>Add Fixed Expense</Button>
+                                            <Button>Add Variable Expense</Button>
+                                            <Button>Export CSV</Button>
+                                            <Button>
+                                                Import Fixed Expenses from Google
+                                                Sheets
+                                            </Button>
+                                        </Group>
 
+                                        <Group align="center" spacing="sm" mb="md">
+                                            <IconSettings size={16} color="gray" />
+                                            <Checkbox
+                                                checked={includeInPixel}
+                                                onChange={(e) =>
+                                                    setIncludeInPixel(
+                                                        e.target.checked,
+                                                    )
+                                                }
+                                                label="Include in pixel"
+                                            />
+                                            <Text size="sm" c="dimmed">
+                                                Include custom ad spend in all
+                                                calculations on the pixel page
+                                            </Text>
+                                        </Group>
+
+                                        <Group spacing="md" mb="lg">
+                                            <TextInput
+                                                placeholder="Filter by spend name"
+                                                style={{ width: 300 }}
+                                            />
+                                            <Select
+                                                defaultValue="All"
+                                                style={{ width: 200 }}
+                                                data={[
+                                                    { value: 'all', label: 'All' },
+                                                    {
+                                                        value: 'fixed',
+                                                        label: 'Fixed',
+                                                    },
+                                                    {
+                                                        value: 'variable',
+                                                        label: 'Variable',
+                                                    },
+                                                ]}
+                                            />
+                                        </Group>
+
+                                        <Box>
+                                            <Title order={5} mb="md">
+                                                Variable Expenses
+                                            </Title>
+                                            <Table>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Category</th>
+                                                        <th>Name</th>
+                                                        <th>Metric</th>
+                                                        <th>Percent</th>
+                                                        <th>Start Date</th>
+                                                        <th>End Date</th>
+                                                        <th>Ad Spend</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {variableExpenses.map(
+                                                        (expense) => (
+                                                            <tr key={expense.key}>
+                                                                <td>
+                                                                    {
+                                                                        expense.category
+                                                                    }
+                                                                </td>
+                                                                <td>
+                                                                    {expense.name}
+                                                                </td>
+                                                                <td>
+                                                                    <Select
+                                                                        defaultValue={
+                                                                            expense.metric
+                                                                        }
+                                                                        style={{
+                                                                            width: '100%',
+                                                                        }}
+                                                                        data={[
+                                                                            {
+                                                                                value: 'total_revenue',
+                                                                                label: 'Total Revenue',
+                                                                            },
+                                                                            {
+                                                                                value: 'net_sales',
+                                                                                label: 'Net Sales',
+                                                                            },
+                                                                            {
+                                                                                value: 'gross_profit',
+                                                                                label: 'Gross Profit',
+                                                                            },
+                                                                        ]}
+                                                                    />
+                                                                </td>
+                                                                <td>
+                                                                    <NumberInput
+                                                                        value={
+                                                                            expense.percent
+                                                                        }
+                                                                        formatter={(
+                                                                            value,
+                                                                        ) =>
+                                                                            `${value}%`
+                                                                        }
+                                                                        parser={(
+                                                                            value,
+                                                                        ) =>
+                                                                            value!.replace(
+                                                                                '%',
+                                                                                '',
+                                                                            )
+                                                                        }
+                                                                        style={{
+                                                                            width: '100%',
+                                                                        }}
+                                                                    />
+                                                                </td>
+                                                                <td>
+                                                                    <Select
+                                                                        defaultValue={
+                                                                            expense.startDate
+                                                                        }
+                                                                        style={{
+                                                                            width: '100%',
+                                                                        }}
+                                                                        data={[
+                                                                            {
+                                                                                value: '2023-12-31',
+                                                                                label: 'Dec 31, 2023',
+                                                                            },
+                                                                        ]}
+                                                                    />
+                                                                </td>
+                                                                <td>
+                                                                    <Select
+                                                                        defaultValue={
+                                                                            expense.endDate
+                                                                        }
+                                                                        style={{
+                                                                            width: '100%',
+                                                                        }}
+                                                                        data={[
+                                                                            {
+                                                                                value: 'no_end_date',
+                                                                                label: 'No end date',
+                                                                            },
+                                                                        ]}
+                                                                    />
+                                                                </td>
+                                                                <td>
+                                                                    <Checkbox
+                                                                        checked={
+                                                                            expense.adSpend
+                                                                        }
+                                                                    />
+                                                                </td>
+                                                                <td>
+                                                                    <Group spacing="xs">
+                                                                        <Button
+                                                                            variant="subtle"
+                                                                            leftIcon={
+                                                                                <IconEdit
+                                                                                    size={
+                                                                                        16
+                                                                                    }
+                                                                                />
+                                                                            }
+                                                                            color="blue"
+                                                                        />
+                                                                        <Button
+                                                                            variant="subtle"
+                                                                            leftIcon={
+                                                                                <IconTrash
+                                                                                    size={
+                                                                                        16
+                                                                                    }
+                                                                                />
+                                                                            }
+                                                                            color="red"
+                                                                        />
+                                                                    </Group>
+                                                                </td>
+                                                            </tr>
+                                                        ),
+                                                    )}
+                                                </tbody>
+                                            </Table>
+                                        </Box>
+                                    </Stack>
+                                </Box>
+                            </Accordion.Panel>
+                        </Accordion.Item>
+                    </Accordion>
+
+                    <Group position="right">
+                        <Button
+                            loading={isSavingChanges}
+                            onClick={handleSaveChanges}
+                            size="md"
+                        >
+                            Save Changes
+                        </Button>
+                    </Group>
+                </Stack>
+            )}
+
+            {/* Show message when no store is selected */}
+            {selectedWriteKeyId === 0 && (
+                <Box ta="center" py="xl">
+                    <Text c="dimmed" size="lg">
+                        Please select a store to configure cost settings
+                    </Text>
+                </Box>
+            )}
+
+            {/* Modals should still be available regardless of selection */}
             <AddShippingProfileModal
+                writeKeyId={selectedWriteKeyId}
                 opened={isModalOpen}
                 setIsModalOpen={setIsModalOpen}
                 onClose={() => setIsModalOpen(false)}
@@ -1285,6 +1328,7 @@ const CostSettings: React.FC = () => {
                 isEditMode={isEditMode}
             />
             <AddPaymentGatewayModal
+                writeKeyId={selectedWriteKeyId}
                 refetchPaymentGateways={fetchPaymentGateways}
                 opened={isAddPaymentGatewayModalOpen}
                 onClose={() => setIsAddPaymentGatewayModalOpen(false)}

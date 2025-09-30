@@ -14,11 +14,13 @@ import { notificationService } from '../services/notification.service';
 interface ScriptInstallationProps {
     events: string[];
     selectedSubdomain: string;
+    writeKey: string | null;
 }
 
 const ScriptInstallation = ({
     events,
     selectedSubdomain,
+    writeKey,
 }: ScriptInstallationProps) => {
     const installationCode = `// Helper function to generate session ID
     var generateId = function() {
@@ -112,7 +114,7 @@ const ScriptInstallation = ({
                 };
                 // Configure analytics with Shopify-specific settings
                 var options = {
-                    writeKey: '{YOUR_WRITE_KEY}',
+                    writeKey: '${writeKey || 'YOUR_WRITE_KEY'}',
                     apiHost: 'api.bratrax.com',
                     integrations: {
                         'Segment.io': false,
@@ -126,7 +128,7 @@ const ScriptInstallation = ({
                         }
                     }
                 };
-                analytics._writeKey = "{YOUR_WRITE_KEY}";
+                analytics._writeKey = "${writeKey || 'YOUR_WRITE_KEY'}";
                 analytics.SNIPPET_VERSION = "4.15.3";
                 // First load analytics
                 analytics.load("fgs56190-6fae-6040-b7d1-787796c0ctcc", options);

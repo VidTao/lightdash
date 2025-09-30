@@ -1,26 +1,26 @@
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useAdConnections } from '../hooks/useAdConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
+import { AdvertisingConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
 interface AmazonAdsProps {
     region: string;
+    adConnections: AdvertisingConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
 }
 
-export const AmazonAdsConnector = ({ region }: AmazonAdsProps) => {
-    const [isLoading, setIsLoading] = useState(true);
-    const { platformConnection } = usePlatformConnection({
-        platformName: `AmazonAds-${region.toUpperCase()}`,
-        setIsLoading,
-    });
-    const { adConnections } = useAdConnections({
-        platformName: `AmazonAds-${region.toUpperCase()}`,
-        setIsLoading,
-    });
+export const AmazonAdsConnector = ({ 
+    region, 
+    adConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: AmazonAdsProps) => {
+    const [isLoading, setIsLoading] = useState(false);
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
+
     const handleLogin = async () => {
         try {
             setIsLoading(true);
@@ -41,7 +41,7 @@ export const AmazonAdsConnector = ({ region }: AmazonAdsProps) => {
                 handleNavigate={() => {
                     setIsAdConnectionsOpen(true);
                 }}
-                isLoading={isLoading}
+                isLoading={propsLoading || isLoading}
                 isConnected={!!platformConnection}
                 platformName={`Amazon Ads (${region.toUpperCase()})`}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
@@ -51,7 +51,7 @@ export const AmazonAdsConnector = ({ region }: AmazonAdsProps) => {
             <DisplayAdConnectionsData
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
-                advertisingConnections={adConnections ?? []}
+                advertisingConnections={adConnections}
             />
         </>
     );

@@ -2,23 +2,24 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useCrmConnections } from '../hooks/useCrmConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
 import OutbrainLoginModal from '../modals/OutbrainLoginModal';
+import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-const OutbrainConnector = () => {
+interface OutbrainConnectorProps {
+    crmConnections: CrmConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const OutbrainConnector = ({ 
+    crmConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: OutbrainConnectorProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'Outbrain',
-        setIsLoading,
-    });
-    const { crmConnections } = useCrmConnections({
-        platformName: 'Outbrain',
-        setIsLoading,
-    });
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
 
     const handleOpenModal = () => {
@@ -55,7 +56,7 @@ const OutbrainConnector = () => {
                     setIsCrmConnectionsOpen(true);
                 }}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                isLoading={isLoading}
+                isLoading={propsLoading || isLoading}
                 isConnected={!!platformConnection}
                 platformName="Outbrain"
                 logoPath="outbrain-logo.png"
@@ -72,7 +73,7 @@ const OutbrainConnector = () => {
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
-                crmConnections={crmConnections ?? []}
+                crmConnections={crmConnections}
             />
         </>
     );

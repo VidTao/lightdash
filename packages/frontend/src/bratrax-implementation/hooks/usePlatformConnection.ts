@@ -1,6 +1,4 @@
-import { useEffect } from 'react';
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useApp from '../../providers/App/useApp';
 import { PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
@@ -14,21 +12,28 @@ export const usePlatformConnection = ({
     platformName,
     setIsLoading,
 }: UsePlatformConnectionProps) => {
-    const { user } = useApp();
-    const [platformConnection, setPlatformConnection] =
-        useState<PlatformConnection | null>(null);
+    const { isAuthSet } = useApp();
+    const [platformConnection, setPlatformConnection] = useState<PlatformConnection | null>(null);
 
     useEffect(() => {
-        if (user.data?.organizationUuid) fetchPlatformConnection();
-    }, [user]);
+        const fetchPlatformConnection = async () => {
+            try {
+                const response = await apiService.getPlatformConnection(platformName);
+                if (response.data) {
+                    setPlatformConnection(response.data);
+                }
+                setIsLoading(false);
+            } catch (error) {
+                console.error('Error fetching platform connection:', error);
+                setPlatformConnection(null);
+                setIsLoading(false);
+            }
+        };
 
-    const fetchPlatformConnection = async () => {
-        const platformConnection = await apiService.getPlatformConnection(
-            platformName,
-        );
-        setPlatformConnection(platformConnection.data);
-        setIsLoading(false);
-    };
+        if (isAuthSet) {
+            fetchPlatformConnection();
+        }
+    }, [isAuthSet, platformName]);
 
     return { platformConnection };
 };

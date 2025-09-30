@@ -5,17 +5,25 @@ import { useRefetchUser } from '../../hooks/user/useRefetchUser';
 import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
-import { useAdConnections } from '../hooks/useAdConnections';
-import { usePlatformConnection } from '../hooks/usePlatformConnection';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
 import SelectAccountModal from '../modals/SelectAccountModal';
-import { AdPlatformAccountInfo } from '../models/interfaces';
+import { AdPlatformAccountInfo, AdvertisingConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-const FacebookAdsConnector = () => {
+interface FacebookAdsConnectorProps {
+    adConnections: AdvertisingConnection[];
+    platformConnection: PlatformConnection | null;
+    isLoading: boolean;
+}
+
+const FacebookAdsConnector = ({ 
+    adConnections, 
+    platformConnection, 
+    isLoading: propsLoading 
+}: FacebookAdsConnectorProps) => {
     const { user, health } = useApp();
     const navigate = useNavigate();
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
     const [accountsData, setAccountsData] = useState([]);
     const [isAccountsDataLoading, setIsAccountsDataLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,14 +33,6 @@ const FacebookAdsConnector = () => {
     >([]);
     const [userInfo, setUserInfo] = useState<any>(null);
     const [accessToken, setAccessToken] = useState('');
-    const { platformConnection } = usePlatformConnection({
-        platformName: 'Facebook',
-        setIsLoading,
-    });
-    const { adConnections } = useAdConnections({
-        platformName: 'Facebook',
-        setIsLoading,
-    });
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
 
     useEffect(() => {
@@ -62,12 +62,14 @@ const FacebookAdsConnector = () => {
         console.log(selectedAccounts);
         setIsModalOpen(false);
     };
+    
     const processTreeData = (data: any) =>
         data.map((item: any) => ({
             ...item,
             key: `${item.account_id}`,
             title: `${item.name} (${item.account_id})`, // Combine properties here
         }));
+    
     // Function to handle login
     const handleLogin = async () => {
         setIsLoading(true);
@@ -98,7 +100,7 @@ const FacebookAdsConnector = () => {
                     setIsAdConnectionsOpen(true);
                 }}
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                isLoading={isLoading}
+                isLoading={propsLoading || isLoading}
                 isConnected={!!platformConnection}
                 platformName="Facebook"
                 logoPath="fb-logo.webp"
@@ -115,7 +117,7 @@ const FacebookAdsConnector = () => {
             <DisplayAdConnectionsData
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
-                advertisingConnections={adConnections ?? []}
+                advertisingConnections={adConnections}
             />
         </>
     );

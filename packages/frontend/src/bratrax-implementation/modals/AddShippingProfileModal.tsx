@@ -27,6 +27,7 @@ interface AddShippingProfileModalProps {
     refetchShippingProfiles: () => void;
     existingProfile?: ShippingProfile;
     isEditMode?: boolean;
+    writeKeyId: number;
 }
 
 const regions = [
@@ -73,6 +74,7 @@ const AddShippingProfileModal = ({
     onClose,
     refetchShippingProfiles,
     existingProfile,
+    writeKeyId,
     isEditMode = false,
 }: AddShippingProfileModalProps) => {
     const [selectedRegionType, setSelectedRegionType] = useState<
@@ -85,7 +87,7 @@ const AddShippingProfileModal = ({
         'fixed' | 'tiered'
     >('fixed');
     const [shippingRate, setShippingRate] = useState<number>(0);
-    const [writeKey] = useState<string>('b6175fb3-dc45-45b6-9da8-5fc0f4d0e21d');
+    // const [writeKey] = useState<string>('b6175fb3-dc45-45b6-9da8-5fc0f4d0e21d');
     const [selectedRegions, setSelectedRegions] = useState<Region[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -139,7 +141,7 @@ const AddShippingProfileModal = ({
                 const profilePayload: ShippingProfile = {
                     profileId: existingProfile?.profileId || 0,
                     profileName: profileData.profileName,
-                    writeKey,
+                    writeKeyId,
                     isWorldwide: selectedRegionType === 'worldwide',
                     regions: selectedRegions,
                     rateType: selectedRateType,

@@ -1,33 +1,39 @@
-import { useEffect } from 'react';
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useApp from '../../providers/App/useApp';
 import { CrmConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
-interface useCrmConnectionsProps {
-    platformName: string;
-    setIsLoading: (isLoading: boolean) => void;
-}
-
-export const useCrmConnections = ({
-    platformName,
-    setIsLoading,
-}: useCrmConnectionsProps) => {
-    const { health, user } = useApp();
-    const [crmConnections, setcrmConnections] = useState<CrmConnection[] | []>(
-        [],
-    );
+export const useCrmConnections = () => {
+    const { isAuthSet } = useApp();
+    const [crmConnections, setCrmConnections] = useState<Record<string, CrmConnection[]>>({});
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (user.data?.organizationUuid) fetchCrmConnections();
-    }, [user]);
+        if (isAuthSet) {
+            fetchAllCrmConnections();
+        }
+    }, [isAuthSet]);
 
-    const fetchCrmConnections = async () => {
-        const crmConnections = await apiService.getCRMConnections(platformName);
-        setcrmConnections(crmConnections.data);
-        setIsLoading(false);
+    const fetchAllCrmConnections = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const response = await apiService.getAllCRMConnections();
+            if (response.success) {
+                setCrmConnections(response.data);
+            } else {
+                setError('Failed to fetch CRM connections');
+                setCrmConnections({});
+            }
+        } catch (error) {
+            console.error('Error fetching CRM connections:', error);
+            setError('Failed to fetch CRM connections');
+            setCrmConnections({});
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    return { crmConnections };
+    return { crmConnections, isLoading, error, refetch: fetchAllCrmConnections };
 };
