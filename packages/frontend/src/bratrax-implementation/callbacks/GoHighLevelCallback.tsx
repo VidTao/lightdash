@@ -10,10 +10,8 @@ import { apiService } from '../services/api';
 const GoHighLevelCallback = () => {
     const { code } = useQueryParams();
     const navigate = useNavigate();
-    const { user } = useApp();
+    const { user, isAuthSet } = useApp();
     const refetchUser = useRefetchUser();
-    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
-        useActiveProjectUuid();
 
     // Use ref to track if callback has already been processed
     const hasProcessedCallback = useRef(false);
@@ -27,22 +25,11 @@ const GoHighLevelCallback = () => {
                 }
 
                 if (code.length === 0) {
-                    // If no code, navigate to projects
-                    if (activeProjectUuid) {
-                        navigate(`/projects/${activeProjectUuid}/home`);
-                    } else {
-                        navigate('/projects');
-                    }
                     return;
                 }
 
-                if (user.isLoading || !user.data) {
+                if (user.isLoading || !user.data || !isAuthSet) {
                     // If user data is still loading or not available, wait
-                    return;
-                }
-
-                if (isActiveProjectLoading) {
-                    // Wait for project data to load
                     return;
                 }
 
@@ -55,12 +42,7 @@ const GoHighLevelCallback = () => {
                 await refetchUser();
 
                 // Navigate to the active project's home page
-                if (activeProjectUuid) {
-                    navigate(`/projects/${activeProjectUuid}/home`);
-                } else {
-                    // Fallback to projects list if no active project
-                    navigate('/projects');
-                }
+                navigate('/storeSettings/integrations');
             } catch (err) {
                 console.error('Error in GoHighLevel callback:', err);
                 // Reset the flag on error so user can retry
@@ -69,7 +51,7 @@ const GoHighLevelCallback = () => {
         };
 
         handleCallback();
-    }, [code, user.isLoading, user.data, isActiveProjectLoading]);
+    }, [code, user.isLoading, user.data, isAuthSet]);
 
     return <PageSpinner />;
 };

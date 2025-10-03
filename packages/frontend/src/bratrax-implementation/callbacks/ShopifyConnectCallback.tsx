@@ -7,9 +7,8 @@ import { apiService } from '../services/api';
 
 const ShopifyConnectCallback = () => {
     const { shop, hmac } = useQueryParams();
-    const { user } = useApp();
-    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
-        useActiveProjectUuid();
+    const { user, isAuthSet } = useApp();
+
 
     // Use ref to track if callback has already been processed
     const hasProcessedCallback = useRef(false);
@@ -23,13 +22,8 @@ const ShopifyConnectCallback = () => {
                 }
 
                 if (shop.length !== 0 && hmac.length !== 0) {
-                    if (user.isLoading || !user.data) {
+                    if (user.isLoading || !user.data || !isAuthSet) {
                         // If user data is still loading, wait
-                        return;
-                    }
-
-                    if (isActiveProjectLoading) {
-                        // Wait for project data to load
                         return;
                     }
 
@@ -49,7 +43,7 @@ const ShopifyConnectCallback = () => {
         };
 
         handleCallback();
-    }, [shop, hmac, user.isLoading, user.data, isActiveProjectLoading]);
+    }, [shop, hmac, user.isLoading, user.data, isAuthSet]);
 
     return <PageSpinner />;
 };

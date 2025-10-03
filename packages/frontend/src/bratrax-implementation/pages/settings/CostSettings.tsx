@@ -9,6 +9,7 @@ import {
     Group,
     Input,
     NumberInput,
+    Pagination,
     Paper,
     Radio,
     Select,
@@ -33,7 +34,7 @@ import {
     IconTruck,
     IconUpload,
 } from '@tabler/icons-react';
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePaymentGateways } from '../../hooks/usePaymentGetaways';
 import { useProductsCogsSettings } from '../../hooks/useProductsCogsSettings';
@@ -50,6 +51,142 @@ import {
     VariableExpense,
 } from '../../models/interfaces';
 import { apiService } from '../../services/api';
+
+// Pagination configuration
+const ITEMS_PER_PAGE = 25;
+
+// Enhanced table component for products
+const ProductsTable: React.FC<{
+    products: ProductData[];
+    onProductUpdate: (updatedProducts: ProductData[]) => void;
+}> = ({ products, onProductUpdate }) => {
+    const [currentPage, setCurrentPage] = useState(1);
+    
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        const endIndex = startIndex + ITEMS_PER_PAGE;
+        return products.slice(startIndex, endIndex);
+    }, [products, currentPage]);
+
+    const totalPages = Math.ceil(products.length / ITEMS_PER_PAGE);
+
+    const handleProductCostChange = (productId: string, value: number | undefined) => {
+        const updatedProducts = products.map((item) =>
+            item.productId === productId
+                ? {
+                      ...item,
+                      productCost: value || 0,
+                      cogsAmount: (value || 0) + item.handlingFee,
+                  }
+                : item,
+        );
+        onProductUpdate(updatedProducts);
+    };
+
+    const handleHandlingFeeChange = (productId: string, value: number | undefined) => {
+        const updatedProducts = products.map((item) =>
+            item.productId === productId
+                ? {
+                      ...item,
+                      handlingFee: value || 0,
+                      cogsAmount: item.productCost + (value || 0),
+                  }
+                : item,
+        );
+        onProductUpdate(updatedProducts);
+    };
+
+    const columns = [
+        { key: 'title', label: 'Title', width: '31%' },
+        { key: 'price', label: 'Price', width: '10%' },
+        { key: 'sku', label: 'SKU', width: '17%' },
+        { key: 'productCost', label: 'Product Cost', width: '15%' },
+        { key: 'handlingFee', label: 'Handling Fees', width: '15%' },
+        { key: 'quantity', label: 'Quantity', width: '12%' },
+    ];
+
+    const renderCell = (item: ProductData, column: string) => {
+        switch (column) {
+            case 'title':
+                return (
+                    <Text component="a" href="#" size="sm">
+                        {item.title}
+                    </Text>
+                );
+            case 'price':
+                return <Text>${item.price}</Text>;
+            case 'sku':
+                return <Text>{item.sku}</Text>;
+            case 'productCost':
+                return (
+                    <NumberInput
+                        value={item.productCost}
+                        onChange={(value) => handleProductCostChange(item.productId, Number(value))}
+                        prefix="$"
+                        w="100%"
+                        size="sm"
+                    />
+                );
+            case 'handlingFee':
+                return (
+                    <NumberInput
+                        value={item.handlingFee}
+                        onChange={(value) => handleHandlingFeeChange(item.productId, Number(value))}
+                        prefix="$"
+                        w="100%"
+                        size="sm"
+                    />
+                );
+            case 'quantity':
+                return <Text ta="right">{item.quantity}</Text>;
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <Stack spacing="md">
+            <Table striped highlightOnHover>
+                <thead>
+                    <tr>
+                        {columns.map((column) => (
+                            <th key={column.key} style={{ width: column.width }}>
+                                {column.label}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {paginatedProducts.map((item) => (
+                        <tr key={item.productId}>
+                            {columns.map((column) => (
+                                <td key={column.key}>
+                                    {renderCell(item, column.key)}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </Table>
+            
+            {totalPages > 1 && (
+                <Group position="center" mt="md">
+                    <Pagination
+                        value={currentPage}
+                        onChange={setCurrentPage}
+                        total={totalPages}
+                        siblings={1}
+                        boundaries={1}
+                        size="sm"
+                    />
+                    <Text size="sm" c="dimmed">
+                        Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, products.length)} - {Math.min(currentPage * ITEMS_PER_PAGE, products.length)} of {products.length} products
+                    </Text>
+                </Group>
+            )}
+        </Stack>
+    );
+};
 
 const CostSettings: React.FC = () => {
     const [selectedTabKey, setSelectedTabKey] = useState<string>('Shopify');
@@ -148,456 +285,159 @@ const CostSettings: React.FC = () => {
         isProductsCogsSettingsLoading ||
         isStoreCogsSettingsLoading;
 
-    const productColumns = [
-        {
-            accessor: 'title',
-            title: 'Title',
-            render: (row: ProductData) => (
-                <Text component="a" href="#" size="sm">
-                    {row.title}
-                </Text>
-            ),
-        },
-        {
-            accessor: 'price',
-            title: 'Price',
-            render: (row: ProductData) => <Text>${row.price}</Text>,
-        },
-        {
-            accessor: 'sku',
-            title: 'SKU',
-        },
-        {
-            accessor: 'productCost',
-            title: 'Product Cost',
-            render: (row: ProductData) => (
-                <NumberInput
-                    value={row.productCost}
-                    onChange={(value) => {
-                        const updatedData = productsCogsSettings.map((item) =>
-                            item.productId === row.productId
-                                ? {
-                                      ...item,
-                                      productCost: value || 0,
-                                      cogsAmount:
-                                          (value || 0) + item.handlingFee,
-                                  }
-                                : item,
-                        );
-                        setProductsCogsSettings(updatedData);
-                    }}
-                    prefix="$"
-                    w="100%"
-                />
-            ),
-        },
-        {
-            accessor: 'handlingFee',
-            title: 'Handling Fees',
-            render: (row: ProductData) => (
-                <NumberInput
-                    value={row.handlingFee}
-                    onChange={(value) => {
-                        const updatedData = productsCogsSettings.map((item) =>
-                            item.productId === row.productId
-                                ? {
-                                      ...item,
-                                      handlingFee: value || 0,
-                                      cogsAmount:
-                                          item.productCost + (value || 0),
-                                  }
-                                : item,
-                        );
-                        setProductsCogsSettings(updatedData);
-                    }}
-                    prefix="$"
-                    w="100%"
-                />
-            ),
-        },
-        {
-            accessor: 'quantity',
-            title: 'Qty',
-            textAlignment: 'right',
-        },
-    ];
 
-    const amazonProducts: AmazonProduct[] = [
-        {
-            key: '1',
-            productName:
-                'Vibit - Vibrating Massager for Plantar Fasciitis, Pain Relief and Sciatica, Foot and Body Portable',
-            sku: 'vib-ROLL-grn-NEW2',
-            costCOGS: 0,
-            handlingFee: 0,
-        },
-        {
-            key: '2',
-            productName:
-                'Vibit - Vibrating Massager for Plantar Fasciitis, Pain Relief and Sciatica, Foot and Body Portable',
-            sku: 'vib-ROLL-blu-FBA',
-            costCOGS: 0,
-            handlingFee: 0,
-        },
-        {
-            key: '3',
-            productName:
-                'Vibit - Vibrating Massage Roller for Foot, Leg, Muscles, and More, Great for Pain Relief, Sciatica',
-            sku: 'vib-ROLL-ppl',
-            costCOGS: 13.5,
-            handlingFee: 3,
-        },
-        {
-            key: '4',
-            productName:
-                'Vibit - Vibrating Massage Roller for Foot, Leg, Muscles, and More, Great for Pain Relief, Sciatica',
-            sku: 'vib-ROLL-pnk',
-            costCOGS: 13.5,
-            handlingFee: 3,
-        },
-        {
-            key: '5',
-            productName:
-                'Vibit - Vibrating Massage Roller for Foot, Leg, Muscles, and More, Great for Pain Relief, Sciatica',
-            sku: 'vib-ROLL-grn',
-            costCOGS: 13.5,
-            handlingFee: 3,
-        },
-    ];
+    // Get the selected write key object to access its platform
+    const selectedWriteKeyObject = writeKeys.find(key => key.writeKeyId.toString() === selectedWriteKey);
+    const selectedPlatform = selectedWriteKeyObject?.platform || '';
 
-    const amazonColumns = [
-        {
-            title: 'Product Name',
-            dataIndex: 'productName',
-            key: 'productName',
-            width: '40%',
-        },
-        {
-            title: 'SKU',
-            dataIndex: 'sku',
-            key: 'sku',
-            width: '20%',
-        },
-        {
-            title: 'Cost (COGS)',
-            dataIndex: 'costCOGS',
-            key: 'costCOGS',
-            width: '20%',
-            render: (value: number) => (
-                <NumberInput prefix="$" value={value} w="100%" />
-            ),
-        },
-        {
-            title: 'Handling Fee',
-            dataIndex: 'handlingFee',
-            key: 'handlingFee',
-            width: '20%',
-            render: (value: number) => (
-                <NumberInput prefix="$" value={value} w="100%" />
-            ),
-        },
-    ];
-
-    const tabItems = [
-        {
-            value: 'Shopify',
-            label: 'Shopify COGS',
-            content: (
-                <Stack spacing="md">
-                    <Group align="flex-start" spacing="sm" mb="sm">
-                        <Checkbox
-                            checked={cogsSettings.enableCOGS}
-                            onChange={(e) =>
-                                setCogsSettings({
-                                    ...cogsSettings,
-                                    enableCOGS: e.currentTarget.checked,
-                                })
-                            }
-                            label="Enable COGS as % of Gross Sales"
-                        />
-                        <IconQuestionMark size={16} color="gray" />
-                    </Group>
-
-                    <Group align="flex-start" spacing="sm" mb="sm">
-                        <Checkbox
-                            checked={cogsSettings.bidirectionalCOGS}
-                            onChange={(e) =>
-                                setCogsSettings({
-                                    ...cogsSettings,
-                                    bidirectionalCOGS: e.currentTarget.checked,
-                                })
-                            }
-                            label="Bi-Directional COGS"
-                        />
-                        <IconQuestionMark size={16} color="gray" />
-                    </Group>
-
-                    <Group position="apart" align="flex-start" mb="sm">
-                        <Group align="center" spacing="sm">
+    // Determine which tabs to show and default selection based on platform
+    const getVisibleTabItems = () => {
+        const allTabItems = [
+            {
+                value: 'Shopify',
+                label: 'Shopify COGS',
+                content: (
+                    <Stack spacing="md">
+                        <Group align="flex-start" spacing="sm" mb="sm">
                             <Checkbox
-                                checked={cogsSettings.enableHandlingFee}
+                                checked={cogsSettings.enableCOGS}
                                 onChange={(e) =>
                                     setCogsSettings({
                                         ...cogsSettings,
-                                        enableHandlingFee:
-                                            e.currentTarget.checked,
+                                        enableCOGS: e.currentTarget.checked,
                                     })
                                 }
-                                label="Enable Fixed Handling Fee per Order"
+                                label="Enable COGS as % of Gross Sales"
                             />
                             <IconQuestionMark size={16} color="gray" />
                         </Group>
-                        {cogsSettings.enableHandlingFee && (
-                            <Group spacing="xs">
-                                <Text>Fixed Handling Fee</Text>
-                                <NumberInput
-                                    value={cogsSettings.handlingFee}
-                                    onChange={(value) =>
+
+                        <Group align="flex-start" spacing="sm" mb="sm">
+                            <Checkbox
+                                checked={cogsSettings.bidirectionalCOGS}
+                                onChange={(e) =>
+                                    setCogsSettings({
+                                        ...cogsSettings,
+                                        bidirectionalCOGS: e.currentTarget.checked,
+                                    })
+                                }
+                                label="Bi-Directional COGS"
+                            />
+                            <IconQuestionMark size={16} color="gray" />
+                        </Group>
+
+                        <Group position="apart" align="flex-start" mb="sm">
+                            <Group align="center" spacing="sm">
+                                <Checkbox
+                                    checked={cogsSettings.enableHandlingFee}
+                                    onChange={(e) =>
                                         setCogsSettings({
                                             ...cogsSettings,
-                                            handlingFee: value || 0,
+                                            enableHandlingFee:
+                                                e.currentTarget.checked,
                                         })
                                     }
-                                    prefix="$"
-                                    w={200}
+                                    label="Enable Fixed Handling Fee per Order"
                                 />
+                                <IconQuestionMark size={16} color="gray" />
                             </Group>
-                        )}
-                    </Group>
+                            {cogsSettings.enableHandlingFee && (
+                                <Group spacing="xs">
+                                    <Text>Fixed Handling Fee</Text>
+                                    <NumberInput
+                                        value={cogsSettings.handlingFee}
+                                        onChange={(value) =>
+                                            setCogsSettings({
+                                                ...cogsSettings,
+                                                handlingFee: value || 0,
+                                            })
+                                        }
+                                        prefix="$"
+                                        w={200}
+                                    />
+                                </Group>
+                            )}
+                        </Group>
 
-                    <Box>
-                        <Text weight={600} mb="xs">
-                            Search Products
-                        </Text>
-                        <TextInput
-                            placeholder="Search by product name"
-                            value={searchQuery}
-                            onChange={(e) =>
-                                setSearchQuery(e.currentTarget.value)
-                            }
-                            mb="md"
-                        />
-                        <Table>
-                            <thead>
-                                <tr>
-                                    <th>Title</th>
-                                    <th>Price</th>
-                                    <th>SKU</th>
-                                    <th>Product Cost</th>
-                                    <th>Handling Fees</th>
-                                    <th>Qty</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredproductsCogsSettings.map((item) => (
-                                    <tr key={item.productId}>
-                                        <td>
-                                            <Text
-                                                component="a"
-                                                href="#"
-                                                size="sm"
-                                            >
-                                                {item.title}
-                                            </Text>
-                                        </td>
-                                        <td>${item.price}</td>
-                                        <td>{item.sku}</td>
-                                        <td>
-                                            <NumberInput
-                                                value={item.productCost}
-                                                onChange={(value) => {
-                                                    const updatedData =
-                                                        productsCogsSettings.map(
-                                                            (record) =>
-                                                                record.productId ===
-                                                                item.productId
-                                                                    ? {
-                                                                          ...record,
-                                                                          productCost:
-                                                                              value ||
-                                                                              0,
-                                                                          cogsAmount:
-                                                                              (value ||
-                                                                                  0) +
-                                                                              record.handlingFee,
-                                                                      }
-                                                                    : record,
-                                                        );
-                                                    setProductsCogsSettings(
-                                                        updatedData,
-                                                    );
-                                                }}
-                                                prefix="$"
-                                                w="100%"
-                                            />
-                                        </td>
-                                        <td>
-                                            <NumberInput
-                                                value={item.handlingFee}
-                                                onChange={(value) => {
-                                                    const updatedData =
-                                                        productsCogsSettings.map(
-                                                            (record) =>
-                                                                record.productId ===
-                                                                item.productId
-                                                                    ? {
-                                                                          ...record,
-                                                                          handlingFee:
-                                                                              value ||
-                                                                              0,
-                                                                          cogsAmount:
-                                                                              record.productCost +
-                                                                              (value ||
-                                                                                  0),
-                                                                      }
-                                                                    : record,
-                                                        );
-                                                    setProductsCogsSettings(
-                                                        updatedData,
-                                                    );
-                                                }}
-                                                prefix="$"
-                                                w="100%"
-                                            />
-                                        </td>
-                                        <td style={{ textAlign: 'right' }}>
-                                            {item.quantity}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    </Box>
-                </Stack>
-            ),
-        },
-        {
-            value: 'AmazonSP',
-            label: 'Amazon COGS',
-            content: (
-                <Stack spacing="sm">
-                    <Group position="apart" align="center" mb="sm">
-                        <Box style={{ flex: 1 }}>
+                        <Box>
                             <Text weight={600} mb="xs">
-                                Select Amazon Marketplace
+                                Search Products
                             </Text>
-                            <Select
-                                value={selectedMarketplace}
-                                onChange={(value) =>
-                                    setSelectedMarketplace(value || '')
+                            <TextInput
+                                placeholder="Search by product name"
+                                value={searchQuery}
+                                onChange={(e) =>
+                                    setSearchQuery(e.currentTarget.value)
                                 }
-                                data={[
-                                    {
-                                        value: 'ATVPDKIKX0DER',
-                                        label: 'United States of America',
-                                    },
-                                    {
-                                        value: 'A2EUQ1WTGCTBG2',
-                                        label: 'Canada',
-                                    },
-                                    {
-                                        value: 'A1AM78C64UM0Y8',
-                                        label: 'Mexico',
-                                    },
-                                    {
-                                        value: 'A2Q3Y263D00KWC',
-                                        label: 'United Kingdom',
-                                    },
-                                ]}
-                                style={{ maxWidth: 400 }}
+                                mb="md"
+                            />
+                            
+                            <ProductsTable 
+                                products={filteredproductsCogsSettings}
+                                onProductUpdate={setProductsCogsSettings}
                             />
                         </Box>
-                        <Button leftIcon={<IconUpload size={16} />}>
-                            Upload COGs
-                        </Button>
-                    </Group>
+                    </Stack>
+                ),
+            },
+            {
+                value: 'AmazonSP',
+                label: 'Amazon COGS',
+                content: (
+                    <Stack spacing="sm">
+                        <Box>
+                            <Text weight={600} mb="xs">
+                                Search Products
+                            </Text>
+                            <TextInput
+                                placeholder="Search by product name"
+                                value={searchQuery}
+                                onChange={(e) =>
+                                    setSearchQuery(e.currentTarget.value)
+                                }
+                                mb="md"
+                            />
+                            
+                            <ProductsTable 
+                                products={filteredproductsCogsSettings}
+                                onProductUpdate={setProductsCogsSettings}
+                            />
+                        </Box>
+                    </Stack>
+                ),
+            },
+        ];
 
-                    <Table>
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Price</th>
-                                <th>SKU</th>
-                                <th>Product Cost</th>
-                                <th>Handling Fees</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredproductsCogsSettings.map((item) => (
-                                <tr key={item.productId}>
-                                    <td>
-                                        <Text component="a" href="#" size="sm">
-                                            {item.title}
-                                        </Text>
-                                    </td>
-                                    <td>${item.price}</td>
-                                    <td>{item.sku}</td>
-                                    <td>
-                                        <NumberInput
-                                            value={item.productCost}
-                                            onChange={(value) => {
-                                                const updatedData =
-                                                    productsCogsSettings.map(
-                                                        (record) =>
-                                                            record.productId ===
-                                                            item.productId
-                                                                ? {
-                                                                      ...record,
-                                                                      productCost:
-                                                                          value ||
-                                                                          0,
-                                                                      cogsAmount:
-                                                                          (value ||
-                                                                              0) +
-                                                                          record.handlingFee,
-                                                                  }
-                                                                : record,
-                                                    );
-                                                setProductsCogsSettings(
-                                                    updatedData,
-                                                );
-                                            }}
-                                            prefix="$"
-                                            w="100%"
-                                        />
-                                    </td>
-                                    <td>
-                                        <NumberInput
-                                            value={item.handlingFee}
-                                            onChange={(value) => {
-                                                const updatedData =
-                                                    productsCogsSettings.map(
-                                                        (record) =>
-                                                            record.productId ===
-                                                            item.productId
-                                                                ? {
-                                                                      ...record,
-                                                                      handlingFee:
-                                                                          value ||
-                                                                          0,
-                                                                      cogsAmount:
-                                                                          record.productCost +
-                                                                          (value ||
-                                                                              0),
-                                                                  }
-                                                                : record,
-                                                    );
-                                                setProductsCogsSettings(
-                                                    updatedData,
-                                                );
-                                            }}
-                                            prefix="$"
-                                            w="100%"
-                                        />
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </Table>
-                </Stack>
-            ),
-        },
-    ];
+        // Filter tabs based on platform
+        if (selectedPlatform === 'Shopify') {
+            return [allTabItems[0]]; // Only Shopify tab
+        } else if (selectedPlatform.includes('Amazon')) {
+            return [allTabItems[1]]; // Only Amazon tab
+        }
+        
+        // Default: show all tabs if no platform match
+        return allTabItems;
+    };
+
+    const visibleTabItems = getVisibleTabItems();
+
+    // Set default tab based on platform
+    const getDefaultTab = () => {
+        if (selectedPlatform === 'Shopify') {
+            return 'Shopify';
+        } else if (selectedPlatform.includes('Amazon')) {
+            return 'AmazonSP';
+        }
+        return 'Shopify'; // Default fallback
+    };
+
+    // Update selectedTabKey when write key changes
+    useEffect(() => {
+        if (selectedWriteKeyObject) {
+            const defaultTab = getDefaultTab();
+            setSelectedTabKey(defaultTab);
+        }
+    }, [selectedWriteKey, selectedPlatform]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProfile, setEditingProfile] =
@@ -632,7 +472,7 @@ const CostSettings: React.FC = () => {
     };
 
     return (
-        <Box p="xl">
+        <Box p="xl" maw="1400px"  mx="auto"> {/* Made container bigger */}
             <Group position="apart" mb="md">
                 <Stack spacing="xs">
                     <Title order={2}>Cost Settings</Title>
@@ -674,35 +514,42 @@ const CostSettings: React.FC = () => {
                                 </Group>
                             </Accordion.Control>
                             <Accordion.Panel>
-                                <Tabs
-                                    value={selectedTabKey}
-                                    onTabChange={(value) =>
-                                        setSelectedTabKey(value || 'Shopify')
-                                    }
-                                >
-                                    <Tabs.List>
-                                        {tabItems.map((item) => (
-                                            <Tabs.Tab
-                                                key={item.value}
-                                                value={item.value}
-                                            >
-                                                {item.label}
-                                            </Tabs.Tab>
-                                        ))}
-                                    </Tabs.List>
+                                {visibleTabItems.length > 1 ? (
+                                    <Tabs
+                                        value={selectedTabKey}
+                                        onTabChange={(value) =>
+                                            setSelectedTabKey(value || getDefaultTab())
+                                        }
+                                    >
+                                        <Tabs.List>
+                                            {visibleTabItems.map((item) => (
+                                                <Tabs.Tab
+                                                    key={item.value}
+                                                    value={item.value}
+                                                >
+                                                    {item.label}
+                                                </Tabs.Tab>
+                                            ))}
+                                        </Tabs.List>
 
+                                        <Box p="md">
+                                            {visibleTabItems.map((item) => (
+                                                <Tabs.Panel
+                                                    key={item.value}
+                                                    value={item.value}
+                                                    pt="md"
+                                                >
+                                                    {item.content}
+                                                </Tabs.Panel>
+                                            ))}
+                                        </Box>
+                                    </Tabs>
+                                ) : (
+                                    // If only one tab, show content directly without tabs
                                     <Box p="md">
-                                        {tabItems.map((item) => (
-                                            <Tabs.Panel
-                                                key={item.value}
-                                                value={item.value}
-                                                pt="md"
-                                            >
-                                                {item.content}
-                                            </Tabs.Panel>
-                                        ))}
+                                        {visibleTabItems[0]?.content}
                                     </Box>
-                                </Tabs>
+                                )}
                             </Accordion.Panel>
                         </Accordion.Item>
 

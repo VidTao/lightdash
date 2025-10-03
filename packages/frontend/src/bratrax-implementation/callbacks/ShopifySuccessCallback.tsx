@@ -9,11 +9,10 @@ import { apiService } from '../services/api';
 
 const ShopifySuccessCallback = () => {
     const { code, shop } = useQueryParams();
-    const { user } = useApp();
+    const { user, isAuthSet } = useApp();
     const navigate = useNavigate();
     const refetchUser = useRefetchUser();
-    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
-        useActiveProjectUuid();
+
 
     // Use ref to track if callback has already been processed
     const hasProcessedCallback = useRef(false);
@@ -28,26 +27,15 @@ const ShopifySuccessCallback = () => {
 
                 if (code.length === 0 || shop.length === 0) {
                     // If incomplete data, navigate to projects
-                    if (activeProjectUuid) {
-                        navigate(`/projects/${activeProjectUuid}/home`);
-                    } else {
-                        navigate('/projects');
-                    }
                     return;
                 }
 
-                if (user.isLoading) {
+                if (user.isLoading || !user.data || !isAuthSet) {
                     // If user data is still loading, wait
                     return;
                 }
 
                 if (user.data) {
-                    // User is authenticated, proceed with the callback
-                    if (isActiveProjectLoading) {
-                        // Wait for project data to load
-                        return;
-                    }
-
                     // Mark as processing to prevent double execution
                     hasProcessedCallback.current = true;
 
@@ -60,12 +48,7 @@ const ShopifySuccessCallback = () => {
                     await refetchUser();
 
                     // Navigate to the active project's home page
-                    if (activeProjectUuid) {
-                        navigate(`/projects/${activeProjectUuid}/home`);
-                    } else {
-                        // Fallback to projects list if no active project
-                        navigate('/projects');
-                    }
+                    navigate('/storeSettings/integrations');
                 } else {
                     // User is not authenticated, save pending auth and redirect to login
                     localStorage.setItem(
@@ -82,7 +65,7 @@ const ShopifySuccessCallback = () => {
         };
 
         handleCallback();
-    }, [code, shop, user.isLoading, user.data, isActiveProjectLoading]);
+    }, [code, shop, user.isLoading, user.data, isAuthSet]);
 
     return <PageSpinner />;
 };

@@ -10,10 +10,8 @@ import { apiService } from '../services/api';
 const KlaviyoCallback = () => {
     const { code, state } = useQueryParams();
     const navigate = useNavigate();
-    const { user } = useApp();
+    const { user, isAuthSet } = useApp();
     const refetchUser = useRefetchUser();
-    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
-        useActiveProjectUuid();
 
     // Use ref to track if callback has already been processed
     const hasProcessedCallback = useRef(false);
@@ -27,22 +25,11 @@ const KlaviyoCallback = () => {
                 }
 
                 if (code.length === 0 || state.length === 0) {
-                    // If no code or state, navigate to projects
-                    if (activeProjectUuid) {
-                        navigate(`/projects/${activeProjectUuid}/home`);
-                    } else {
-                        navigate('/projects');
-                    }
                     return;
                 }
 
-                if (user.isLoading || !user.data) {
+                if (user.isLoading || !user.data || !isAuthSet) {
                     // If user data is still loading or not available, wait
-                    return;
-                }
-
-                if (isActiveProjectLoading) {
-                    // Wait for project data to load
                     return;
                 }
 
@@ -58,12 +45,7 @@ const KlaviyoCallback = () => {
                 await refetchUser();
 
                 // Navigate to the active project's home page
-                if (activeProjectUuid) {
-                    navigate(`/projects/${activeProjectUuid}/home`);
-                } else {
-                    // Fallback to projects list if no active project
-                    navigate('/projects');
-                }
+                navigate('/storeSettings/integrations');
             } catch (err) {
                 console.error('Error in Klaviyo callback:', err);
                 // Reset the flag on error so user can retry
@@ -72,7 +54,7 @@ const KlaviyoCallback = () => {
         };
 
         handleCallback();
-    }, [code, state, user.isLoading, user.data, isActiveProjectLoading]);
+    }, [code, state, user.isLoading, user.data, isAuthSet]);
 
     return <PageSpinner />;
 };

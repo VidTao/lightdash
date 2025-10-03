@@ -9,12 +9,11 @@ import { apiService } from '../services/api';
 
 const AmazonSpCallback = () => {
     const [error, setError] = useState<string | null>(null);
-    const { user } = useApp();
+    const { user, isAuthSet } = useApp();
     const navigate = useNavigate();
     const refetchUser = useRefetchUser();
     const { spApiAuthCode, sellingPartnerId } = useQueryParams();
-    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
-        useActiveProjectUuid();
+
 
     // Use ref to track if callback has already been processed
     const hasProcessedCallback = useRef(false);
@@ -31,13 +30,8 @@ const AmazonSpCallback = () => {
                     throw new Error('No authorization code received');
                 }
 
-                if (user.isLoading || !user.data) {
+                if (user.isLoading || !user.data || !isAuthSet) {
                     // If user data is still loading or not available, wait
-                    return;
-                }
-
-                if (isActiveProjectLoading) {
-                    // Wait for project data to load
                     return;
                 }
 
@@ -55,14 +49,9 @@ const AmazonSpCallback = () => {
 
                 // Refresh user data to update connection status
                 await refetchUser();
+                navigate('/storeSettings/integrations');
 
-                // Navigate to the active project's home page
-                if (activeProjectUuid) {
-                    navigate(`/projects/${activeProjectUuid}/home`);
-                } else {
-                    // Fallback to projects list if no active project
-                    navigate('/projects');
-                }
+                
             } catch (err) {
                 setError(
                     err instanceof Error ? err.message : 'An error occurred',
@@ -79,7 +68,7 @@ const AmazonSpCallback = () => {
         sellingPartnerId,
         user.isLoading,
         user.data,
-        isActiveProjectLoading,
+        isAuthSet,
     ]);
 
     if (error) {

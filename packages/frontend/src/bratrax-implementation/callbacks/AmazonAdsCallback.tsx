@@ -9,12 +9,11 @@ import { apiService } from '../services/api';
 
 const AmazonAdsCallback = () => {
     const [error, setError] = useState<string | null>(null);
-    const { user } = useApp();
+    const { user, isAuthSet } = useApp();
     const navigate = useNavigate();
     const refetchUser = useRefetchUser();
     const { code, state } = useQueryParams();
-    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
-        useActiveProjectUuid();
+
 
     // Use ref to track if callback has already been processed
     const hasProcessedCallback = useRef(false);
@@ -31,13 +30,8 @@ const AmazonAdsCallback = () => {
                     throw new Error('No authorization code received');
                 }
 
-                if (user.isLoading || !user.data) {
+                if (user.isLoading || !user.data || !isAuthSet) {
                     // If user data is still loading or not available, wait
-                    return;
-                }
-
-                if (isActiveProjectLoading) {
-                    // Wait for project data to load
                     return;
                 }
 
@@ -57,12 +51,8 @@ const AmazonAdsCallback = () => {
                 await refetchUser();
 
                 // Redirect to projects (dashboard equivalent in Lightdash)
-                if (activeProjectUuid) {
-                    navigate(`/projects/${activeProjectUuid}/home`);
-                } else {
-                    // Fallback to projects list if no active project
-                    navigate('/projects');
-                }
+                navigate('/storeSettings/integrations');
+                
             } catch (err) {
                 setError(
                     err instanceof Error ? err.message : 'An error occurred',
@@ -74,7 +64,7 @@ const AmazonAdsCallback = () => {
         };
 
         handleCallback();
-    }, [code, state, user.isLoading, user.data, isActiveProjectLoading]);
+    }, [code, state, user.isLoading, user.data, isAuthSet]);
 
     if (error) {
         // You might want to show an error state here instead of just the spinner
