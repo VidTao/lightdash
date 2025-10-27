@@ -92,18 +92,6 @@ export class ApiService {
         }
     };
 
-    getShopifyAuthUrl = async (): Promise<string> => {
-        try {
-            const response = await axios.get(
-                `${apiUrl}/connectors/shopify/auth-url`,
-            );
-            return response.data.url; // Return the URL from the response
-        } catch (error) {
-            console.error('Error getting Shopify auth URL:', error);
-            throw error;
-        }
-    };
-
     getShopifyShopAuthUrl = async (shop: string): Promise<string> => {
         try {
             const response = await axios.get(
