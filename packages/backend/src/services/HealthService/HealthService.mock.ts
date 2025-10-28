@@ -18,6 +18,7 @@ export const BaseResponse: HealthState = {
     hasExtendedUsageAnalytics: false,
     hasMicrosoftTeams: false,
     hasGithub: false,
+    hasGitlab: false,
     hasHeadlessBrowser: false,
     hasSlack: false,
     auth: {
@@ -91,8 +92,13 @@ export const BaseResponse: HealthState = {
         overrideColorPaletteName: undefined,
     },
     isServiceAccountEnabled: false,
+    isOrganizationWarehouseCredentialsEnabled: false,
     isCustomRolesEnabled: false,
     embedding: { enabled: false, events: undefined },
+    ai: {
+        analyticsProjectUuid: undefined,
+        analyticsDashboardUuid: undefined,
+    },
 };
 
 export const userMock = {

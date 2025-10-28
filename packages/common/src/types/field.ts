@@ -1,3 +1,4 @@
+import words from 'lodash/words';
 import type {
     AdditionalMetric,
     currencies,
@@ -312,14 +313,122 @@ export enum TableCalculationType {
     BOOLEAN = 'boolean',
 }
 
+export enum WindowFunctionType {
+    ROW_NUMBER = 'row_number',
+    PERCENT_RANK = 'percent_rank',
+    CUME_DIST = 'cume_dist',
+    RANK = 'rank',
+    SUM = 'sum',
+    AVG = 'avg',
+    COUNT = 'count',
+    MIN = 'min',
+    MAX = 'max',
+}
+
+export const nillaryWindowFunctions: WindowFunctionType[] = [
+    WindowFunctionType.ROW_NUMBER,
+    WindowFunctionType.PERCENT_RANK,
+    WindowFunctionType.CUME_DIST,
+    WindowFunctionType.RANK,
+];
+
+export const unaryWindowFunctions: WindowFunctionType[] = [
+    WindowFunctionType.SUM,
+    WindowFunctionType.AVG,
+    WindowFunctionType.COUNT,
+    WindowFunctionType.MIN,
+    WindowFunctionType.MAX,
+];
+
+export enum FrameType {
+    ROWS = 'rows',
+    RANGE = 'range',
+}
+
+export enum FrameBoundaryType {
+    UNBOUNDED_PRECEDING = 'unbounded_preceding',
+    PRECEDING = 'preceding',
+    CURRENT_ROW = 'current_row',
+    FOLLOWING = 'following',
+    UNBOUNDED_FOLLOWING = 'unbounded_following',
+}
+
+export type FrameBoundary = {
+    type: FrameBoundaryType;
+    offset?: number; // Required for PRECEDING/FOLLOWING with numeric offset
+};
+
+export type FrameClause = {
+    frameType: FrameType;
+    start?: FrameBoundary; // Optional for single boundary syntax
+    end: FrameBoundary;
+};
+
+export enum TableCalculationTemplateType {
+    PERCENT_CHANGE_FROM_PREVIOUS = 'percent_change_from_previous',
+    PERCENT_OF_PREVIOUS_VALUE = 'percent_of_previous_value',
+    PERCENT_OF_COLUMN_TOTAL = 'percent_of_column_total',
+    RANK_IN_COLUMN = 'rank_in_column',
+    RUNNING_TOTAL = 'running_total',
+    WINDOW_FUNCTION = 'window_function',
+}
+
+export type TableCalculationTemplate =
+    | {
+          type: TableCalculationTemplateType.PERCENT_CHANGE_FROM_PREVIOUS;
+          fieldId: string;
+          orderBy: {
+              fieldId: string;
+              order: 'asc' | 'desc' | null;
+          }[];
+      }
+    | {
+          type: TableCalculationTemplateType.PERCENT_OF_PREVIOUS_VALUE;
+          fieldId: string;
+          orderBy: {
+              fieldId: string;
+              order: 'asc' | 'desc' | null;
+          }[];
+      }
+    | {
+          type: TableCalculationTemplateType.PERCENT_OF_COLUMN_TOTAL;
+          fieldId: string;
+          partitionBy?: string[];
+      }
+    | {
+          type: TableCalculationTemplateType.RANK_IN_COLUMN;
+          fieldId: string;
+      }
+    | {
+          type: TableCalculationTemplateType.RUNNING_TOTAL;
+          fieldId: string;
+      }
+    | {
+          type: TableCalculationTemplateType.WINDOW_FUNCTION;
+          windowFunction: WindowFunctionType;
+          fieldId: string | null;
+          orderBy: {
+              fieldId: string;
+              order: 'asc' | 'desc' | null;
+          }[];
+          partitionBy: string[];
+          frame?: FrameClause;
+      };
+
 export type TableCalculation = {
     index?: number;
     name: string;
     displayName: string; // This is a unique property of the table calculation
-    sql: string;
     format?: CustomFormat;
     type?: TableCalculationType;
-};
+} & (
+    | {
+          sql: string;
+      }
+    | {
+          template: TableCalculationTemplate;
+      }
+);
 
 export type TableCalculationMetadata = {
     oldName: string;
@@ -338,11 +447,22 @@ export const isTableCalculation = (
 ): item is TableCalculation =>
     item
         ? !isCustomDimension(item) &&
-          !!('sql' in item && item.sql) &&
+          (!!('sql' in item && item.sql) ||
+              !!('template' in item && item.template)) &&
           !('description' in item) &&
           !('tableName' in item) &&
           'displayName' in item
         : false;
+
+export const isSqlTableCalculation = (
+    calc: TableCalculation,
+): calc is TableCalculation & { sql: string } =>
+    !!calc && 'sql' in calc && !!calc.sql && calc.sql.length > 0;
+
+export const isTemplateTableCalculation = (
+    calc: TableCalculation,
+): calc is TableCalculation & { template: TableCalculationTemplate } =>
+    !!calc && 'template' in calc && !!calc.template;
 
 export type CompiledTableCalculation = TableCalculation & {
     compiledSql: string;
@@ -490,6 +610,9 @@ export enum MetricType {
     SUM = 'sum',
     MIN = 'min',
     MAX = 'max',
+    PERCENT_OF_PREVIOUS = 'percent_of_previous',
+    PERCENT_OF_TOTAL = 'percent_of_total',
+    RUNNING_TOTAL = 'running_total',
     NUMBER = 'number',
     MEDIAN = 'median',
     STRING = 'string',
@@ -541,6 +664,12 @@ export const parseMetricType = (metricType: string): MetricType => {
             return MetricType.TIMESTAMP;
         case 'boolean':
             return MetricType.BOOLEAN;
+        case 'percent_of_previous':
+            return MetricType.PERCENT_OF_PREVIOUS;
+        case 'percent_of_total':
+            return MetricType.PERCENT_OF_TOTAL;
+        case 'running_total':
+            return MetricType.RUNNING_TOTAL;
         default:
             throw new Error(
                 `Cannot parse dbt metric with type '${metricType}'`,
@@ -556,6 +685,12 @@ const NonAggregateMetricTypes = [
     MetricType.BOOLEAN,
 ];
 
+export const PostCalculationMetricTypes = [
+    MetricType.PERCENT_OF_PREVIOUS,
+    MetricType.PERCENT_OF_TOTAL,
+    MetricType.RUNNING_TOTAL,
+];
+
 export const isMetric = (
     field: ItemsMap[string] | AdditionalMetric | undefined,
 ): field is Metric =>
@@ -565,6 +700,12 @@ export const isMetric = (
 
 export const isNonAggregateMetric = (field: Field): boolean =>
     isMetric(field) && NonAggregateMetricTypes.includes(field.type);
+
+export const isPostCalculationMetricType = (type: MetricType): boolean =>
+    PostCalculationMetricTypes.includes(type);
+
+export const isPostCalculationMetric = (field: Field): boolean =>
+    isMetric(field) && isPostCalculationMetricType(field.type);
 
 export const isCompiledMetric = (
     field: ItemsMap[string] | AdditionalMetric | undefined,
@@ -623,40 +764,30 @@ export const defaultSql = (columnName: string): string =>
     `\$\{TABLE\}.${columnName}`;
 export const capitalize = (word: string): string =>
     word ? `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}` : '';
+
 export const friendlyName = (text: string): string => {
     if (text === '') {
         return '';
     }
 
-    // Split the text on underscores, filter out empty parts resulting from leading/trailing underscores
-    const parts = text.split('_').filter((part) => part !== '');
+    // Use lodash's words function with a safe custom pattern
+    // Pattern explanation (avoids backtracking):
+    // - [A-Z][a-z]+: Uppercase letter followed by 1+ lowercase (avoids * quantifier)
+    // - [a-z]+: One or more lowercase letters
+    // - [0-9]+[a-z]+: Digits followed by letters (keeps them together like "1field")
+    // - [0-9]+: Just digits
+    // - [A-Z]+: Multiple uppercase letters
+    const safePattern = /[A-Z][a-z]+|[a-z]+|[0-9]+[a-z]+|[0-9]+|[A-Z]+/g;
+    const extractedWords = words(text, safePattern);
 
-    // Normalize and capitalize each part of the split text
-    const normalizedParts = parts.map((part) => {
-        // Convert part to lowercase if it is entirely uppercase, otherwise leave it as is
-        const normalisedText =
-            part === part.toUpperCase() ? part.toLowerCase() : part;
+    if (extractedWords.length === 0) {
+        return '';
+    }
 
-        // Use a regex to separate numeric and alphabetic sequences
-        // The match array will contain the first matched part and any subsequent ones
-        const [first, ...rest] =
-            normalisedText.match(/[0-9]*[A-Za-z][a-z]*|[0-9]+/g) || [];
-
-        // If no match was found, return the part as is
-        if (!first) {
-            return part;
-        }
-
-        // Capitalize the first matched part, convert the rest to lowercase, and join them with spaces
-        return [
-            capitalize(first.toLowerCase()),
-            ...rest.map((word) => word.toLowerCase()),
-        ].join(' ');
-    });
-
-    // Join the normalized parts with spaces and capitalize the first letter of the resulting string
-    const result = normalizedParts.join(' ');
-    return capitalize(result);
+    // Join words with spaces and convert to sentence case
+    // (only first letter capitalized, rest lowercase)
+    const joined = extractedWords.join(' ').toLowerCase();
+    return joined.charAt(0).toUpperCase() + joined.slice(1);
 };
 
 export const isSummable = (item: Item | undefined) => {

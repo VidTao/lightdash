@@ -34,14 +34,17 @@ import {
     Explore,
     FieldType,
     ForbiddenError,
+    formatItemValue,
+    formatRawValue,
     formatRow,
     getDashboardFilterRulesForTables,
     getDashboardFilterRulesForTileAndReferences,
     getDimensions,
     getErrorMessage,
-    getFieldQuoteChar,
+    getFieldsFromMetricQuery,
     getItemId,
     getItemMap,
+    getMetrics,
     isCartesianChartConfig,
     isCustomBinDimension,
     isCustomDimension,
@@ -65,11 +68,11 @@ import {
     QueryExecutionContext,
     type QueryHistory,
     QueryHistoryStatus,
+    type ReadyQueryResultsPage,
     type ResultColumns,
     ResultRow,
     type RunQueryTags,
     S3Error,
-    SCHEDULER_TASKS,
     SchedulerFormat,
     sleep,
     type SpaceShare,
@@ -88,10 +91,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { DownloadCsv } from '../../analytics/LightdashAnalytics';
 import { S3ResultsFileStorageClient } from '../../clients/ResultsFileStorageClients/S3ResultsFileStorageClient';
 import { measureTime } from '../../logging/measureTime';
+import { DownloadAuditModel } from '../../models/DownloadAuditModel';
 import { FeatureFlagModel } from '../../models/FeatureFlagModel/FeatureFlagModel';
 import { QueryHistoryModel } from '../../models/QueryHistoryModel/QueryHistoryModel';
 import type { SavedSqlModel } from '../../models/SavedSqlModel';
 import PrometheusMetrics from '../../prometheus';
+import { compileMetricQuery } from '../../queryCompiler';
 import type { SchedulerClient } from '../../scheduler/SchedulerClient';
 import { wrapSentryTransaction } from '../../utils';
 import { processFieldsForExport } from '../../utils/FileDownloadUtils/FileDownloadUtils';
@@ -101,7 +106,10 @@ import {
     ReferenceMap,
     SqlQueryBuilder,
 } from '../../utils/QueryBuilder/SqlQueryBuilder';
-import { applyLimitToSqlQuery } from '../../utils/QueryBuilder/utils';
+import {
+    applyLimitToSqlQuery,
+    replaceUserAttributesAsStrings,
+} from '../../utils/QueryBuilder/utils';
 import type { ICacheService } from '../CacheService/ICacheService';
 import { CreateCacheResult } from '../CacheService/types';
 import { CsvService } from '../CsvService/CsvService';
@@ -140,6 +148,7 @@ const SQL_QUERY_MOCK_EXPLORER_NAME = 'sql_query_explorer';
 
 type AsyncQueryServiceArguments = ProjectServiceArguments & {
     queryHistoryModel: QueryHistoryModel;
+    downloadAuditModel: DownloadAuditModel;
     cacheService?: ICacheService;
     savedSqlModel: SavedSqlModel;
     featureFlagModel: FeatureFlagModel;
@@ -152,6 +161,8 @@ type AsyncQueryServiceArguments = ProjectServiceArguments & {
 
 export class AsyncQueryService extends ProjectService {
     queryHistoryModel: QueryHistoryModel;
+
+    downloadAuditModel: DownloadAuditModel;
 
     cacheService?: ICacheService;
 
@@ -172,6 +183,7 @@ export class AsyncQueryService extends ProjectService {
     constructor(args: AsyncQueryServiceArguments) {
         super(args);
         this.queryHistoryModel = args.queryHistoryModel;
+        this.downloadAuditModel = args.downloadAuditModel;
         this.cacheService = args.cacheService;
         this.savedSqlModel = args.savedSqlModel;
         this.featureFlagModel = args.featureFlagModel;
@@ -325,7 +337,7 @@ export class AsyncQueryService extends ProjectService {
             await this.getWarehouseCredentials({
                 projectUuid: queryHistory.projectUuid,
                 userId: account.user.id,
-                isSessionUser: account.isSessionUser(),
+                isRegisteredUser: account.isRegisteredUser(),
             }),
         );
 
@@ -383,6 +395,46 @@ export class AsyncQueryService extends ProjectService {
             queryHistory.warehouseQueryMetadata?.type || 'unknown',
             queryHistory.context,
         );
+    }
+
+    /**
+     * Get the pivot details from the query history, this is a utility function to get the pivot details from the query history
+     * @param queryHistory Query history
+     * @returns Pivot details
+     */
+    private static getPivotDetailsFromQueryHistory(
+        queryHistory: QueryHistory,
+    ): ReadyQueryResultsPage['pivotDetails'] {
+        const {
+            pivotConfiguration,
+            pivotValuesColumns,
+            pivotTotalColumnCount,
+            originalColumns,
+        } = queryHistory;
+
+        const isPivoted = pivotConfiguration && pivotValuesColumns;
+
+        if (!isPivoted) {
+            return null;
+        }
+
+        const sortedValuesColumns = Object.values(pivotValuesColumns).sort(
+            (a, b) => {
+                if (a.columnIndex && b.columnIndex) {
+                    return a.columnIndex - b.columnIndex;
+                }
+                return 0;
+            },
+        );
+
+        return {
+            valuesColumns: sortedValuesColumns,
+            totalColumnCount: pivotTotalColumnCount,
+            indexColumn: pivotConfiguration.indexColumn,
+            groupByColumns: pivotConfiguration.groupByColumns,
+            sortBy: pivotConfiguration.sortBy,
+            originalColumns: originalColumns || {},
+        };
     }
 
     async getAsyncQueryResults({
@@ -558,19 +610,13 @@ export class AsyncQueryService extends ProjectService {
             );
         }
 
-        const {
-            pivotConfiguration,
-            pivotValuesColumns,
-            pivotTotalColumnCount,
-        } = queryHistory;
-
         if (!columns) {
             throw new UnexpectedServerError(
                 `No columns found for query ${queryUuid}`,
             );
         }
 
-        const returnObject = {
+        return {
             rows,
             columns,
             totalPageCount: pageCount,
@@ -584,34 +630,8 @@ export class AsyncQueryService extends ProjectService {
                 queryHistory.warehouseExecutionTimeMs ?? roundedDurationMs,
             resultsPageExecutionMs: roundedDurationMs,
             status,
-            pivotDetails: null,
-        };
-
-        const isPivoted = pivotConfiguration && pivotValuesColumns;
-
-        if (!isPivoted) {
-            return returnObject;
-        }
-
-        const sortedValuesColumns = Object.values(pivotValuesColumns).sort(
-            (a, b) => {
-                if (a.columnIndex && b.columnIndex) {
-                    return a.columnIndex - b.columnIndex;
-                }
-                return 0;
-            },
-        );
-
-        return {
-            ...returnObject,
-            pivotDetails: {
-                totalColumnCount: pivotTotalColumnCount,
-                valuesColumns: sortedValuesColumns,
-                indexColumn: pivotConfiguration.indexColumn,
-                groupByColumns: pivotConfiguration.groupByColumns,
-                sortBy: pivotConfiguration.sortBy,
-                originalColumns: originalColumns || {},
-            },
+            pivotDetails:
+                AsyncQueryService.getPivotDetailsFromQueryHistory(queryHistory),
         };
     }
 
@@ -766,10 +786,16 @@ export class AsyncQueryService extends ProjectService {
 
         const userUuid = account.user.id;
 
+        // If the account is a JWT user, we need to include the encoded JWT in the payload
+        const encodedJwt = account.isJwtUser()
+            ? account.authentication.source
+            : undefined;
+
         return this.schedulerClient.downloadAsyncQueryResults({
             ...payload,
             organizationUuid,
             userUuid,
+            encodedJwt,
         });
     }
 
@@ -836,6 +862,23 @@ export class AsyncQueryService extends ProjectService {
             throw new UnexpectedServerError('No columns found for query');
         }
 
+        try {
+            await this.downloadAuditModel.logDownload({
+                queryUuid,
+                userUuid: isJwtUser(account) ? null : account.user.userUuid,
+                organizationUuid,
+                projectUuid: projectUuid || null,
+                fileType: type || DownloadFileType.JSONL,
+                originalQueryContext: queryHistory.context || null,
+            });
+        } catch (error) {
+            this.logger.error('Failed to log download audit', {
+                queryUuid,
+                organizationUuid,
+                error: getErrorMessage(error),
+            });
+        }
+
         // TODO: We should use the columns data instead of fields. We need to: add format expression to columns type and refactor csv service, etc to use columns instead of fields
         // Note: Generate fields for SQL queries. As a workaround, we check the explore name to identify SQL queries and generate fields from columns.
         const resultFields =
@@ -870,6 +913,10 @@ export class AsyncQueryService extends ProjectService {
                         metricQuery: queryHistory.metricQuery,
                         projectUuid,
                         storageClient: this.storageClient,
+                        pivotDetails:
+                            AsyncQueryService.getPivotDetailsFromQueryHistory(
+                                queryHistory,
+                            ),
                         options: {
                             onlyRaw,
                             showTableNames,
@@ -907,6 +954,10 @@ export class AsyncQueryService extends ProjectService {
                         metricQuery: queryHistory.metricQuery,
                         storageClient: this.storageClient,
                         lightdashConfig: this.lightdashConfig,
+                        pivotDetails:
+                            AsyncQueryService.getPivotDetailsFromQueryHistory(
+                                queryHistory,
+                            ),
                         options: {
                             onlyRaw,
                             showTableNames,
@@ -1035,12 +1086,14 @@ export class AsyncQueryService extends ProjectService {
         queryTags,
         write,
         pivotConfiguration,
+        itemsMap,
     }: {
         warehouseClient: WarehouseClient;
         query: string;
         queryTags: RunQueryTags;
         write?: (rows: Record<string, unknown>[]) => void;
         pivotConfiguration?: PivotConfiguration;
+        itemsMap: ItemsMap;
     }): Promise<{
         columns: ResultColumns;
         warehouseResults: WarehouseExecuteAsyncQuery;
@@ -1127,12 +1180,37 @@ export class AsyncQueryService extends ProjectService {
                               currentRowIndex = row.row_index;
                           }
                       }
+
+                      const pivotValues =
+                          groupByColumns?.map((c) => {
+                              const field = itemsMap[c.reference];
+                              const rawValue = formatRawValue(
+                                  field,
+                                  row[c.reference],
+                              );
+                              const formattedValue = field
+                                  ? formatItemValue(
+                                        field,
+                                        row[c.reference],
+                                        false,
+                                    )
+                                  : String(rawValue);
+                              return {
+                                  referenceField: c.reference,
+                                  // value needs to be raw formatted so that dates match the subtotals and the formatted rows
+                                  value: rawValue,
+                                  // formatted value to match the display value in the frontend
+                                  formatted: formattedValue,
+                              };
+                          }) ?? [];
+
                       // Suffix the value column with the group by columns to avoid collisions.
                       // E.g. if we have a row with the value 1 and the group by columns are ['a', 'b'],
                       // then the value column will be 'value_1_a_b'
-                      const valueSuffix = groupByColumns
-                          ?.map((col) => row[col.reference])
-                          .join('_');
+                      const valueSuffix =
+                          pivotValues.length > 0
+                              ? pivotValues.map((p) => p.value).join('_')
+                              : '';
 
                       valuesColumns.forEach((col) => {
                           const valueColumnField =
@@ -1140,16 +1218,15 @@ export class AsyncQueryService extends ProjectService {
                                   col.reference,
                                   col.aggregation,
                               );
-                          const valueColumnReference = `${valueColumnField}_${valueSuffix}`;
+                          const valueColumnReference = valueSuffix
+                              ? `${valueColumnField}_${valueSuffix}`
+                              : valueColumnField;
 
                           valuesColumnData.set(valueColumnReference, {
                               referenceField: col.reference, // The original y field name
                               pivotColumnName: valueColumnReference, // The pivoted y field name and agg eg amount_avg_false
                               aggregation: col.aggregation,
-                              pivotValues: groupByColumns?.map((c) => ({
-                                  referenceField: c.reference,
-                                  value: row[c.reference],
-                              })),
+                              pivotValues,
                               columnIndex: row.column_index,
                           });
 
@@ -1213,7 +1290,6 @@ export class AsyncQueryService extends ProjectService {
     public async runAsyncWarehouseQuery({
         userId,
         isRegisteredUser,
-        isSessionUser,
         projectUuid,
         query,
         fieldsMap,
@@ -1251,7 +1327,7 @@ export class AsyncQueryService extends ProjectService {
             const warehouseCredentials = await this.getWarehouseCredentials({
                 projectUuid,
                 userId,
-                isSessionUser,
+                isRegisteredUser,
             });
 
             warehouseCredentialsType = warehouseCredentials.type;
@@ -1311,6 +1387,7 @@ export class AsyncQueryService extends ProjectService {
                 queryTags,
                 write: stream?.write,
                 pivotConfiguration,
+                itemsMap: fieldsMap,
             });
 
             this.analytics.track({
@@ -1416,6 +1493,47 @@ export class AsyncQueryService extends ProjectService {
         }
     }
 
+    private async getMetricQueryFields({
+        metricQuery,
+        dateZoom,
+        explore,
+        warehouseSqlBuilder,
+        projectUuid,
+    }: Pick<
+        ExecuteAsyncMetricQueryArgs,
+        'metricQuery' | 'dateZoom' | 'projectUuid'
+    > & {
+        warehouseSqlBuilder: WarehouseSqlBuilder;
+        explore: Explore;
+        pivotConfiguration?: PivotConfiguration;
+    }) {
+        const availableParameterDefinitions = await this.getAvailableParameters(
+            projectUuid,
+            explore,
+        );
+        const availableParameters = Object.keys(availableParameterDefinitions);
+
+        const exploreWithOverride = ProjectService.updateExploreWithDateZoom(
+            explore,
+            metricQuery,
+            warehouseSqlBuilder,
+            availableParameters,
+            dateZoom,
+        );
+
+        const compiledMetricQuery = compileMetricQuery({
+            explore: exploreWithOverride,
+            metricQuery,
+            warehouseSqlBuilder,
+            availableParameters,
+        });
+
+        return getFieldsFromMetricQuery(
+            compiledMetricQuery,
+            exploreWithOverride,
+        );
+    }
+
     private async prepareMetricQueryAsyncQueryArgs({
         account,
         metricQuery,
@@ -1424,12 +1542,14 @@ export class AsyncQueryService extends ProjectService {
         warehouseSqlBuilder,
         parameters,
         projectUuid,
+        pivotConfiguration,
     }: Pick<
         ExecuteAsyncMetricQueryArgs,
         'account' | 'metricQuery' | 'dateZoom' | 'parameters' | 'projectUuid'
     > & {
         warehouseSqlBuilder: WarehouseSqlBuilder;
         explore: Explore;
+        pivotConfiguration?: PivotConfiguration;
     }) {
         assertIsAccountWithOrg(account);
 
@@ -1452,6 +1572,7 @@ export class AsyncQueryService extends ProjectService {
             // ! TODO: Should validate the parameters to make sure they are valid from the options
             parameters,
             availableParameterDefinitions,
+            pivotConfiguration,
         });
 
         const fieldsWithOverrides: ItemsMap = Object.fromEntries(
@@ -1544,7 +1665,7 @@ export class AsyncQueryService extends ProjectService {
                         await this.getWarehouseCredentials({
                             projectUuid,
                             userId: account.user.id,
-                            isSessionUser: account.isSessionUser(),
+                            isRegisteredUser: account.isRegisteredUser(),
                         });
 
                     const warehouseCredentialsType = warehouseCredentials.type;
@@ -1718,7 +1839,6 @@ export class AsyncQueryService extends ProjectService {
                     void this.runAsyncWarehouseQuery({
                         userId: account.user.id,
                         isRegisteredUser: account.isRegisteredUser(),
-                        isSessionUser: account.isSessionUser(),
                         projectUuid,
                         query,
                         fieldsMap,
@@ -1808,7 +1928,7 @@ export class AsyncQueryService extends ProjectService {
         const warehouseCredentials = await this.getWarehouseCredentials({
             projectUuid,
             userId: account.user.id,
-            isSessionUser: account.isSessionUser(),
+            isRegisteredUser: account.isRegisteredUser(),
         });
 
         const warehouseSqlBuilder = warehouseSqlBuilderFromType(
@@ -1838,6 +1958,7 @@ export class AsyncQueryService extends ProjectService {
             warehouseSqlBuilder,
             parameters: combinedParameters,
             projectUuid,
+            pivotConfiguration,
         });
 
         const { queryUuid, cacheMetadata } = await this.executeAsyncQuery(
@@ -1974,7 +2095,7 @@ export class AsyncQueryService extends ProjectService {
         const warehouseCredentials = await this.getWarehouseCredentials({
             projectUuid,
             userId: account.user.id,
-            isSessionUser: account.isSessionUser(),
+            isRegisteredUser: account.isRegisteredUser(),
         });
 
         const warehouseSqlBuilder = warehouseSqlBuilderFromType(
@@ -1990,19 +2111,10 @@ export class AsyncQueryService extends ProjectService {
             savedChartParameters,
         );
 
-        const {
-            sql,
-            fields,
-            warnings,
-            parameterReferences,
-            missingParameterReferences,
-            usedParameters,
-        } = await this.prepareMetricQueryAsyncQueryArgs({
-            account,
+        const fields = await this.getMetricQueryFields({
             metricQuery: metricQueryWithLimit,
             explore,
             warehouseSqlBuilder,
-            parameters: combinedParameters,
             projectUuid,
         });
 
@@ -2014,6 +2126,23 @@ export class AsyncQueryService extends ProjectService {
               )
             : undefined;
 
+        const {
+            sql,
+            fields: fieldsWithOverrides,
+            warnings,
+            parameterReferences,
+            missingParameterReferences,
+            usedParameters,
+        } = await this.prepareMetricQueryAsyncQueryArgs({
+            account,
+            metricQuery: metricQueryWithLimit,
+            explore,
+            warehouseSqlBuilder,
+            parameters: combinedParameters,
+            projectUuid,
+            pivotConfiguration,
+        });
+
         const { queryUuid, cacheMetadata } = await this.executeAsyncQuery(
             {
                 account,
@@ -2023,7 +2152,7 @@ export class AsyncQueryService extends ProjectService {
                 queryTags,
                 invalidateCache,
                 metricQuery: metricQueryWithLimit,
-                fields,
+                fields: fieldsWithOverrides,
                 sql,
                 originalColumns: undefined,
                 missingParameterReferences,
@@ -2036,7 +2165,7 @@ export class AsyncQueryService extends ProjectService {
             queryUuid,
             cacheMetadata,
             metricQuery: metricQueryWithLimit,
-            fields,
+            fields: fieldsWithOverrides,
             warnings,
             parameterReferences,
             usedParametersValues: usedParameters,
@@ -2226,7 +2355,7 @@ export class AsyncQueryService extends ProjectService {
         const warehouseCredentials = await this.getWarehouseCredentials({
             projectUuid,
             userId: account.user.id,
-            isSessionUser: account.isSessionUser(),
+            isRegisteredUser: account.isRegisteredUser(),
         });
 
         const warehouseSqlBuilder = warehouseSqlBuilderFromType(
@@ -2234,7 +2363,9 @@ export class AsyncQueryService extends ProjectService {
             warehouseCredentials.startOfWeek,
         );
 
-        const dashboard = await this.dashboardModel.getById(dashboardUuid);
+        const dashboard = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuid,
+        );
         const dashboardParameters = getDashboardParametersValuesMap(dashboard);
 
         // Combine default parameter values, dashboard parameters, and request parameters first
@@ -2245,9 +2376,25 @@ export class AsyncQueryService extends ProjectService {
             dashboardParameters,
         );
 
+        const fields = await this.getMetricQueryFields({
+            metricQuery: metricQueryWithLimit,
+            explore,
+            warehouseSqlBuilder,
+            projectUuid,
+            dateZoom,
+        });
+
+        const pivotConfiguration = pivotResults
+            ? derivePivotConfigurationFromChart(
+                  savedChart,
+                  metricQueryWithLimit,
+                  fields,
+              )
+            : undefined;
+
         const {
             sql,
-            fields,
+            fields: fieldsWithOverrides,
             parameterReferences,
             missingParameterReferences,
             usedParameters,
@@ -2259,15 +2406,8 @@ export class AsyncQueryService extends ProjectService {
             warehouseSqlBuilder,
             parameters: combinedParameters,
             projectUuid,
+            pivotConfiguration,
         });
-
-        const pivotConfiguration = pivotResults
-            ? derivePivotConfigurationFromChart(
-                  savedChart,
-                  metricQueryWithLimit,
-                  fields,
-              )
-            : undefined;
 
         const { queryUuid, cacheMetadata } = await this.executeAsyncQuery(
             {
@@ -2279,7 +2419,7 @@ export class AsyncQueryService extends ProjectService {
                 queryTags,
                 invalidateCache,
                 dateZoom,
-                fields,
+                fields: fieldsWithOverrides,
                 sql,
                 originalColumns: undefined,
                 missingParameterReferences,
@@ -2293,7 +2433,7 @@ export class AsyncQueryService extends ProjectService {
             cacheMetadata,
             appliedDashboardFilters,
             metricQuery: metricQueryWithLimit,
-            fields,
+            fields: fieldsWithOverrides,
             parameterReferences,
             usedParametersValues: usedParameters,
         };
@@ -2375,10 +2515,7 @@ export class AsyncQueryService extends ProjectService {
 
         const isValidNonCustomDimension = (
             dimension: CustomDimension | CompiledDimension,
-        ) =>
-            !isCustomDimension(dimension) &&
-            !dimension.timeInterval &&
-            !dimension.hidden;
+        ) => !isCustomDimension(dimension) && !dimension.hidden;
 
         const availableDimensions = allDimensions.filter(
             (dimension) =>
@@ -2392,6 +2529,16 @@ export class AsyncQueryService extends ProjectService {
                           `${dimension.table}.${dimension.name}`,
                       )
                     : true),
+        );
+        const availableMetrics = getMetrics(explore).filter(
+            (metric) =>
+                availableTables.has(metric.table) &&
+                !metric.hidden &&
+                ((itemShowUnderlyingValues?.includes(metric.name) &&
+                    itemShowUnderlyingTable === metric.table) ||
+                    itemShowUnderlyingValues?.includes(
+                        `${metric.table}.${metric.name}`,
+                    )),
         );
 
         const requestParameters: ExecuteAsyncUnderlyingDataRequestParams = {
@@ -2417,7 +2564,7 @@ export class AsyncQueryService extends ProjectService {
                 (dimension) => !isCustomBinDimension(dimension),
             ),
             filters,
-            metrics: [],
+            metrics: availableMetrics.map(getItemId),
             sorts: [],
             limit: limit ?? 500,
             tableCalculations: [],
@@ -2427,7 +2574,7 @@ export class AsyncQueryService extends ProjectService {
         const warehouseCredentials = await this.getWarehouseCredentials({
             projectUuid,
             userId: account.user.id,
-            isSessionUser: account.isSessionUser(),
+            isRegisteredUser: account.isRegisteredUser(),
         });
 
         const warehouseSqlBuilder = warehouseSqlBuilderFromType(
@@ -2602,7 +2749,7 @@ export class AsyncQueryService extends ProjectService {
             await this.getWarehouseCredentials({
                 projectUuid,
                 userId: account.user.id,
-                isSessionUser: account.authentication.type === 'session',
+                isRegisteredUser: account.isRegisteredUser(),
             }),
         );
 
@@ -2616,10 +2763,22 @@ export class AsyncQueryService extends ProjectService {
         // Get one row to get the column definitions
         const columns: { name: string; type: DimensionType }[] = [];
 
-        // Replace parameters in SQL before running column discovery query
+        // Get user attributes for replacement
+        const { userAttributes, intrinsicUserAttributes } =
+            await this.getUserAttributes({ account });
+
+        // Replace user attributes first
+        const sqlWithUserAttributes = replaceUserAttributesAsStrings(
+            sql,
+            intrinsicUserAttributes,
+            userAttributes,
+            warehouseConnection.warehouseClient,
+        );
+
+        // Then replace parameters in SQL before running column discovery query
         const { replacedSql: columnDiscoverySql } =
             safeReplaceParametersWithSqlBuilder(
-                sql,
+                sqlWithUserAttributes,
                 parameters ?? {},
                 warehouseConnection.warehouseClient,
             );
@@ -2660,7 +2819,7 @@ export class AsyncQueryService extends ProjectService {
 
         const virtualView = createVirtualViewObject(
             SQL_QUERY_MOCK_EXPLORER_NAME,
-            sql,
+            sqlWithUserAttributes,
             vizColumns,
             warehouseConnection.warehouseClient,
         );
@@ -2742,7 +2901,7 @@ export class AsyncQueryService extends ProjectService {
             {
                 referenceMap,
                 select: selectColumns,
-                from: { name: 'sql_query', sql },
+                from: { name: 'sql_query', sql: sqlWithUserAttributes },
                 filters: appliedDashboardFilters
                     ? {
                           id: uuidv4(),
@@ -2911,7 +3070,9 @@ export class AsyncQueryService extends ProjectService {
             throw new ForbiddenError("You don't have access to this chart");
         }
 
-        const dashboard = await this.dashboardModel.getById(dashboardUuid);
+        const dashboard = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuid,
+        );
         const dashboardParameters = getDashboardParametersValuesMap(dashboard);
 
         // Combine default parameter values, dashboard parameters, and request parameters first

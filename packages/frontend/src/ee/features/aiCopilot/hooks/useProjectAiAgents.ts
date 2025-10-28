@@ -10,9 +10,13 @@ import type {
     ApiAiAgentThreadMessageVizQuery,
     ApiAiAgentThreadResponse,
     ApiAiAgentThreadSummaryListResponse,
+    ApiAppendInstructionRequest,
+    ApiAppendInstructionResponse,
     ApiCreateAiAgent,
     ApiCreateAiAgentResponse,
     ApiError,
+    ApiRevertChangeRequest,
+    ApiRevertChangeResponse,
     ApiSuccessEmpty,
     ApiUpdateAiAgent,
 } from '@lightdash/common';
@@ -379,7 +383,8 @@ const createOptimisticMessages = (
             role: 'assistant' as const,
             uuid: promptUuid,
             threadUuid,
-            message: '',
+            // Non-empty message to avoid brief flash of blank message
+            message: ' ',
             createdAt: new Date().toISOString(),
             user: {
                 name: agent?.name ?? 'Unknown',
@@ -390,8 +395,9 @@ const createOptimisticMessages = (
             metricQuery: null,
             humanScore: null,
             toolCalls: [],
+            toolResults: [],
             savedQueryUuid: null,
-            artifact: null,
+            artifacts: null,
         },
     ];
 };
@@ -827,6 +833,77 @@ export const useSavePromptQuery = (
     });
 };
 
+const revertChange = async ({
+    projectUuid,
+    agentUuid,
+    threadUuid,
+    promptUuid,
+    changeUuid,
+}: {
+    projectUuid: string;
+    agentUuid: string;
+    threadUuid: string;
+    promptUuid: string;
+    changeUuid: string;
+}) =>
+    lightdashApi<ApiRevertChangeResponse>({
+        url: `/projects/${projectUuid}/aiAgents/${agentUuid}/threads/${threadUuid}/messages/${promptUuid}/revert-change`,
+        method: 'POST',
+        body: JSON.stringify({
+            changeUuid,
+        } satisfies ApiRevertChangeRequest),
+    });
+
+export const useRevertChangeMutation = (
+    projectUuid: string,
+    agentUuid: string,
+    threadUuid: string,
+) => {
+    const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    const { showToastApiError, showToastSuccess } = useToaster();
+
+    return useMutation<
+        ApiRevertChangeResponse,
+        ApiError,
+        { promptUuid: string; changeUuid: string }
+    >({
+        mutationFn: ({ promptUuid, changeUuid }) => {
+            return revertChange({
+                projectUuid,
+                agentUuid,
+                threadUuid,
+                promptUuid,
+                changeUuid,
+            });
+        },
+        onSuccess: () => {
+            showToastSuccess({
+                title: 'Change reverted successfully',
+            });
+            void queryClient.invalidateQueries([
+                AI_AGENTS_KEY,
+                projectUuid,
+                agentUuid,
+                'threads',
+                threadUuid,
+            ]);
+        },
+        onError: ({ error }) => {
+            if (error?.statusCode === 403) {
+                void navigate(
+                    `/projects/${projectUuid}/ai-agents/not-authorized`,
+                );
+            } else {
+                showToastApiError({
+                    title: 'Failed to revert change',
+                    apiError: error,
+                });
+            }
+        },
+    });
+};
+
 const updateArtifactVersion = async ({
     projectUuid,
     agentUuid,
@@ -1061,5 +1138,41 @@ export const useAiAgentDashboardChartVizQuery = (
             useQueryOptions?.onError?.(error);
         },
         enabled: !!health.data && !!org.data && useQueryOptions?.enabled,
+    });
+};
+
+const appendInstruction = async (
+    projectUuid: string,
+    agentUuid: string,
+    data: ApiAppendInstructionRequest,
+) =>
+    lightdashApi<ApiAppendInstructionResponse['results']>({
+        url: `/projects/${projectUuid}/aiAgents/${agentUuid}/append-instruction`,
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+export const useAppendInstructionMutation = (
+    projectUuid: string,
+    agentUuid: string,
+) => {
+    const { showToastApiError, showToastSuccess } = useToaster();
+    return useMutation<
+        ApiAppendInstructionResponse['results'],
+        ApiError,
+        ApiAppendInstructionRequest
+    >({
+        mutationFn: (data) => appendInstruction(projectUuid, agentUuid, data),
+        onSuccess: () => {
+            showToastSuccess({
+                title: 'Instruction saved successfully',
+            });
+        },
+        onError: ({ error }) => {
+            showToastApiError({
+                title: 'Failed to save instruction',
+                apiError: error,
+            });
+        },
     });
 };

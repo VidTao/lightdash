@@ -2,8 +2,17 @@ import { FeatureFlags, getItemMap } from '@lightdash/common';
 import { Box, Text } from '@mantine/core';
 import { memo, useCallback, useMemo, useState, type FC } from 'react';
 
+import {
+    selectAdditionalMetrics,
+    selectColumnOrder,
+    selectIsEditMode,
+    selectTableCalculations,
+    selectTableName,
+    useExplorerSelector,
+} from '../../../features/explorer/store';
 import { useColumns } from '../../../hooks/useColumns';
 import { useExplore } from '../../../hooks/useExplore';
+import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { useFeatureFlag } from '../../../hooks/useFeatureFlagEnabled';
 import type {
     useGetReadyQueryResults,
@@ -47,105 +56,81 @@ const getQueryStatus = (
 
 export const ExplorerResults = memo(() => {
     const columns = useColumns();
-    const isEditMode = useExplorerContext(
-        (context) => context.state.isEditMode,
+    const isEditMode = useExplorerSelector(selectIsEditMode);
+    const activeTableName = useExplorerSelector(selectTableName);
+    const additionalMetrics = useExplorerSelector(selectAdditionalMetrics);
+    const tableCalculations = useExplorerSelector(selectTableCalculations);
+
+    // Get chart config for column properties
+    const chartConfig = useExplorerContext(
+        (context) => context.state.unsavedChartVersion.chartConfig,
     );
-    const activeTableName = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.tableName,
-    );
+    const columnProperties =
+        chartConfig.type === 'table' && chartConfig.config?.columns
+            ? chartConfig.config.columns
+            : undefined;
+
+    // Get query state from new hook
+    const {
+        query,
+        queryResults,
+        unpivotedQuery,
+        unpivotedQueryResults,
+        missingRequiredParameters,
+    } = useExplorerQuery();
+
     const { data: useSqlPivotResults } = useFeatureFlag(
         FeatureFlags.UseSqlPivotResults,
     );
-    const dimensions = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery.dimensions,
-    );
-    const metrics = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery.metrics,
-    );
-    const explorerColumnOrder = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.tableConfig.columnOrder,
+
+    const dimensions = query.data?.metricQuery?.dimensions ?? [];
+    const metrics = query.data?.metricQuery?.metrics ?? [];
+    const explorerColumnOrder = useExplorerSelector(selectColumnOrder);
+
+    const hasPivotConfig = useExplorerContext(
+        (context) => !!context.state.unsavedChartVersion.pivotConfig,
     );
 
-    const resultsData = useExplorerContext((context) => {
-        const hasPivotConfig = !!context.state.unsavedChartVersion.pivotConfig;
+    const resultsData = useMemo(() => {
         const isSqlPivotEnabled = !!useSqlPivotResults?.enabled;
-        const hasUnpivotedQuery = !!context.unpivotedQuery?.data?.queryUuid;
-        const hasMainQuery = !!context.query.data?.queryUuid;
+        const hasUnpivotedQuery = !!unpivotedQuery?.data?.queryUuid;
 
         // Only use unpivoted data when SQL pivot is enabled
         const shouldUseUnpivotedData =
             isSqlPivotEnabled && hasPivotConfig && hasUnpivotedQuery;
 
-        // Check if the main query is currently loading
-        const isMainQueryLoading =
-            context.query.isFetching ||
-            context.queryResults.isFetchingFirstPage ||
-            context.query.status === 'loading';
-
-        // Only check unpivoted query states if SQL pivot is enabled
-        if (isSqlPivotEnabled) {
-            // Check if we need to show loading for unpivoted data
-            const isUnpivotedQueryLoading =
-                context.unpivotedQuery.isFetching ||
-                context.unpivotedQueryResults.isFetchingFirstPage ||
-                context.unpivotedQuery.status === 'loading';
-
-            // Only consider needing unpivoted query if we actually expect it to run
-            const needsUnpivotedQuery =
-                hasPivotConfig &&
-                hasMainQuery &&
-                !hasUnpivotedQuery &&
-                !context.unpivotedQuery.isFetching &&
-                !context.unpivotedQuery.data &&
-                !isMainQueryLoading; // Don't show loading if main query is still running
-
-            const shouldShowLoadingForUnpivoted =
-                hasPivotConfig &&
-                hasMainQuery &&
-                !hasUnpivotedQuery &&
-                !isMainQueryLoading && // Don't show loading if main query is still running
-                (isUnpivotedQueryLoading || needsUnpivotedQuery);
-
-            if (shouldShowLoadingForUnpivoted) {
-                // Show loading state for pivoted charts waiting for unpivoted data
-                return {
-                    rows: undefined,
-                    totalResults: undefined,
-                    isFetchingRows: false,
-                    fetchMoreRows: () => {},
-                    status: 'loading' as const,
-                    apiError: null,
-                };
-            }
-        }
-
         if (shouldUseUnpivotedData) {
-            const queryResults = context.unpivotedQueryResults;
-            const query = context.unpivotedQuery;
-
             return {
-                rows: queryResults.rows,
-                totalResults: queryResults.totalResults,
+                rows: unpivotedQueryResults.rows,
+                totalResults: unpivotedQueryResults.totalResults,
                 isFetchingRows:
-                    queryResults.isFetchingRows && !queryResults.error,
-                fetchMoreRows: queryResults.fetchMoreRows,
-                status: getQueryStatus(query, queryResults),
-                apiError: query.error ?? queryResults.error,
+                    unpivotedQueryResults.isFetchingRows &&
+                    !unpivotedQueryResults.error,
+                fetchMoreRows: unpivotedQueryResults.fetchMoreRows,
+                status: getQueryStatus(unpivotedQuery, unpivotedQueryResults),
+                apiError: unpivotedQuery.error ?? unpivotedQueryResults.error,
             };
         }
 
-        const queryResults = context.queryResults;
-        const query = context.query;
-
-        return {
+        const finalStatus = getQueryStatus(query, queryResults);
+        const result = {
             rows: queryResults.rows,
             totalResults: queryResults.totalResults,
             isFetchingRows: queryResults.isFetchingRows && !queryResults.error,
             fetchMoreRows: queryResults.fetchMoreRows,
-            status: getQueryStatus(query, queryResults),
+            status: finalStatus,
             apiError: query.error ?? queryResults.error,
         };
-    });
+
+        return result;
+    }, [
+        useSqlPivotResults?.enabled,
+        hasPivotConfig,
+        query,
+        queryResults,
+        unpivotedQuery,
+        unpivotedQueryResults,
+    ]);
 
     const {
         rows,
@@ -163,17 +148,6 @@ export const ExplorerResults = memo(() => {
         useExplore(activeTableName, {
             refetchOnMount: false,
         });
-    const tableCalculations = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.tableCalculations,
-    );
-    const additionalMetrics = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.additionalMetrics,
-    );
-    const missingRequiredParameters = useExplorerContext(
-        (context) => context.state.missingRequiredParameters,
-    );
     const [isExpandModalOpened, setIsExpandModalOpened] = useState(false);
     const [expandData, setExpandData] = useState<{
         name: string;
@@ -271,7 +245,7 @@ export const ExplorerResults = memo(() => {
 
     return (
         <TrackSection name={SectionName.RESULTS_TABLE}>
-            <Box px="xs" py="lg">
+            <Box px="xs" py="lg" data-testid="results-table-container">
                 <Table
                     status={status}
                     errorDetail={apiError?.error}
@@ -290,6 +264,7 @@ export const ExplorerResults = memo(() => {
                     pagination={pagination}
                     footer={footer}
                     showSubtotals={false}
+                    columnProperties={columnProperties}
                 />
                 <JsonViewerModal
                     heading={`Field: ${expandData.name}`}

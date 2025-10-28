@@ -1,32 +1,41 @@
 import { Box } from '@mantine-8/core';
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router';
+import {
+    explorerActions,
+    selectIsEditMode,
+    selectIsParametersExpanded,
+    selectParameterDefinitions,
+    selectParameters,
+    selectTableName,
+    useExplorerDispatch,
+    useExplorerSelector,
+} from '../../../features/explorer/store';
 import { ParameterSelection } from '../../../features/parameters';
+import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { ExplorerSection } from '../../../providers/Explorer/types';
-import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import CollapsableCard from '../../common/CollapsableCard/CollapsableCard';
 
 const ParametersCard = memo(
     ({ parameterReferences }: { parameterReferences?: string[] }) => {
         const { projectUuid } = useParams<{ projectUuid: string }>();
-        const expandedSections = useExplorerContext(
-            (context) => context.state.expandedSections,
-        );
 
-        const isEditMode = useExplorerContext(
-            (context) => context.state.isEditMode,
+        const paramsIsOpen = useExplorerSelector(selectIsParametersExpanded);
+        const isEditMode = useExplorerSelector(selectIsEditMode);
+        const tableName = useExplorerSelector(selectTableName);
+        const parameterDefinitions = useExplorerSelector(
+            selectParameterDefinitions,
         );
+        const parameterValues = useExplorerSelector(selectParameters);
+        const dispatch = useExplorerDispatch();
 
-        const tableName = useExplorerContext(
-            (context) => context.state.unsavedChartVersion.tableName,
-        );
+        const { missingRequiredParameters } = useExplorerQuery();
 
-        const toggleExpandedSection = useExplorerContext(
-            (context) => context.actions.toggleExpandedSection,
-        );
-
-        const parameterDefinitions = useExplorerContext(
-            (context) => context.state.parameterDefinitions,
+        const toggleExpandedSection = useCallback(
+            (section: ExplorerSection) => {
+                dispatch(explorerActions.toggleExpandedSection(section));
+            },
+            [dispatch],
         );
 
         const filteredParameterDefinitions = useMemo(() => {
@@ -37,17 +46,19 @@ const ParametersCard = memo(
             );
         }, [parameterDefinitions, parameterReferences]);
 
-        const parameterValues = useExplorerContext(
-            (context) => context.state.unsavedChartVersion.parameters || {},
+        const setParameter = useCallback(
+            (
+                key: string,
+                value: string | number | string[] | number[] | null,
+            ) => {
+                dispatch(explorerActions.setParameter({ key, value }));
+            },
+            [dispatch],
         );
 
-        const setParameter = useExplorerContext(
-            (context) => context.actions.setParameter,
-        );
-
-        const clearAllParameters = useExplorerContext(
-            (context) => context.actions.clearAllParameters,
-        );
+        const clearAllParameters = useCallback(() => {
+            dispatch(explorerActions.clearAllParameters());
+        }, [dispatch]);
 
         const handleParameterChange = (
             paramKey: string,
@@ -55,14 +66,6 @@ const ParametersCard = memo(
         ) => {
             setParameter(paramKey, value);
         };
-
-        const paramsIsOpen = expandedSections.includes(
-            ExplorerSection.PARAMETERS,
-        );
-
-        const missingRequiredParameters = useExplorerContext(
-            (context) => context.state.missingRequiredParameters,
-        );
 
         return (
             <CollapsableCard

@@ -5,6 +5,7 @@ import {
     toolDashboardArgsSchema,
     toolDashboardArgsSchemaTransformed,
     ToolDashboardArgsTransformed,
+    toolDashboardOutputSchema,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import type {
@@ -16,6 +17,7 @@ import type {
     UpdateProgressFn,
     UpdatePromptFn,
 } from '../types/aiAgentDependencies';
+import { toModelOutput } from '../utils/toModelOutput';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
 import { validateBarVizConfig } from '../utils/validateBarVizConfig';
 import { validateTableVizConfig } from '../utils/validateTableVizConfig';
@@ -37,8 +39,6 @@ export const getGenerateDashboard = ({
     getPrompt,
     createOrUpdateArtifact,
 }: Dependencies) => {
-    const schema = toolDashboardArgsSchema;
-
     const validateVisualization = (
         visualization: ToolDashboardArgsTransformed['visualizations'][0],
         explore: Explore,
@@ -61,14 +61,18 @@ export const getGenerateDashboard = ({
 
     return tool({
         description: toolDashboardArgsSchema.description,
-        parameters: schema,
+        inputSchema: toolDashboardArgsSchema,
+        outputSchema: toolDashboardOutputSchema,
         execute: async (toolArgs) => {
             try {
-                const args = toolDashboardArgsSchemaTransformed.parse(toolArgs);
+                const transformedToolArgs =
+                    toolDashboardArgsSchemaTransformed.parse(toolArgs);
 
                 const errors: string[] = [];
+                const failedVisualizations: string[] = [];
+                const validIndices = new Set<number>();
 
-                const vizPromises = args.visualizations.map(
+                const vizPromises = transformedToolArgs.visualizations.map(
                     async (viz, index) => {
                         try {
                             const explore = await getExplore({
@@ -76,6 +80,7 @@ export const getGenerateDashboard = ({
                             });
 
                             validateVisualization(viz, explore);
+                            validIndices.add(index);
                             return viz;
                         } catch (error) {
                             const errorMessage = toolErrorHandler(
@@ -85,38 +90,84 @@ export const getGenerateDashboard = ({
                                 } (${viz.title})`,
                             );
                             errors.push(errorMessage);
+                            failedVisualizations.push(viz.title);
                             return null;
                         }
                     },
                 );
 
-                await Promise.all(vizPromises);
+                const validatedVisualizations = await Promise.all(vizPromises);
 
+                // Filter out null values (failed validations)
+                const validVisualizations = validatedVisualizations.filter(
+                    (
+                        viz,
+                    ): viz is ToolDashboardArgsTransformed['visualizations'][number] =>
+                        viz !== null,
+                );
+
+                // Check if we have at least one valid visualization
+                if (validVisualizations.length === 0) {
+                    return {
+                        result: `Dashboard generation failed - all visualizations had validation errors:\n${errors.join(
+                            '\n',
+                        )}
+                    Please fix these issues and try again.
+                    `,
+                        metadata: {
+                            status: 'error',
+                        },
+                    };
+                }
+
+                // Create dashboard with valid visualizations only
                 const prompt = await getPrompt();
-                // Create dashboard-level artifact
+
                 await createOrUpdateArtifact({
                     threadUuid: prompt.threadUuid,
                     promptUuid: prompt.promptUuid,
                     artifactType: 'dashboard',
                     title: toolArgs.title,
                     description: toolArgs.description,
-                    vizConfig: toolArgs,
+                    vizConfig: {
+                        ...toolArgs,
+                        visualizations: toolArgs.visualizations.filter(
+                            (_, index) => validIndices.has(index),
+                        ),
+                    },
                 });
 
-                // Return summary of generated dashboard
-
+                // Return appropriate message based on whether some visualizations failed
                 if (errors.length > 0) {
-                    return `Generated dashboard with errors:\n${errors.join(
-                        '\n',
-                    )}
-                    Try again if you believe the error(s) can be resolved, if not, try again with the visualizations that did not fail.
-                    `;
+                    return {
+                        result: `Dashboard created with ${
+                            validVisualizations.length
+                        } visualization${
+                            validVisualizations.length > 1 ? 's' : ''
+                        }.\n\nThe following visualizations were excluded due to validation errors:\n${failedVisualizations
+                            .map((title) => `- ${title}`)
+                            .join('\n')}\n\nErrors:\n${errors.join('\n')}`,
+                        metadata: {
+                            status: 'success',
+                        },
+                    };
                 }
 
-                return `Success`;
+                return {
+                    result: `Success`,
+                    metadata: {
+                        status: 'success',
+                    },
+                };
             } catch (e) {
-                return toolErrorHandler(e, 'Error generating dashboard.');
+                return {
+                    result: toolErrorHandler(e, 'Error generating dashboard.'),
+                    metadata: {
+                        status: 'error',
+                    },
+                };
             }
         },
+        toModelOutput: (output) => toModelOutput(output),
     });
 };

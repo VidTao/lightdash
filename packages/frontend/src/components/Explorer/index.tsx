@@ -1,12 +1,31 @@
 import { subject } from '@casl/ability';
+import { getAvailableParametersFromTables } from '@lightdash/common';
 import { Stack } from '@mantine/core';
-import { memo, useEffect, type FC } from 'react';
+import { memo, useEffect, useMemo, type FC } from 'react';
+import {
+    explorerActions,
+    selectAdditionalMetricModal,
+    selectColumnOrder,
+    selectDimensions,
+    selectFormatModal,
+    selectIsEditMode,
+    selectMetricQuery,
+    selectMetrics,
+    selectParameterReferences,
+    selectParameters,
+    selectSorts,
+    selectTableName,
+    useExplorerDispatch,
+    useExplorerSelector,
+} from '../../features/explorer/store';
 import { useOrganization } from '../../hooks/organization/useOrganization';
+import { useParameters } from '../../hooks/parameters/useParameters';
 import { useCompiledSql } from '../../hooks/useCompiledSql';
+import useDefaultSortField from '../../hooks/useDefaultSortField';
 import { useExplore } from '../../hooks/useExplore';
+import { useExplorerQuery } from '../../hooks/useExplorerQuery';
 import { useProjectUuid } from '../../hooks/useProjectUuid';
 import { Can } from '../../providers/Ability';
-import useExplorerContext from '../../providers/Explorer/useExplorerContext';
 import { DrillDownModal } from '../MetricQueryData/DrillDownModal';
 import MetricQueryDataProvider from '../MetricQueryData/MetricQueryDataProvider';
 import UnderlyingDataModal from '../MetricQueryData/UnderlyingDataModal';
@@ -23,80 +42,122 @@ import { WriteBackModal } from './WriteBackModal';
 
 const Explorer: FC<{ hideHeader?: boolean }> = memo(
     ({ hideHeader = false }) => {
-        const unsavedChartVersionTableName = useExplorerContext(
-            (context) => context.state.unsavedChartVersion.tableName,
+        const tableName = useExplorerSelector(selectTableName);
+        const dimensions = useExplorerSelector(selectDimensions);
+        const metrics = useExplorerSelector(selectMetrics);
+        const columnOrder = useExplorerSelector(selectColumnOrder);
+        const sorts = useExplorerSelector(selectSorts);
+        const metricQuery = useExplorerSelector(selectMetricQuery);
+        const isEditMode = useExplorerSelector(selectIsEditMode);
+        const parameterReferencesFromRedux = useExplorerSelector(
+            selectParameterReferences,
         );
-        const unsavedChartVersionMetricQuery = useExplorerContext(
-            (context) => context.state.unsavedChartVersion.metricQuery,
+        const parameters = useExplorerSelector(selectParameters);
+
+        const { isOpen: isAdditionalMetricModalOpen } = useExplorerSelector(
+            selectAdditionalMetricModal,
         );
-        const isEditMode = useExplorerContext(
-            (context) => context.state.isEditMode,
-        );
+        const { isOpen: isFormatModalOpen } =
+            useExplorerSelector(selectFormatModal);
+
+        const dispatch = useExplorerDispatch();
+
         const projectUuid = useProjectUuid();
 
-        const queryUuid = useExplorerContext(
-            (context) => context.query?.data?.queryUuid,
-        );
+        const { query } = useExplorerQuery();
+        const queryUuid = query.data?.queryUuid;
 
-        const setParameterReferences = useExplorerContext(
-            (context) => context.actions.setParameterReferences,
-        );
-
-        const { data: explore } = useExplore(unsavedChartVersionTableName);
+        const { data: explore } = useExplore(tableName);
 
         const { data: { parameterReferences } = {}, isError } = useCompiledSql({
-            enabled: !!unsavedChartVersionTableName,
+            enabled: !!tableName,
         });
 
-        const isSavedChart = useExplorerContext(
-            (context) => !!context.state.savedChart,
+        const chartVersionForSort = useMemo(
+            () => ({
+                tableName,
+                metricQuery: {
+                    dimensions,
+                    metrics,
+                },
+                tableConfig: {
+                    columnOrder,
+                },
+            }),
+            [tableName, dimensions, metrics, columnOrder],
         );
 
-        const fromDashboard = useExplorerContext(
-            (context) => context.state.fromDashboard,
-        );
-
-        const previouslyFetchedState = useExplorerContext(
-            (context) => context.state.previouslyFetchedState,
-        );
-
-        const fetchResults = useExplorerContext(
-            (context) => context.actions.fetchResults,
-        );
+        const defaultSort = useDefaultSortField(chartVersionForSort as any);
 
         useEffect(() => {
-            if (!previouslyFetchedState && (fromDashboard || isSavedChart)) {
-                fetchResults();
+            if (tableName && !sorts.length && defaultSort) {
+                dispatch(explorerActions.setSortFields([defaultSort]));
             }
-        }, [previouslyFetchedState, fetchResults, fromDashboard, isSavedChart]);
+        }, [tableName, sorts.length, defaultSort, dispatch]);
 
         useEffect(() => {
             if (isError) {
                 // If there's an error, we set the parameter references to an empty array
-                setParameterReferences([]);
+                dispatch(explorerActions.setParameterReferences([]));
             } else {
                 // While there's no parameter references array the request hasn't run, so we set it explicitly to null
-                setParameterReferences(parameterReferences ?? null);
+                dispatch(
+                    explorerActions.setParameterReferences(
+                        parameterReferences ?? null,
+                    ),
+                );
             }
-        }, [parameterReferences, setParameterReferences, isError]);
+        }, [parameterReferences, dispatch, isError]);
+
+        const { data: projectParameters } = useParameters(
+            projectUuid,
+            parameterReferencesFromRedux ?? undefined,
+            {
+                enabled: !!parameterReferencesFromRedux?.length,
+            },
+        );
+
+        const exploreParameterDefinitions = useMemo(() => {
+            return explore
+                ? getAvailableParametersFromTables(
+                      Object.values(explore.tables),
+                  )
+                : {};
+        }, [explore]);
+
+        const parameterDefinitions = useMemo(() => {
+            return {
+                ...(projectParameters ?? {}),
+                ...(exploreParameterDefinitions ?? {}),
+            };
+        }, [projectParameters, exploreParameterDefinitions]);
+
+        useEffect(() => {
+            dispatch(
+                explorerActions.setParameterDefinitions(parameterDefinitions),
+            );
+        }, [parameterDefinitions, dispatch]);
 
         const { data: org } = useOrganization();
 
         return (
             <MetricQueryDataProvider
-                metricQuery={unsavedChartVersionMetricQuery}
-                tableName={unsavedChartVersionTableName}
+                tableName={tableName}
                 explore={explore}
+                metricQuery={metricQuery}
                 queryUuid={queryUuid}
+                parameters={parameters}
             >
                 <Stack sx={{ flexGrow: 1 }}>
                     {!hideHeader && isEditMode && <ExplorerHeader />}
 
-                    {!!unsavedChartVersionTableName &&
-                        parameterReferences &&
-                        parameterReferences?.length > 0 && (
+                    {!!tableName &&
+                        parameterReferencesFromRedux &&
+                        parameterReferencesFromRedux?.length > 0 && (
                             <ParametersCard
-                                parameterReferences={parameterReferences}
+                                parameterReferences={
+                                    parameterReferencesFromRedux
+                                }
                             />
                         )}
 
@@ -117,15 +178,21 @@ const Explorer: FC<{ hideHeader?: boolean }> = memo(
                     </Can>
                 </Stack>
 
+                {/* These use the metricQueryDataProvider context */}
                 <UnderlyingDataModal />
                 <DrillDownModal />
-                <CustomMetricModal />
+
+                {/* These return safely when unopened */}
                 <CustomDimensionModal />
-                <FormatModal />
                 <WriteBackModal />
+
+                {isAdditionalMetricModalOpen && <CustomMetricModal />}
+                {isFormatModalOpen && <FormatModal />}
             </MetricQueryDataProvider>
         );
     },
 );
+
+Explorer.displayName = 'Explorer';
 
 export default Explorer;

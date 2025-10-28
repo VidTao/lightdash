@@ -1,23 +1,52 @@
-import { useEffect } from 'react';
+import { lazy, memo, Suspense, useEffect } from 'react';
+import { Provider } from 'react-redux';
 import { useParams } from 'react-router';
-import Explorer from '../components/Explorer';
-import ExplorePanel from '../components/Explorer/ExplorePanel';
-import SavedChartsHeader from '../components/Explorer/SavedChartsHeader';
 import ErrorState from '../components/common/ErrorState';
 import Page from '../components/common/Page/Page';
 import SuboptimalState from '../components/common/SuboptimalState/SuboptimalState';
+import Explorer from '../components/Explorer';
+import LoadingSkeleton from '../components/Explorer/ExploreTree/LoadingSkeleton';
+import SavedChartsHeader from '../components/Explorer/SavedChartsHeader';
+import { explorerStore } from '../features/explorer/store';
 import useDashboardStorage from '../hooks/dashboard/useDashboardStorage';
+import { useExplorerQueryEffects } from '../hooks/useExplorerQueryEffects';
 import { useSavedQuery } from '../hooks/useSavedQuery';
 import useApp from '../providers/App/useApp';
+import { defaultQueryExecution } from '../providers/Explorer/defaultState';
 import ExplorerProvider from '../providers/Explorer/ExplorerProvider';
 import { ExplorerSection } from '../providers/Explorer/types';
+
+const LazyExplorePanel = lazy(
+    () => import('../components/Explorer/ExplorePanel'),
+);
+
+const SavedExplorerContent = memo<{ isEditMode: boolean }>(({ isEditMode }) => {
+    // Run the query effects hook - orchestrates all query effects
+    useExplorerQueryEffects();
+
+    return (
+        <Page
+            title={undefined} // Will be set by SavedChartsHeader
+            header={<SavedChartsHeader />}
+            sidebar={
+                <Suspense fallback={<LoadingSkeleton />}>
+                    <LazyExplorePanel />
+                </Suspense>
+            }
+            isSidebarOpen={isEditMode}
+            withFullHeight
+            withPaddedContent
+        >
+            <Explorer />
+        </Page>
+    );
+});
 
 const SavedExplorer = () => {
     const { health } = useApp();
 
     const { savedQueryUuid, mode } = useParams<{
         savedQueryUuid: string;
-        projectUuid: string;
         mode?: string;
     }>();
 
@@ -52,58 +81,53 @@ const SavedExplorer = () => {
     }
 
     return (
-        <ExplorerProvider
-            isEditMode={isEditMode}
-            viewModeQueryArgs={
-                savedQueryUuid ? { chartUuid: savedQueryUuid } : undefined
-            }
-            initialState={
-                data
-                    ? {
-                          parameterReferences: Object.keys(
-                              data.parameters ?? {},
-                          ),
-                          parameterDefinitions: {},
-                          expandedSections: [ExplorerSection.VISUALIZATION],
-                          unsavedChartVersion: {
-                              tableName: data.tableName,
-                              chartConfig: data.chartConfig,
-                              metricQuery: data.metricQuery,
-                              tableConfig: data.tableConfig,
-                              pivotConfig: data.pivotConfig,
-                              parameters: data.parameters,
-                          },
-                          modals: {
-                              format: {
-                                  isOpen: false,
+        <Provider store={explorerStore}>
+            <ExplorerProvider
+                isEditMode={isEditMode}
+                initialState={
+                    data
+                        ? {
+                              isEditMode,
+                              parameterReferences: Object.keys(
+                                  data.parameters ?? {},
+                              ),
+                              parameterDefinitions: {},
+                              expandedSections: [ExplorerSection.VISUALIZATION],
+                              unsavedChartVersion: {
+                                  tableName: data.tableName,
+                                  chartConfig: data.chartConfig,
+                                  metricQuery: data.metricQuery,
+                                  tableConfig: data.tableConfig,
+                                  pivotConfig: data.pivotConfig,
+                                  parameters: data.parameters,
                               },
-                              additionalMetric: {
-                                  isOpen: false,
+                              modals: {
+                                  format: {
+                                      isOpen: false,
+                                  },
+                                  additionalMetric: {
+                                      isOpen: false,
+                                  },
+                                  customDimension: {
+                                      isOpen: false,
+                                  },
+                                  writeBack: {
+                                      isOpen: false,
+                                  },
+                                  itemDetail: {
+                                      isOpen: false,
+                                  },
                               },
-                              customDimension: {
-                                  isOpen: false,
-                              },
-                              writeBack: {
-                                  isOpen: false,
-                              },
-                          },
-                      }
-                    : undefined
-            }
-            savedChart={data}
-            defaultLimit={health.data?.query.defaultLimit}
-        >
-            <Page
-                title={data?.name}
-                header={<SavedChartsHeader />}
-                sidebar={<ExplorePanel />}
-                isSidebarOpen={isEditMode}
-                withFullHeight
-                withPaddedContent
+                              queryExecution: defaultQueryExecution,
+                          }
+                        : undefined
+                }
+                savedChart={data}
+                defaultLimit={health.data?.query.defaultLimit}
             >
-                <Explorer />
-            </Page>
-        </ExplorerProvider>
+                <SavedExplorerContent isEditMode={isEditMode} />
+            </ExplorerProvider>
+        </Provider>
     );
 };
 

@@ -19,6 +19,7 @@ import { SavedChartModel } from '../../models/SavedChartModel';
 import { SchedulerModel } from '../../models/SchedulerModel';
 import { SpaceModel } from '../../models/SpaceModel';
 import { SchedulerClient } from '../../scheduler/SchedulerClient';
+import { SavedChartService } from '../SavedChartsService/SavedChartService';
 import { DashboardService } from './DashboardService';
 import {
     chart,
@@ -40,7 +41,7 @@ import {
 const dashboardModel = {
     getAllByProject: jest.fn(async () => dashboardsDetails),
 
-    getById: jest.fn(async () => dashboard),
+    getByIdOrSlug: jest.fn(async () => dashboard),
 
     create: jest.fn(async () => dashboard),
 
@@ -83,6 +84,7 @@ describe('DashboardService', () => {
         pinnedListModel: {} as PinnedListModel,
         schedulerModel: {} as SchedulerModel,
         savedChartModel: savedChartModel as unknown as SavedChartModel,
+        savedChartService: {} as SavedChartService, // Mock for test
         projectModel: {} as ProjectModel,
         slackClient: {} as SlackClient,
         schedulerClient: {} as SchedulerClient,
@@ -92,11 +94,13 @@ describe('DashboardService', () => {
         jest.clearAllMocks();
     });
     test('should get dashboard by uuid', async () => {
-        const result = await service.getById(user, dashboard.uuid);
+        const result = await service.getByIdOrSlug(user, dashboard.uuid);
 
         expect(result).toEqual(dashboard);
-        expect(dashboardModel.getById).toHaveBeenCalledTimes(1);
-        expect(dashboardModel.getById).toHaveBeenCalledWith(dashboard.uuid);
+        expect(dashboardModel.getByIdOrSlug).toHaveBeenCalledTimes(1);
+        expect(dashboardModel.getByIdOrSlug).toHaveBeenCalledWith(
+            dashboard.uuid,
+        );
     });
     test('should get all dashboard by project uuid', async () => {
         const result = await service.getAllByProject(
@@ -289,7 +293,7 @@ describe('DashboardService', () => {
             ),
         };
         await expect(
-            service.getById(anotherUser, dashboard.uuid),
+            service.getByIdOrSlug(anotherUser, dashboard.uuid),
         ).rejects.toThrowError(ForbiddenError);
     });
     test('should see empty list if getting all dashboard by project uuid from another organization', async () => {
@@ -340,7 +344,7 @@ describe('DashboardService', () => {
             ),
         };
         await expect(
-            service.getById(userViewer, dashboard.uuid),
+            service.getByIdOrSlug(userViewer, dashboard.uuid),
         ).rejects.toThrowError(ForbiddenError);
     });
     test('should see dashboard from private space if you are admin', async () => {
@@ -348,11 +352,13 @@ describe('DashboardService', () => {
             async () => privateSpace,
         );
 
-        const result = await service.getById(user, dashboard.uuid);
+        const result = await service.getByIdOrSlug(user, dashboard.uuid);
 
         expect(result).toEqual(dashboard);
-        expect(dashboardModel.getById).toHaveBeenCalledTimes(1);
-        expect(dashboardModel.getById).toHaveBeenCalledWith(dashboard.uuid);
+        expect(dashboardModel.getByIdOrSlug).toHaveBeenCalledTimes(1);
+        expect(dashboardModel.getByIdOrSlug).toHaveBeenCalledWith(
+            dashboard.uuid,
+        );
     });
 
     test('should not see dashboards from private space if you are not an admin', async () => {

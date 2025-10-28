@@ -7,7 +7,20 @@ import {
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { useParams } from 'react-router';
 import { lightdashApi } from '../api';
-import useExplorerContext from '../providers/Explorer/useExplorerContext';
+import {
+    selectAdditionalMetrics,
+    selectCustomDimensions,
+    selectDimensions,
+    selectFilters,
+    selectMetrics,
+    selectParameters,
+    selectQueryLimit,
+    selectSorts,
+    selectTableCalculations,
+    selectTableName,
+    selectTimezone,
+    useExplorerSelector,
+} from '../features/explorer/store';
 import { convertDateFilters } from '../utils/dateFilter';
 import useQueryError from './useQueryError';
 
@@ -34,26 +47,18 @@ export const useCompiledSql = (
     queryOptions?: UseQueryOptions<ApiCompiledQueryResults, ApiError>,
 ) => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const tableId = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.tableName,
-    );
-    const {
-        dimensions,
-        metrics,
-        sorts,
-        filters,
-        limit,
-        tableCalculations,
-        additionalMetrics,
-        customDimensions,
-        timezone,
-    } = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery,
-    );
 
-    const queryParameters = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.parameters || {},
-    );
+    const tableId = useExplorerSelector(selectTableName);
+    const dimensions = useExplorerSelector(selectDimensions);
+    const metrics = useExplorerSelector(selectMetrics);
+    const filters = useExplorerSelector(selectFilters);
+    const sorts = useExplorerSelector(selectSorts);
+    const limit = useExplorerSelector(selectQueryLimit);
+    const tableCalculations = useExplorerSelector(selectTableCalculations);
+    const additionalMetrics = useExplorerSelector(selectAdditionalMetrics);
+    const customDimensions = useExplorerSelector(selectCustomDimensions);
+    const timezone = useExplorerSelector(selectTimezone);
+    const queryParameters = useExplorerSelector(selectParameters);
 
     const setErrorResponse = useQueryError();
     const metricQuery: MetricQuery = {
@@ -77,7 +82,6 @@ export const useCompiledSql = (
         queryParameters,
     ];
     return useQuery<ApiCompiledQueryResults, ApiError>({
-        enabled: tableId !== undefined,
         queryKey,
         queryFn: () =>
             getCompiledQuery(
@@ -89,6 +93,7 @@ export const useCompiledSql = (
         onError: (result) => setErrorResponse(result),
         keepPreviousData: true,
         ...queryOptions,
+        enabled: (queryOptions?.enabled ?? true) && !!tableId && !!projectUuid,
     });
 };
 

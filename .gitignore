@@ -15,6 +15,7 @@ node_modules/
 /packages/e2e/cypress/screenshots/**/*
 /packages/e2e/cypress/videos/**/*
 /packages/e2e/cypress/downloads/**/*
+/packages/e2e/cypress/artifacts/**/*
 
 # eval reports
 /packages/backend/eval-reports/**/*
@@ -37,6 +38,11 @@ node_modules/
 /packages/warehouses/dist
 /packages/sdk/dist
 /packages/sdk-test-app/dist
+
+# CLI binary build artifacts
+/packages/cli/bundle/
+/packages/cli/bin/
+
 # misc
 .DS_Store
 .env.local
@@ -85,8 +91,6 @@ flake.nix
 flake.lock
 
 /ssl-certs/
-# dangerfile
-dangerfile.development.ts
 
 # Charts as code
 lightdash

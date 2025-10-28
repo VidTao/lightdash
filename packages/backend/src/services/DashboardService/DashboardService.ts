@@ -3,11 +3,14 @@ import {
     AbilityAction,
     BulkActionable,
     CreateDashboard,
+    CreateDashboardWithCharts,
+    CreateSavedChart,
     CreateSchedulerAndTargetsWithoutIds,
     Dashboard,
     DashboardDAO,
     DashboardTab,
     DashboardTileTypes,
+    DashboardVersionedFields,
     ExploreType,
     ForbiddenError,
     ParameterError,
@@ -57,6 +60,7 @@ import { SavedChartModel } from '../../models/SavedChartModel';
 import { SchedulerModel } from '../../models/SchedulerModel';
 import { SpaceModel } from '../../models/SpaceModel';
 import { SchedulerClient } from '../../scheduler/SchedulerClient';
+import { createTwoColumnTiles } from '../../utils/dashboardTileUtils';
 import { BaseService } from '../BaseService';
 import { SavedChartService } from '../SavedChartsService/SavedChartService';
 import { hasDirectAccessToSpace } from '../SpaceService/SpaceService';
@@ -69,6 +73,7 @@ type DashboardServiceArguments = {
     pinnedListModel: PinnedListModel;
     schedulerModel: SchedulerModel;
     savedChartModel: SavedChartModel;
+    savedChartService: SavedChartService;
     schedulerClient: SchedulerClient;
     slackClient: SlackClient;
     projectModel: ProjectModel;
@@ -93,6 +98,8 @@ export class DashboardService
 
     savedChartModel: SavedChartModel;
 
+    savedChartService: SavedChartService;
+
     catalogModel: CatalogModel;
 
     projectModel: ProjectModel;
@@ -109,6 +116,7 @@ export class DashboardService
         pinnedListModel,
         schedulerModel,
         savedChartModel,
+        savedChartService,
         schedulerClient,
         slackClient,
         projectModel,
@@ -122,6 +130,7 @@ export class DashboardService
         this.pinnedListModel = pinnedListModel;
         this.schedulerModel = schedulerModel;
         this.savedChartModel = savedChartModel;
+        this.savedChartService = savedChartService;
         this.projectModel = projectModel;
         this.catalogModel = catalogModel;
         this.schedulerClient = schedulerClient;
@@ -229,11 +238,13 @@ export class DashboardService
         });
     }
 
-    async getById(
+    async getByIdOrSlug(
         user: SessionUser,
-        dashboardUuid: string,
+        dashboardUuidOrSlug: string,
     ): Promise<Dashboard> {
-        const dashboardDao = await this.dashboardModel.getById(dashboardUuid);
+        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuidOrSlug,
+        );
 
         const space = await this.spaceModel.getSpaceSummary(
             dashboardDao.spaceUuid,
@@ -370,7 +381,7 @@ export class DashboardService
             properties: DashboardService.getCreateEventProperties(newDashboard),
         });
 
-        const dashboardDao = await this.dashboardModel.getById(
+        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
             newDashboard.uuid,
         );
 
@@ -387,7 +398,9 @@ export class DashboardService
         dashboardUuid: string,
         data: DuplicateDashboardParams,
     ): Promise<Dashboard> {
-        const dashboardDao = await this.dashboardModel.getById(dashboardUuid);
+        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuid,
+        );
         const space = await this.spaceModel.getSpaceSummary(
             dashboardDao.spaceUuid,
         );
@@ -560,7 +573,7 @@ export class DashboardService
             },
         });
 
-        const updatedNewDashboard = await this.dashboardModel.getById(
+        const updatedNewDashboard = await this.dashboardModel.getByIdOrSlug(
             newDashboard.uuid,
         );
 
@@ -573,11 +586,11 @@ export class DashboardService
 
     async update(
         user: SessionUser,
-        dashboardUuid: string,
+        dashboardUuidOrSlug: string,
         dashboard: UpdateDashboard,
     ): Promise<Dashboard> {
-        const existingDashboardDao = await this.dashboardModel.getById(
-            dashboardUuid,
+        const existingDashboardDao = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuidOrSlug,
         );
 
         const canUpdateDashboardInCurrentSpace = user.ability.can(
@@ -621,7 +634,7 @@ export class DashboardService
             }
 
             const updatedDashboard = await this.dashboardModel.update(
-                dashboardUuid,
+                existingDashboardDao.uuid,
                 {
                     name: dashboard.name,
                     description: dashboard.description,
@@ -658,7 +671,7 @@ export class DashboardService
             );
 
             const updatedDashboard = await this.dashboardModel.addVersion(
-                dashboardUuid,
+                existingDashboardDao.uuid,
                 {
                     tiles: dashboard.tiles,
                     filters: dashboard.filters,
@@ -675,11 +688,14 @@ export class DashboardService
                 properties:
                     DashboardService.getCreateEventProperties(updatedDashboard),
             });
-            await this.deleteOrphanedChartsInDashboards(user, dashboardUuid);
+            await this.deleteOrphanedChartsInDashboards(
+                user,
+                existingDashboardDao.uuid,
+            );
         }
 
-        const updatedNewDashboard = await this.dashboardModel.getById(
-            dashboardUuid,
+        const updatedNewDashboard = await this.dashboardModel.getByIdOrSlug(
+            existingDashboardDao.uuid,
         );
         const space = await this.spaceModel.getSpaceSummary(
             updatedNewDashboard.spaceUuid,
@@ -700,7 +716,7 @@ export class DashboardService
         user: SessionUser,
         dashboardUuid: string,
     ): Promise<TogglePinnedItemInfo> {
-        const existingDashboardDao = await this.dashboardModel.getById(
+        const existingDashboardDao = await this.dashboardModel.getByIdOrSlug(
             dashboardUuid,
         );
         const space = await this.spaceModel.getSpaceSummary(
@@ -780,7 +796,7 @@ export class DashboardService
     ): Promise<Dashboard[]> {
         const userHasAccessToDashboards = await Promise.all(
             dashboards.map(async (dashboardToUpdate) => {
-                const dashboard = await this.dashboardModel.getById(
+                const dashboard = await this.dashboardModel.getByIdOrSlug(
                     dashboardToUpdate.uuid,
                 );
                 const canUpdateDashboardInCurrentSpace = user.ability.can(
@@ -856,7 +872,7 @@ export class DashboardService
     }
 
     async delete(user: SessionUser, dashboardUuid: string): Promise<void> {
-        const dashboardToDelete = await this.dashboardModel.getById(
+        const dashboardToDelete = await this.dashboardModel.getByIdOrSlug(
             dashboardUuid,
         );
         const { organizationUuid, projectUuid, spaceUuid, tiles } =
@@ -1037,7 +1053,9 @@ export class DashboardService
         user: SessionUser,
         dashboardUuid: string,
     ): Promise<Dashboard> {
-        const dashboardDao = await this.dashboardModel.getById(dashboardUuid);
+        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuid,
+        );
         const space = await this.spaceModel.getSpaceSummary(
             dashboardDao.spaceUuid,
         );
@@ -1086,7 +1104,7 @@ export class DashboardService
             spaceUuid?: string;
         },
     ) {
-        const dashboard = await this.dashboardModel.getById(
+        const dashboard = await this.dashboardModel.getByIdOrSlug(
             resource.dashboardUuid,
         );
         const space = await this.spaceModel.getSpaceSummary(
@@ -1194,6 +1212,73 @@ export class DashboardService
                     targetSpaceId: targetSpaceUuid,
                 },
             });
+        }
+    }
+
+    async createDashboardWithCharts(
+        user: SessionUser,
+        projectUuid: string,
+        data: CreateDashboardWithCharts,
+    ): Promise<Dashboard> {
+        // 1. Create empty dashboard
+        const emptyDashboard: CreateDashboard = {
+            name: data.name,
+            description: data.description,
+            spaceUuid: data.spaceUuid,
+            tiles: [],
+            tabs: [],
+        };
+
+        // Permissions are checked in the create method
+        const dashboard = await this.create(user, projectUuid, emptyDashboard);
+
+        try {
+            const chartPromises = data.charts.map(
+                (chartData: CreateSavedChart) => {
+                    const chartDataWithDashboard: CreateSavedChart = {
+                        ...chartData,
+                        dashboardUuid: dashboard.uuid,
+                        spaceUuid: undefined,
+                    };
+
+                    return this.savedChartService.create(
+                        user,
+                        projectUuid,
+                        chartDataWithDashboard,
+                    );
+                },
+            );
+
+            const savedCharts = await Promise.all(chartPromises);
+
+            const tiles = createTwoColumnTiles(
+                savedCharts,
+                dashboard.tabs?.[0]?.uuid,
+            );
+
+            const updateFields: DashboardVersionedFields = {
+                filters: {
+                    dimensions: [],
+                    metrics: [],
+                    tableCalculations: [],
+                },
+                tiles,
+                tabs: dashboard.tabs || [],
+            };
+
+            await this.update(user, dashboard.uuid, updateFields);
+
+            return await this.getByIdOrSlug(user, dashboard.uuid);
+        } catch (error) {
+            try {
+                await this.delete(user, dashboard.uuid);
+            } catch (deleteError) {
+                this.logger.error(
+                    'Failed to cleanup dashboard after creation error',
+                    deleteError,
+                );
+            }
+            throw error;
         }
     }
 }

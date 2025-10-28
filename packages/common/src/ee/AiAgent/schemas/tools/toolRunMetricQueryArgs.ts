@@ -1,6 +1,8 @@
-import { type z } from 'zod';
+import { z } from 'zod';
 import { customMetricsSchema } from '../customMetrics';
-import { filtersSchema, filtersSchemaTransformed } from '../filters';
+import { filtersSchemaTransformed, filtersSchemaV2 } from '../filters';
+import { baseOutputMetadataSchema } from '../outputMetadata';
+import { tableCalcsSchema } from '../tableCalcs/tableCalcs';
 import { createToolSchema } from '../toolSchemaBuilder';
 import { tableVizConfigSchema } from '../visualizations';
 
@@ -16,14 +18,15 @@ Usage Tips:
 - The query respects the same limits and permissions as other visualization tools
 `;
 
-export const toolRunMetricQueryArgsSchema = createToolSchema(
-    'run_metric_query',
-    TOOL_RUN_METRIC_QUERY_DESCRIPTION,
-)
+export const toolRunMetricQueryArgsSchema = createToolSchema({
+    type: 'run_metric_query',
+    description: TOOL_RUN_METRIC_QUERY_DESCRIPTION,
+})
     .extend({
         vizConfig: tableVizConfigSchema,
         customMetrics: customMetricsSchema,
-        filters: filtersSchema
+        tableCalculations: tableCalcsSchema,
+        filters: filtersSchemaV2
             .nullable()
             .describe(
                 'Filters to apply to the query. Filtered fields must exist in the selected explore or should be referenced from the custom metrics.',
@@ -44,4 +47,13 @@ export const toolRunMetricQueryArgsSchemaTransformed =
 
 export type ToolRunMetricQueryArgsTransformed = z.infer<
     typeof toolRunMetricQueryArgsSchemaTransformed
+>;
+
+export const toolRunMetricQueryOutputSchema = z.object({
+    result: z.string(),
+    metadata: baseOutputMetadataSchema,
+});
+
+export type ToolRunMetricQueryOutput = z.infer<
+    typeof toolRunMetricQueryOutputSchema
 >;

@@ -8,7 +8,6 @@ import {
     DashboardDAO,
     DashboardLoomTile,
     DashboardMarkdownTile,
-    DashboardParameterValue,
     DashboardSqlChartTile,
     DashboardTab,
     DashboardTileTypes,
@@ -32,7 +31,7 @@ import {
     type DashboardParameters,
 } from '@lightdash/common';
 import { Knex } from 'knex';
-import { v4 as uuidv4 } from 'uuid';
+import { validate as isValidUuid, v4 as uuidv4 } from 'uuid';
 import {
     DashboardTable,
     DashboardTabsTableName,
@@ -659,8 +658,8 @@ export class DashboardModel {
         );
     }
 
-    async getById(dashboardUuid: string): Promise<DashboardDAO> {
-        const [dashboard] = await this.database(DashboardsTableName)
+    async getByIdOrSlug(dashboardUuidOrSlug: string): Promise<DashboardDAO> {
+        const query = this.database(DashboardsTableName)
             .leftJoin(
                 DashboardVersionsTableName,
                 `${DashboardsTableName}.dashboard_id`,
@@ -722,9 +721,29 @@ export class DashboardModel {
                 `${DashboardsTableName}.views_count`,
                 `${DashboardsTableName}.first_viewed_at`,
             ])
-            .where(`${DashboardsTableName}.dashboard_uuid`, dashboardUuid)
             .orderBy(`${DashboardVersionsTableName}.created_at`, 'desc')
             .limit(1);
+
+        if (isValidUuid(dashboardUuidOrSlug)) {
+            void query.where((builder) => {
+                void builder
+                    .where(
+                        `${DashboardsTableName}.dashboard_uuid`,
+                        dashboardUuidOrSlug,
+                    )
+                    .orWhere(
+                        `${DashboardsTableName}.slug`,
+                        dashboardUuidOrSlug,
+                    );
+            });
+        } else {
+            void query.where(
+                `${DashboardsTableName}.slug`,
+                dashboardUuidOrSlug,
+            );
+        }
+
+        const [dashboard] = await query;
 
         if (!dashboard) {
             throw new NotFoundError('Dashboard not found');
@@ -1053,11 +1072,11 @@ export class DashboardModel {
 
             return newDashboard.dashboard_uuid;
         });
-        return this.getById(dashboardId);
+        return this.getByIdOrSlug(dashboardId);
     }
 
     async update(
-        dashboardUuid: string,
+        dashboardUuidOrSlug: string,
         dashboard: DashboardUnversionedFields,
     ): Promise<DashboardDAO> {
         const withSpaceId = dashboard.spaceUuid
@@ -1070,14 +1089,25 @@ export class DashboardModel {
                   )?.spaceId,
               }
             : {};
-        await this.database(DashboardsTableName)
-            .update({
-                name: dashboard.name,
-                description: dashboard.description,
-                ...withSpaceId,
-            })
-            .where('dashboard_uuid', dashboardUuid);
-        return this.getById(dashboardUuid);
+        const query = this.database(DashboardsTableName).update({
+            name: dashboard.name,
+            description: dashboard.description,
+            ...withSpaceId,
+        });
+
+        if (isValidUuid(dashboardUuidOrSlug)) {
+            void query.where((builder) => {
+                void builder
+                    .where('dashboard_uuid', dashboardUuidOrSlug)
+                    .orWhere('slug', dashboardUuidOrSlug);
+            });
+        } else {
+            void query.where('slug', dashboardUuidOrSlug);
+        }
+
+        await query;
+
+        return this.getByIdOrSlug(dashboardUuidOrSlug);
     }
 
     async updateMultiple(
@@ -1109,12 +1139,14 @@ export class DashboardModel {
         });
 
         return Promise.all(
-            dashboards.map(async (dashboard) => this.getById(dashboard.uuid)),
+            dashboards.map(async (dashboard) =>
+                this.getByIdOrSlug(dashboard.uuid),
+            ),
         );
     }
 
     async delete(dashboardUuid: string): Promise<DashboardDAO> {
-        const dashboard = await this.getById(dashboardUuid);
+        const dashboard = await this.getByIdOrSlug(dashboardUuid);
         await this.database(DashboardsTableName)
             .where('dashboard_uuid', dashboardUuid)
             .delete();
@@ -1141,7 +1173,7 @@ export class DashboardModel {
                 updatedByUser: user,
             });
         });
-        return this.getById(dashboardUuid);
+        return this.getByIdOrSlug(dashboardUuid);
     }
 
     /*
@@ -1174,6 +1206,70 @@ export class DashboardModel {
         return orphanedCharts.map((chart) => ({
             uuid: chart.saved_query_uuid,
         }));
+    }
+
+    /**
+     * Check if a specific chart exists in the latest version of a specific dashboard within a project
+     */
+    async savedChartExistsInDashboard(
+        projectUuid: string,
+        dashboardUuid: string,
+        chartUuid: string,
+    ): Promise<boolean> {
+        const cteName = 'latest_dashboard_version_cte';
+
+        const result = await this.database
+            .with(cteName, (qb) => {
+                void qb
+                    .select({
+                        dashboard_uuid: `${DashboardsTableName}.dashboard_uuid`,
+                        dashboard_version_id: this.database.raw(
+                            `MAX(${DashboardVersionsTableName}.dashboard_version_id)`,
+                        ),
+                    })
+                    .from(DashboardsTableName)
+                    .innerJoin(
+                        DashboardVersionsTableName,
+                        `${DashboardsTableName}.dashboard_id`,
+                        `${DashboardVersionsTableName}.dashboard_id`,
+                    )
+                    .innerJoin(
+                        SpaceTableName,
+                        `${DashboardsTableName}.space_id`,
+                        `${SpaceTableName}.space_id`,
+                    )
+                    .innerJoin(
+                        ProjectTableName,
+                        `${SpaceTableName}.project_id`,
+                        `${ProjectTableName}.project_id`,
+                    )
+                    .where(
+                        `${DashboardsTableName}.dashboard_uuid`,
+                        dashboardUuid,
+                    )
+                    .where(`${ProjectTableName}.project_uuid`, projectUuid)
+                    .groupBy(`${DashboardsTableName}.dashboard_uuid`);
+            })
+            .select<
+                {
+                    dashboard_uuid: string;
+                }[]
+            >(`${cteName}.dashboard_uuid`)
+            .from(cteName)
+            .innerJoin(
+                DashboardTileChartTableName,
+                `${cteName}.dashboard_version_id`,
+                `${DashboardTileChartTableName}.dashboard_version_id`,
+            )
+            .innerJoin(
+                SavedChartsTableName,
+                `${DashboardTileChartTableName}.saved_chart_id`,
+                `${SavedChartsTableName}.saved_query_id`,
+            )
+            .where(`${SavedChartsTableName}.saved_query_uuid`, chartUuid)
+            .first();
+
+        return !!result;
     }
 
     async findInfoForDbtExposures(projectUuid: string): Promise<

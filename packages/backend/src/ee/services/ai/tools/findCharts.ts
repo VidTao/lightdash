@@ -3,31 +3,29 @@ import {
     isSavedChartSearchResult,
     isSqlChartSearchResult,
     toolFindChartsArgsSchema,
+    toolFindChartsOutputSchema,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import moment from 'moment';
 import type { FindChartsFn } from '../types/aiAgentDependencies';
+import { toModelOutput } from '../utils/toModelOutput';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
 
 type Dependencies = {
     findCharts: FindChartsFn;
     pageSize: number;
-    siteUrl?: string;
+    siteUrl: string;
 };
 
-const getChartText = (chart: AllChartsSearchResult, siteUrl?: string) => {
+const getChartText = (chart: AllChartsSearchResult, siteUrl: string) => {
     const isSavedChart = isSavedChartSearchResult(chart);
     const isSqlChart = isSqlChartSearchResult(chart);
 
     let chartUrl: string | undefined;
     if (isSavedChart) {
-        chartUrl = siteUrl
-            ? `${siteUrl}/projects/${chart.projectUuid}/saved/${chart.uuid}/view#chart-link#chart-type-${chart.chartType}`
-            : undefined;
+        chartUrl = `${siteUrl}/projects/${chart.projectUuid}/saved/${chart.uuid}/view#chart-link#chart-type-${chart.chartType}`;
     } else if (isSqlChart) {
-        chartUrl = siteUrl
-            ? `${siteUrl}/projects/${chart.projectUuid}/sql-runner/${chart.slug}#chart-link#chart-type-${chart.chartType}`
-            : undefined;
+        chartUrl = `${siteUrl}/projects/${chart.projectUuid}/sql-runner/${chart.slug}#chart-link#chart-type-${chart.chartType}`;
     }
 
     return `
@@ -74,7 +72,7 @@ const getChartText = (chart: AllChartsSearchResult, siteUrl?: string) => {
 
 const getChartsText = (
     args: Awaited<ReturnType<FindChartsFn>> & { searchQuery: string },
-    siteUrl?: string,
+    siteUrl: string,
 ) =>
     `
 <SearchResult searchQuery="${args.searchQuery}" page="${
@@ -93,7 +91,8 @@ export const getFindCharts = ({
 }: Dependencies) =>
     tool({
         description: toolFindChartsArgsSchema.description,
-        parameters: toolFindChartsArgsSchema,
+        inputSchema: toolFindChartsArgsSchema,
+        outputSchema: toolFindChartsOutputSchema,
         execute: async (args) => {
             try {
                 const chartSearchQueryResults = await Promise.all(
@@ -113,14 +112,25 @@ export const getFindCharts = ({
                     )
                     .join('\n\n');
 
-                return `<SearchResults>${chartsText}</SearchResults>`;
+                return {
+                    result: `<SearchResults>${chartsText}</SearchResults>`,
+                    metadata: {
+                        status: 'success',
+                    },
+                };
             } catch (error) {
-                return toolErrorHandler(
-                    error,
-                    `Error finding charts for search queries: ${args.chartSearchQueries
-                        .map((q) => q.label)
-                        .join(', ')}`,
-                );
+                return {
+                    result: toolErrorHandler(
+                        error,
+                        `Error finding charts for search queries: ${args.chartSearchQueries
+                            .map((q) => q.label)
+                            .join(', ')}`,
+                    ),
+                    metadata: {
+                        status: 'error',
+                    },
+                };
             }
         },
+        toModelOutput: (output) => toModelOutput(output),
     });

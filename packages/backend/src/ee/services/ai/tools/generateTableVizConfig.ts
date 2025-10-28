@@ -1,12 +1,13 @@
 import {
-    Explore,
-    getTotalFilterRules,
+    convertAiTableCalcsSchemaToTableCalcs,
     isSlackPrompt,
+    metricQueryTableViz,
     toolTableVizArgsSchema,
     toolTableVizArgsSchemaTransformed,
-    ToolTableVizArgsTransformed,
+    toolTableVizOutputSchema,
 } from '@lightdash/common';
 import { tool } from 'ai';
+import { NO_RESULTS_RETRY_PROMPT } from '../prompts/noResultsRetry';
 import type {
     CreateOrUpdateArtifactFn,
     GetExploreFn,
@@ -14,40 +15,42 @@ import type {
     RunMiniMetricQueryFn,
     SendFileFn,
     UpdateProgressFn,
-    UpdatePromptFn,
 } from '../types/aiAgentDependencies';
+import { convertQueryResultsToCsv } from '../utils/convertQueryResultsToCsv';
+import { populateCustomMetricsSQL } from '../utils/populateCustomMetricsSQL';
 import { serializeData } from '../utils/serializeData';
+import { toModelOutput } from '../utils/toModelOutput';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
 import { validateTableVizConfig } from '../utils/validateTableVizConfig';
-import { renderTableViz } from '../visualizations/vizTable';
 
 type Dependencies = {
     getExplore: GetExploreFn;
     updateProgress: UpdateProgressFn;
     runMiniMetricQuery: RunMiniMetricQueryFn;
     getPrompt: GetPromptFn;
-    updatePrompt: UpdatePromptFn;
     sendFile: SendFileFn;
     createOrUpdateArtifact: CreateOrUpdateArtifactFn;
     maxLimit: number;
+    enableDataAccess: boolean;
+    enableSelfImprovement: boolean;
 };
+
 export const getGenerateTableVizConfig = ({
     getExplore,
     runMiniMetricQuery,
     getPrompt,
     sendFile,
-    updatePrompt,
     updateProgress,
     createOrUpdateArtifact,
     maxLimit,
-}: Dependencies) => {
-    const schema = toolTableVizArgsSchema;
-
-    return tool({
+    enableDataAccess,
+    enableSelfImprovement,
+}: Dependencies) =>
+    tool({
         description: toolTableVizArgsSchema.description,
-        parameters: schema,
+        inputSchema: toolTableVizArgsSchema,
+        outputSchema: toolTableVizOutputSchema,
         execute: async (toolArgs) => {
-            let isOneRow = false;
             try {
                 await updateProgress('🔢 Querying the data...');
 
@@ -64,27 +67,54 @@ export const getGenerateTableVizConfig = ({
 
                 const prompt = await getPrompt();
 
-                // Create or update artifact
-                await createOrUpdateArtifact({
-                    threadUuid: prompt.threadUuid,
-                    promptUuid: prompt.promptUuid,
-                    artifactType: 'chart',
-                    title: toolArgs.title,
-                    description: toolArgs.description,
-                    vizConfig: toolArgs,
-                });
+                const createOrUpdateArtifactHook = () =>
+                    createOrUpdateArtifact({
+                        threadUuid: prompt.threadUuid,
+                        promptUuid: prompt.promptUuid,
+                        artifactType: 'chart',
+                        title: toolArgs.title,
+                        description: toolArgs.description,
+                        vizConfig: toolArgs,
+                    });
 
-                const { csv, results } = await renderTableViz({
-                    runMetricQuery: (q) => runMiniMetricQuery(q, maxLimit),
-                    vizTool,
+                const selfImprovementResultFollowUp =
+                    enableSelfImprovement &&
+                    vizTool.customMetrics &&
+                    vizTool.customMetrics.length > 0
+                        ? `\nCan you propose the creation of this metric as a metric to the semantic layer to the user?`
+                        : '';
+
+                const metricQuery = metricQueryTableViz({
+                    vizConfig: vizTool.vizConfig,
+                    filters: vizTool.filters,
                     maxLimit,
+                    customMetrics: vizTool.customMetrics ?? null,
+                    tableCalculations: convertAiTableCalcsSchemaToTableCalcs(
+                        vizTool.tableCalculations,
+                    ),
                 });
-                await updateProgress('✅ Done.');
+                const queryResults = await runMiniMetricQuery(
+                    metricQuery,
+                    maxLimit,
+                    populateCustomMetricsSQL(vizTool.customMetrics, explore),
+                );
 
-                isOneRow = results.rows.length === 1;
+                if (queryResults.rows.length === 0) {
+                    return {
+                        result: NO_RESULTS_RETRY_PROMPT,
+                        metadata: {
+                            status: 'success',
+                        },
+                    };
+                }
 
-                // Always send CSV file to Slack if it's a Slack prompt, regardless of row count
+                const csv = convertQueryResultsToCsv(queryResults);
+
+                await createOrUpdateArtifactHook();
+
+                // Always send CSV file to Slack if it's a Slack prompt
                 if (isSlackPrompt(prompt)) {
+                    await updateProgress('✅ Done.');
                     await sendFile({
                         channelId: prompt.slackChannelId,
                         threadTs: prompt.slackThreadTs,
@@ -96,20 +126,47 @@ export const getGenerateTableVizConfig = ({
                     });
                 }
 
-                if (isOneRow) {
-                    return `Here's the result:
-                    ${serializeData(csv, 'csv')}`;
+                if (!enableDataAccess) {
+                    if (queryResults.rows.length === 1) {
+                        return {
+                            result: `Here's the result:\n${serializeData(
+                                csv,
+                                'csv',
+                            )} ${selfImprovementResultFollowUp}`,
+                            metadata: {
+                                status: 'success',
+                            },
+                        };
+                    }
+
+                    return {
+                        result: `Success`,
+                        metadata: {
+                            status: 'success',
+                        },
+                    };
                 }
 
-                return `Success.`;
+                return {
+                    result: `Here's the result:\n${serializeData(
+                        csv,
+                        'csv',
+                    )} ${selfImprovementResultFollowUp}`,
+                    metadata: {
+                        status: 'success',
+                    },
+                };
             } catch (e) {
-                return toolErrorHandler(
-                    e,
-                    `Error generating ${
-                        isOneRow ? 'one row' : 'table'
-                    } result.`,
-                );
+                return {
+                    result: toolErrorHandler(
+                        e,
+                        `Error generating table visualization`,
+                    ),
+                    metadata: {
+                        status: 'error',
+                    },
+                };
             }
         },
+        toModelOutput: (output) => toModelOutput(output),
     });
-};

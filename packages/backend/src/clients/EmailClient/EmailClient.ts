@@ -1,8 +1,10 @@
 import {
     CreateProjectMember,
+    getErrorMessage,
     InviteLink,
     PasswordResetLink,
     ProjectMemberRole,
+    sanitizeHtml,
     SchedulerFormat,
     SessionUser,
     SmptError,
@@ -17,11 +19,11 @@ import path from 'path';
 import { LightdashConfig } from '../../config/parseConfig';
 import Logger from '../../logging/logger';
 
-// Timeout configurations aligned with Nodemailer defaults and RFC 5321
+// Timeout configurations based on Nodemailer defaults, adjusted for scheduler compatibility
 export const SMTP_CONNECTION_CONFIG = {
     connectionTimeout: 120000, // 2 minutes - max time to establish connection (default)
     greetingTimeout: 30000, // 30 seconds - max time to wait for greeting (default)
-    socketTimeout: 600000, // 10 minutes - max time for idle socket (default)
+    socketTimeout: 180000, // 3 minutes - reduced from default to allow retry logic within default scheduler timeout (10min)
 } as const;
 
 export type AttachmentUrl = {
@@ -173,10 +175,16 @@ export default class EmailClient {
                             error.message.includes('Connection timeout'));
 
                     if (isLastAttempt || !isRetryableError) {
+                        const isFileError =
+                            error instanceof Error &&
+                            error.message.includes('ENOENT');
+                        const errorMessage = isFileError
+                            ? 'There was an unexpected error when processing the attached file. Please contact your admin or support team.'
+                            : getErrorMessage(error);
                         throw new SmptError(
-                            `Failed to send email after ${attempt} attempts. ${error}`,
+                            `Failed to send email after ${attempt} attempts. ${errorMessage}`,
                             {
-                                error,
+                                error, // log the original error
                             },
                         );
                     }
@@ -266,6 +274,47 @@ export default class EmailClient {
                 schedulerUrl,
             },
             text: `Your Google Sheets ${schedulerName} sync has been disabled due to an error`,
+        });
+    }
+
+    public async sendScheduledDeliveryFailureEmail(
+        recipient: string,
+        schedulerName: string,
+        schedulerUrl: string,
+        errorMessage: string,
+    ) {
+        if (!this.canSendEmail()) {
+            Logger.error(
+                'Cannot send scheduled delivery failure email - email transporter not configured',
+                {
+                    recipient: recipient ? '***@***' : undefined,
+                    schedulerName,
+                },
+            );
+            throw new Error('Email transporter not configured');
+        }
+
+        const message = `
+            <p>Your scheduled delivery <strong>"${schedulerName}"</strong> failed to send.</p>
+            <br />
+            <br />
+            <br />
+            <p><strong>Error:</strong> ${sanitizeHtml(errorMessage)}</p>
+            <br />
+            <br />
+            <p>Please check your <a href="${schedulerUrl}">scheduled delivery settings</a> and try again.</p>
+        `;
+
+        return this.sendEmail({
+            to: recipient,
+            subject: `Failed to send scheduled delivery - "${schedulerName}"`,
+            template: 'genericNotification',
+            context: {
+                host: this.lightdashConfig.siteUrl,
+                title: 'Scheduled delivery failure',
+                message,
+            },
+            text: `Warning: Your scheduled delivery "${schedulerName}" failed to send. Error: ${errorMessage}. Please check your settings at ${schedulerUrl}`,
         });
     }
 

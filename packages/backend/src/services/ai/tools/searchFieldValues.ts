@@ -1,10 +1,12 @@
 import {
     toolSearchFieldValuesArgsSchema,
     toolSearchFieldValuesArgsSchemaTransformed,
+    toolSearchFieldValuesOutputSchema,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import type { SearchFieldValuesFn } from '../types/aiAgentDependencies';
 import { serializeData } from '../utils/serializeData';
+import { toModelOutput } from '../utils/toModelOutput';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
 
 type Dependencies = {
@@ -14,7 +16,8 @@ type Dependencies = {
 export const getSearchFieldValues = ({ searchFieldValues }: Dependencies) =>
     tool({
         description: toolSearchFieldValuesArgsSchema.description,
-        parameters: toolSearchFieldValuesArgsSchema,
+        inputSchema: toolSearchFieldValuesArgsSchema,
+        outputSchema: toolSearchFieldValuesOutputSchema,
         execute: async (toolArgs) => {
             try {
                 const args =
@@ -22,9 +25,23 @@ export const getSearchFieldValues = ({ searchFieldValues }: Dependencies) =>
 
                 const results = await searchFieldValues(args);
 
-                return serializeData(results, 'json');
+                return {
+                    result: serializeData(results, 'json'),
+                    metadata: {
+                        status: 'success',
+                    },
+                };
             } catch (e) {
-                return toolErrorHandler(e, 'Error searching field values.');
+                return {
+                    result: toolErrorHandler(
+                        e,
+                        'Error searching field values.',
+                    ),
+                    metadata: {
+                        status: 'error',
+                    },
+                };
             }
         },
+        toModelOutput: (output) => toModelOutput(output),
     });

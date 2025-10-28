@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getFieldIdSchema } from '../fieldId';
-import { filtersSchema, filtersSchemaTransformed } from '../filters';
+import { filtersSchemaTransformed, filtersSchemaV2 } from '../filters';
+import { baseOutputMetadataSchema } from '../outputMetadata';
 import { createToolSchema } from '../toolSchemaBuilder';
 
 export const TOOL_SEARCH_FIELD_VALUES_DESCRIPTION = `Tool: searchFieldValues
@@ -15,10 +16,10 @@ Usage Tips:
 - Results are returned as a list of unique field values (limited to 100)
 `;
 
-export const toolSearchFieldValuesArgsSchema = createToolSchema(
-    'search_field_values',
-    TOOL_SEARCH_FIELD_VALUES_DESCRIPTION,
-)
+export const toolSearchFieldValuesArgsSchema = createToolSchema({
+    type: 'search_field_values',
+    description: TOOL_SEARCH_FIELD_VALUES_DESCRIPTION,
+})
     .extend({
         table: z.string().describe('The table to search in.'),
         fieldId: getFieldIdSchema({
@@ -28,7 +29,7 @@ export const toolSearchFieldValuesArgsSchema = createToolSchema(
             .string()
             .describe('Query string to filter field values')
             .nullable(),
-        filters: filtersSchema
+        filters: filtersSchemaV2
             .nullable()
             .describe(
                 'Filters to apply to the query. Filtered fields must exist in the selected explore or should be referenced from the custom metrics.',
@@ -51,4 +52,13 @@ export const toolSearchFieldValuesArgsSchemaTransformed =
 
 export type ToolSearchFieldValuesArgsTransformed = z.infer<
     typeof toolSearchFieldValuesArgsSchemaTransformed
+>;
+
+export const toolSearchFieldValuesOutputSchema = z.object({
+    result: z.string(),
+    metadata: baseOutputMetadataSchema,
+});
+
+export type ToolSearchFieldValuesOutput = z.infer<
+    typeof toolSearchFieldValuesOutputSchema
 >;

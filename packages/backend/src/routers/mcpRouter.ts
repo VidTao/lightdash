@@ -2,17 +2,19 @@
 import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 // eslint-disable-next-line import/extensions
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import express from 'express';
+import express, { type Router } from 'express';
 import { IncomingMessage } from 'http';
 
 import {
     ForbiddenError,
     getErrorMessage,
     LightdashError,
+    LightdashSessionUser,
     MissingConfigError,
     NotImplementedError,
     ApiKeyAccount,
     OauthAccount,
+    OauthAuth,
 } from '@lightdash/common';
 import {
     allowApiKeyAuthentication, // ← Changed from allowOauthAuthentication
@@ -20,7 +22,7 @@ import {
 } from '../controllers/authentication';
 import Logger from '../logging/logger';
 import { ExtraContext, McpServiceMain } from '../services/McpService/McpServiceMain';
-const mcpRouter = express.Router({ mergeParams: true });
+const mcpRouter: Router = express.Router({ mergeParams: true });
 
 function getMcpService(req: express.Request): McpServiceMain {
     try {

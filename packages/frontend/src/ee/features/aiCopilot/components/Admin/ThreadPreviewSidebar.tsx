@@ -1,4 +1,3 @@
-import { type AiAgentAdminThreadSummary } from '@lightdash/common';
 import {
     ActionIcon,
     Box,
@@ -24,27 +23,35 @@ import { AgentChatDisplay } from '../ChatElements/AgentChatDisplay';
 import { AiArtifactPanel } from '../ChatElements/AiArtifactPanel';
 
 type ThreadPreviewSidebarProps = {
-    thread: AiAgentAdminThreadSummary;
+    projectUuid: string;
+    agentUuid: string;
+    threadUuid: string;
     isOpen: boolean;
     onClose: () => void;
+    renderArtifactsInline?: boolean;
+    showAddToEvalsButton?: boolean;
 };
 
 export const ThreadPreviewSidebar: FC<ThreadPreviewSidebarProps> = ({
-    thread,
+    projectUuid,
+    agentUuid,
+    threadUuid,
     isOpen,
     onClose,
+    renderArtifactsInline = false,
+    showAddToEvalsButton = false,
 }) => {
     const dispatch = useAiAgentStoreDispatch();
     const aiArtifact = useAiAgentStoreSelector(
         (state) => state.aiArtifact.artifact,
     );
     const { data: threadData, isLoading: isLoadingThread } = useAiAgentThread(
-        thread.project.uuid,
-        thread.agent.uuid,
-        thread.uuid,
+        projectUuid,
+        agentUuid,
+        threadUuid,
     );
 
-    if (!isOpen || !thread) {
+    if (!isOpen || !threadUuid) {
         return null;
     }
 
@@ -67,7 +74,7 @@ export const ThreadPreviewSidebar: FC<ThreadPreviewSidebarProps> = ({
                             color="gray"
                             component={Link}
                             target="_blank"
-                            to={`/projects/${thread.project.uuid}/ai-agents/${thread.agent.uuid}/threads/${thread.uuid}`}
+                            to={`/projects/${projectUuid}/ai-agents/${agentUuid}/threads/${threadUuid}`}
                         >
                             <MantineIcon icon={IconExternalLink} />
                         </ActionIcon>
@@ -84,7 +91,7 @@ export const ThreadPreviewSidebar: FC<ThreadPreviewSidebarProps> = ({
                             color="gray"
                             component={Link}
                             target="_blank"
-                            to={`/projects/${thread.project.uuid}/ai-agents/${thread.agent.uuid}/edit`}
+                            to={`/projects/${projectUuid}/ai-agents/${agentUuid}/edit`}
                         >
                             <MantineIcon icon={IconSettings} />
                         </ActionIcon>
@@ -111,12 +118,13 @@ export const ThreadPreviewSidebar: FC<ThreadPreviewSidebarProps> = ({
                     >
                         <AgentChatDisplay
                             thread={threadData}
-                            agentName={thread.agent.name}
-                            projectUuid={thread.project.uuid}
-                            agentUuid={thread.agent.uuid}
+                            projectUuid={projectUuid}
+                            agentUuid={agentUuid}
+                            showAddToEvalsButton={showAddToEvalsButton}
+                            renderArtifactsInline={renderArtifactsInline}
                         />
                     </Box>
-                    {!!aiArtifact && (
+                    {!!aiArtifact && !renderArtifactsInline && (
                         <Modal
                             withinPortal
                             opened={!!aiArtifact}
@@ -132,7 +140,9 @@ export const ThreadPreviewSidebar: FC<ThreadPreviewSidebarProps> = ({
                                 },
                             }}
                         >
-                            {aiArtifact && <AiArtifactPanel />}
+                            {aiArtifact && (
+                                <AiArtifactPanel artifact={aiArtifact} />
+                            )}
                         </Modal>
                     )}
                 </>

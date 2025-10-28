@@ -53,6 +53,13 @@ Sentry.init({
     ],
     ignoreErrors: IGNORE_ERRORS,
     tracesSampler: (context) => {
+        if (
+            process.env.NODE_ENV === 'development' &&
+            process.env.SENTRY_SPOTLIGHT
+        ) {
+            return 1.0;
+        }
+
         const request = context.normalizedRequest;
         if (
             request?.url?.endsWith('/status') ||
@@ -69,6 +76,10 @@ Sentry.init({
             request?.url?.includes('aiAgents') &&
             request?.url?.endsWith('stream')
         ) {
+            return 1.0;
+        }
+
+        if (request?.url?.includes('mcp')) {
             return 1.0;
         }
 

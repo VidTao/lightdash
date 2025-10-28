@@ -1,15 +1,17 @@
 import {
     Account,
     AnyType,
+    ApiKeyAccount,
     CatalogFilter,
     CatalogType,
     CommercialFeatureFlags,
+    Explore,
     filterExploreByTags,
     ForbiddenError,
-    getItemId,
+    isExploreError,
     MissingConfigError,
+    NotFoundError,
     OauthAccount,
-    ApiKeyAccount,
     ParameterError,
     QueryExecutionContext,
     SessionUser,
@@ -17,18 +19,18 @@ import {
     toolFindChartsArgsSchema,
     ToolFindDashboardsArgs,
     toolFindDashboardsArgsSchema,
-    ToolFindExploresArgs,
-    toolFindExploresArgsSchema,
+    toolFindExploresArgsSchemaV2,
+    ToolFindExploresArgsV2,
     ToolFindFieldsArgs,
     toolFindFieldsArgsSchema,
+    ToolGetEmbedUrlArgs,
+    toolGetEmbedUrlArgsSchema,
     ToolRunMetricQueryArgs,
     toolRunMetricQueryArgsSchema,
     ToolSearchFieldValuesArgs,
     toolSearchFieldValuesArgsSchema,
-    NotFoundError,
-    ToolGetEmbedUrlArgs,
-    toolGetEmbedUrlArgsSchema
 } from '@lightdash/common';
+import * as Sentry from '@sentry/node';
 // eslint-disable-next-line import/extensions
 import { subject } from '@casl/ability';
 // eslint-disable-next-line import/extensions
@@ -40,13 +42,9 @@ import {
     LightdashAnalytics,
     McpToolCallEvent,
 } from '../../analytics/LightdashAnalytics';
-import { fromSession } from '../../auth/account';
 import { LightdashConfig } from '../../config/parseConfig';
 import { CatalogSearchContext } from '../../models/CatalogModel/CatalogModel';
-import {
-    McpContextModel,
-    McpContext as ProjectContext,
-} from '../../models/McpContextModel';
+import { McpContextModel } from '../../models/McpContextModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { SearchModel } from '../../models/SearchModel';
 import { SpaceModel } from '../../models/SpaceModel';
@@ -54,14 +52,16 @@ import { UserAttributesModel } from '../../models/UserAttributesModel';
 import { BaseService } from '../../services/BaseService';
 import { CatalogService } from '../../services/CatalogService/CatalogService';
 import { FeatureFlagService } from '../../services/FeatureFlag/FeatureFlagService';
-import { OAuthScope } from '../../services/OAuthService/OAuthService';
 import { ProjectService } from '../../services/ProjectService/ProjectService';
 import { SpaceService } from '../../services/SpaceService/SpaceService';
+import {
+    doesExploreMatchRequiredAttributes,
+    getFilteredExplore,
+} from '../../services/UserAttributesService/UserAttributeUtils';
 import { wrapSentryTransaction } from '../../utils';
 import { VERSION } from '../../version';
 import { getFindCharts } from '../ai/tools/findCharts';
 import { getFindDashboards } from '../ai/tools/findDashboards';
-// eslint-disable-next-line import/extensions
 import { getFindExplores } from '../ai/tools/findExplores';
 import { getFindFields } from '../ai/tools/findFields';
 import { getRunMetricQuery } from '../ai/tools/runMetricQuery';
@@ -76,9 +76,9 @@ import {
     SearchFieldValuesFn,
 } from '../ai/types/aiAgentDependencies';
 import { McpSchemaCompatLayer } from './McpSchemaCompatLayer';
-import { ServiceRepository } from '../../services/ServiceRepository';
-import { EmbedService } from '../../ee/services/EmbedService/EmbedService';
+import { ServiceRepository } from '../ServiceRepository';
 import { SavedChartModel } from '../../models/SavedChartModel';
+import { EmbedService } from '../EmbedService/EmbedService';
 
 export enum McpToolName {
     GET_LIGHTDASH_VERSION = 'get_lightdash_version',
@@ -92,6 +92,7 @@ export enum McpToolName {
     RUN_METRIC_QUERY = 'run_metric_query',
     SEARCH_FIELD_VALUES = 'search_field_values',
     GET_EMBED_URL = 'get_embed_url', // ← Add this new tool
+
 }
 
 type McpServiceArguments = {
@@ -107,13 +108,12 @@ type McpServiceArguments = {
     mcpContextModel: McpContextModel;
     featureFlagService: FeatureFlagService;
     services: ServiceRepository; // ← Add this
-    savedChartModel: SavedChartModel; // ← Add this
+    savedChartModel: SavedChartModel; 
 };
 
-// Update the ExtraContext type to support both account types
-export type ExtraContext = { 
-    user: SessionUser; 
-    account: OauthAccount | ApiKeyAccount; // ← Support both account types
+export type ExtraContext = {
+    user: SessionUser;
+    account: OauthAccount | ApiKeyAccount;
 };
 type McpProtocolContext = {
     authInfo?: AuthInfo & {
@@ -164,8 +164,8 @@ export class McpServiceMain extends BaseService {
         projectModel,
         mcpContextModel,
         featureFlagService,
-        services, // ← Add this
-        savedChartModel, // ← Add this
+        services,
+        savedChartModel,
     }: McpServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
@@ -179,24 +179,49 @@ export class McpServiceMain extends BaseService {
         this.spaceService = spaceService;
         this.mcpContextModel = mcpContextModel;
         this.featureFlagService = featureFlagService;
-        this.services = services; // ← Add this
-        this.savedChartModel = savedChartModel; // ← Add this
+        this.services = services;
+        this.savedChartModel = savedChartModel;
         this.mcpCompatLayer = new McpSchemaCompatLayer();
         try {
-            this.mcpServer = new McpServer({
-                name: 'Lightdash MCP Server',
-                version: VERSION,
-            });
+            this.mcpServer = Sentry.wrapMcpServerWithSentry(
+                new McpServer({
+                    name: 'Lightdash MCP Server',
+                    version: VERSION,
+                }),
+            );
             this.setupHandlers();
         } catch (error) {
-            console.log('error initializing MCP server:', error);
             this.logger.error('Error initializing MCP server:', error);
             throw error;
         }
     }
 
+    static async streamToolResult(
+        result:
+            | { result: string }
+            | AsyncIterable<{
+                  result: string;
+              }>,
+    ): Promise<string> {
+        if (
+            'result' in result &&
+            typeof result.result === 'string' &&
+            Symbol.asyncIterator in result === false
+        ) {
+            return result.result;
+        }
+
+        let out = '';
+        for await (const chunk of result as AsyncIterable<{
+            result: string;
+            metadata: { status: 'error' | 'success' };
+        }>) {
+            out += chunk.result;
+        }
+        return out;
+    }
+
     private getMcpCompatibleSchema(schema: z.ZodSchema<unknown>): ZodRawShape {
-        // @ts-expect-error - shape is not a property of ZodTypeAny
         return this.mcpCompatLayer.processZodType(schema).shape;
     }
 
@@ -228,13 +253,13 @@ export class McpServiceMain extends BaseService {
         this.mcpServer.registerTool(
             McpToolName.FIND_EXPLORES,
             {
-                description: toolFindExploresArgsSchema.description,
+                description: toolFindExploresArgsSchemaV2.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolFindExploresArgsSchema,
+                    toolFindExploresArgsSchemaV2,
                 ) as AnyType,
             },
             async (_args, context) => {
-                const args = _args as ToolFindExploresArgs;
+                const args = _args as ToolFindExploresArgsV2;
 
                 const projectUuid = await this.resolveProjectUuid(
                     context as McpProtocolContext,
@@ -255,21 +280,22 @@ export class McpServiceMain extends BaseService {
 
                 const findExploresTool = getFindExplores({
                     findExplores,
-                    pageSize: 15,
-                    maxDescriptionLength: 100,
+                    updateProgress: async () => {}, // No-op for MCP context
                     fieldSearchSize: 200,
-                    fieldOverviewSearchSize: 5,
                 });
-                const result = await findExploresTool.execute(argsWithProject, {
-                    toolCallId: '',
-                    messages: [],
-                });
+                const result = await findExploresTool.execute!(
+                    argsWithProject,
+                    {
+                        toolCallId: '',
+                        messages: [],
+                    },
+                );
 
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpServiceMain.streamToolResult(result),
                         },
                     ],
                 };
@@ -306,9 +332,10 @@ export class McpServiceMain extends BaseService {
 
                 const findFieldsTool = getFindFields({
                     findFields,
+                    updateProgress: async () => {}, // No-op for MCP context
                     pageSize: 15,
                 });
-                const result = await findFieldsTool.execute(argsWithProject, {
+                const result = await findFieldsTool.execute!(argsWithProject, {
                     toolCallId: '',
                     messages: [],
                 });
@@ -317,7 +344,7 @@ export class McpServiceMain extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpServiceMain.streamToolResult(result),
                         },
                     ],
                 };
@@ -333,11 +360,6 @@ export class McpServiceMain extends BaseService {
                 ) as AnyType,
             },
             async (_args, context) => {
-                // Require authentication for actual tool calls
-                if (!context.authInfo?.extra) {
-                    throw new ForbiddenError('Authentication required for tool calls');
-                }
-                
                 const args = _args as ToolFindDashboardsArgs;
 
                 const projectUuid = await this.resolveProjectUuid(
@@ -362,7 +384,7 @@ export class McpServiceMain extends BaseService {
                     pageSize: 10,
                     siteUrl: this.lightdashConfig.siteUrl,
                 });
-                const result = await findDashboardsTool.execute(
+                const result = await findDashboardsTool.execute!(
                     argsWithProject,
                     {
                         toolCallId: '',
@@ -374,7 +396,7 @@ export class McpServiceMain extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpServiceMain.streamToolResult(result),
                         },
                     ],
                 };
@@ -414,7 +436,7 @@ export class McpServiceMain extends BaseService {
                     pageSize: 10,
                     siteUrl: this.lightdashConfig.siteUrl,
                 });
-                const result = await findChartsTool.execute(argsWithProject, {
+                const result = await findChartsTool.execute!(argsWithProject, {
                     toolCallId: '',
                     messages: [],
                 });
@@ -423,7 +445,7 @@ export class McpServiceMain extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpServiceMain.streamToolResult(result),
                         },
                     ],
                 };
@@ -640,7 +662,7 @@ export class McpServiceMain extends BaseService {
                     maxLimit: this.lightdashConfig.ai.copilot.maxQueryLimit,
                 });
 
-                const result = await runMetricQueryTool.execute(
+                const result = await runMetricQueryTool.execute!(
                     argsWithProject,
                     {
                         toolCallId: '',
@@ -652,7 +674,7 @@ export class McpServiceMain extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpServiceMain.streamToolResult(result),
                         },
                     ],
                 };
@@ -690,7 +712,7 @@ export class McpServiceMain extends BaseService {
                 const searchFieldValuesTool = getSearchFieldValues({
                     searchFieldValues,
                 });
-                const result = await searchFieldValuesTool.execute(
+                const result = await searchFieldValuesTool.execute!(
                     argsWithProject,
                     {
                         toolCallId: '',
@@ -702,12 +724,13 @@ export class McpServiceMain extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpServiceMain.streamToolResult(result),
                         },
                     ],
                 };
             },
         );
+
         console.log('registering get_embed_url tool');
         // Remove the try-catch wrapper and just register the tool directly
         this.mcpServer.registerTool(
@@ -748,6 +771,219 @@ export class McpServiceMain extends BaseService {
             },
         );
         console.log('registered get_embed_url tool!');
+
+        
+    }
+
+    async generateEmbedUrl(
+        args: {
+            resource_uuid: string;
+            resource_type?: 'chart' | 'dashboard';
+            expires_in?: string;
+            dashboard_filters_interactivity?: any;
+            can_export_csv?: boolean;
+            can_export_images?: boolean;
+            return_markdown?: boolean;
+            raw_directive?: boolean;
+            height?: number;
+        },
+        projectUuid: string,
+        context: McpProtocolContext,
+    ): Promise<string> {
+        const { user, account } = context.authInfo!.extra;
+        const { organizationUuid } = user;
+
+        if (!user || !organizationUuid || !account) {
+            throw new ForbiddenError('Authentication required');
+        }
+
+        // Set defaults (match Python exactly)
+        const resourceType = args.resource_type || 'chart';
+        const expiresIn = args.expires_in || '8h';
+        const canExportCsv = args.can_export_csv || false;
+        const canExportImages = args.can_export_images || false;
+        const returnMarkdown = args.return_markdown !== false; // default true
+        const rawDirective = args.raw_directive || false;
+        const defaultHeight = 600;
+        const embedHeight = args.height || defaultHeight;
+
+        try {
+            let embedUrl: string;
+            let title: string;
+
+            if (resourceType === 'dashboard') {
+                // Dashboard embedding (existing JWT-based logic)
+                const embedService = this.services.getEmbedService<EmbedService>();
+
+                const embedJwtData: any = {
+                    content: {
+                        type: 'dashboard' as const,
+                        dashboardUuid: args.resource_uuid,
+                        canExportCsv,
+                        canExportImages,
+                    },
+                    userAttributes: {
+                        organizationUuid,
+                    },
+                    expiresIn,
+                };
+
+                // Add optional dashboard filter interactivity
+                if (args.dashboard_filters_interactivity) {
+                    embedJwtData.content.dashboardFiltersInteractivity = args.dashboard_filters_interactivity;
+                }
+
+                // Generate the embed URL
+                const embedUrlResult = await embedService.getEmbedUrl(
+                    user,
+                    projectUuid,
+                    embedJwtData,
+                );
+
+                embedUrl = embedUrlResult.url;
+
+                // Try to get dashboard details for title
+                title = `Dashboard ${args.resource_uuid}`;
+                try {
+                    const dashboardService = this.services.getDashboardService();
+                    const dashboard = await dashboardService.getByIdOrSlug(
+                        user,
+                        args.resource_uuid,
+                    );
+                    title = dashboard.name;
+                } catch (error) {
+                    this.logger.warn(`Failed to get dashboard details: ${error}. Using default title.`);
+                }
+
+            } else if (resourceType === 'chart') {
+                // Chart embedding (new logic - direct URL access)
+                try {
+                    // Get chart details using savedChartModel directly (like EmbedService does)
+                    const chart = await this.savedChartModel.get(args.resource_uuid);
+                    
+                    // Check if user has access to this chart
+                    const space = await this.spaceModel.getSpaceSummary(chart.spaceUuid);
+                    const access = await this.spaceModel.getUserSpaceAccess(
+                        user.userUuid,
+                        chart.spaceUuid,
+                    );
+
+                    if (
+                        user.ability.cannot(
+                            'view',
+                            subject('SavedChart', {
+                                organizationUuid,
+                                projectUuid: chart.projectUuid,
+                                isPrivate: space.isPrivate,
+                                access,
+                            }),
+                        )
+                    ) {
+                        throw new ForbiddenError('You do not have access to this chart');
+                    }
+                    
+                    title = chart.name;
+                    
+                    // Create URL for individual chart viewing
+                    const baseUrl = this.lightdashConfig.siteUrl;
+                    embedUrl = `${baseUrl}/projects/${projectUuid}/saved/${args.resource_uuid}`;
+                    
+                } catch (error) {
+                    if (error instanceof ForbiddenError) {
+                        throw error;
+                    }
+                    throw new NotFoundError(`Chart with UUID ${args.resource_uuid} not found`);
+                }
+
+            } else {
+                throw new ParameterError(`Unsupported resource type: ${resourceType}. Supported types: 'chart', 'dashboard'`);
+            }
+
+            // Format the response (match Python logic)
+            if (rawDirective) {
+                // Return HTML artifact instruction
+                const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe 
+        src="${embedUrl}" 
+        title="${title}"
+        allow="fullscreen"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals">
+    </iframe>
+</body>
+</html>`;
+
+                const artifactInstruction = `Please create an artifact with the following properties:
+
+:::artifact identifier="lightdash-embed-${args.resource_uuid.substring(0, 8)}" type="text/html" title="${title}"
+${htmlContent}
+:::
+
+This will embed the Lightdash ${resourceType} directly in the chat.
+
+If the embed doesn't display due to security restrictions, you can open it directly at: ${embedUrl}`;
+
+                return artifactInstruction;
+            }
+
+            if (returnMarkdown) {
+                // Return ONLY the directive, no extra text or formatting
+                // Use the exact format that works - simple title and line break before closing :::
+                const simpleTitle = `Dashboard ${args.resource_uuid}`;
+                const lightdashDirective = `:::lightdash-${resourceType}{url="${embedUrl}" title="${simpleTitle}" height="${embedHeight}"}\n:::`;
+                return lightdashDirective;
+            } else {
+                // Return JSON response
+                const result = {
+                    url: embedUrl,
+                    title,
+                    resource_type: resourceType,
+                    resource_uuid: args.resource_uuid,
+                    height: embedHeight,
+                    expires_in: resourceType === 'dashboard' ? expiresIn : null, // Charts don't use JWT expiration
+                };
+                return JSON.stringify(result, null, 2);
+            }
+
+        } catch (error) {
+            if (error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ParameterError) {
+                throw error;
+            }
+            
+            let errorMsg = error instanceof Error ? error.message : String(error);
+            
+            // Provide helpful error messages
+            if (errorMsg.includes('embedService') && errorMsg.includes('no factory or provider')) {
+                errorMsg = 'Dashboard embedding is not available in your Lightdash instance. This feature requires an enterprise license.';
+            } else if (errorMsg.includes('422')) {
+                errorMsg = `Invalid request: ${errorMsg}`;
+            } else if (errorMsg.includes('404')) {
+                errorMsg = `${resourceType === 'dashboard' ? 'Dashboard' : 'Chart'} not found. Please check the UUID.`;
+            } else {
+                errorMsg = `Failed to generate embed URL: ${errorMsg}`;
+            }
+            
+            throw new ParameterError(errorMsg);
+        }
     }
 
     async getProjectUuidFromContext(
@@ -797,8 +1033,81 @@ export class McpServiceMain extends BaseService {
         return projectUuid;
     }
 
+    async getAvailableExplores(
+        user: SessionUser,
+        projectUuid: string,
+        availableTags: string[] | null,
+    ) {
+        return wrapSentryTransaction(
+            'AiAgent.getAvailableExplores',
+            {
+                projectUuid,
+                availableTags,
+            },
+            async () => {
+                const { organizationUuid } = user;
+                if (!organizationUuid) {
+                    throw new ForbiddenError('Organization not found');
+                }
+
+                const userAttributes =
+                    await this.userAttributesModel.getAttributeValuesForOrgMember(
+                        { organizationUuid, userUuid: user.userUuid },
+                    );
+
+                const allExplores = Object.values(
+                    await this.projectModel.findExploresFromCache(
+                        projectUuid,
+                        'name',
+                    ),
+                );
+
+                return allExplores
+                    .filter(
+                        (explore): explore is Explore =>
+                            !isExploreError(explore),
+                    )
+                    .filter((explore) =>
+                        doesExploreMatchRequiredAttributes(
+                            explore.tables[explore.baseTable]
+                                .requiredAttributes,
+                            userAttributes,
+                        ),
+                    )
+                    .map((explore) =>
+                        getFilteredExplore(explore, userAttributes),
+                    )
+                    .filter((explore) =>
+                        filterExploreByTags({ explore, availableTags }),
+                    )
+                    .filter((explore): explore is Explore => !!explore);
+            },
+        );
+    }
+
+    private async getExplore(
+        user: SessionUser,
+        projectUuid: string,
+        availableTags: string[] | null,
+        exploreName: string,
+    ) {
+        const explores = await this.getAvailableExplores(
+            user,
+            projectUuid,
+            availableTags,
+        );
+
+        const explore = explores.find((e) => e.name === exploreName);
+
+        if (!explore) {
+            throw new NotFoundError('Explore not found');
+        }
+
+        return explore;
+    }
+
     async getFindExploresFunction(
-        toolArgs: ToolFindExploresArgs & { projectUuid: string },
+        toolArgs: ToolFindExploresArgsV2 & { projectUuid: string },
         context: McpProtocolContext,
     ): Promise<FindExploresFn> {
         const { user, account } = context.authInfo!.extra;
@@ -839,107 +1148,60 @@ export class McpServiceMain extends BaseService {
                         },
                     );
 
-                const { data: tables, pagination } =
+                const explore = await this.getExplore(
+                    user,
+                    projectUuid,
+                    tagsFromContext,
+                    args.exploreName,
+                );
+
+                const sharedArgs = {
+                    projectUuid,
+                    catalogSearch: {
+                        type: CatalogType.Field,
+                        yamlTags: tagsFromContext || undefined,
+                        tables: [args.exploreName],
+                    },
+                    userAttributes,
+                    context: CatalogSearchContext.MCP,
+                    paginateArgs: {
+                        page: 1,
+                        pageSize: args.fieldSearchSize,
+                    },
+                    sortArgs: {
+                        sort: 'chartUsage',
+                        order: 'desc' as const,
+                    },
+                };
+
+                const { data: dimensions } =
                     await this.catalogService.searchCatalog({
-                        projectUuid,
+                        ...sharedArgs,
                         catalogSearch: {
-                            type: CatalogType.Table,
-                            yamlTags: tagsFromContext || undefined,
-                            tables: args.tableName
-                                ? [args.tableName]
-                                : undefined,
-                        },
-                        userAttributes,
-                        context: CatalogSearchContext.MCP,
-                        paginateArgs: {
-                            page: args.page,
-                            pageSize: args.pageSize,
+                            ...sharedArgs.catalogSearch,
+                            filter: CatalogFilter.Dimensions,
                         },
                     });
 
-                const tablesWithFields = await Promise.all(
-                    tables
-                        .filter((table) => table.type === CatalogType.Table)
-                        .map(async (table) => {
-                            if (!args.includeFields) {
-                                return {
-                                    table,
-                                    dimensions: [],
-                                    metrics: [],
-                                    dimensionsPagination: undefined,
-                                    metricsPagination: undefined,
-                                };
-                            }
-
-                            if (
-                                !args.fieldSearchSize ||
-                                !args.fieldOverviewSearchSize
-                            ) {
-                                throw new Error(
-                                    'fieldSearchSize and fieldOverviewSearchSize are required when includeFields is true',
-                                );
-                            }
-
-                            const sharedArgs = {
-                                projectUuid,
-                                catalogSearch: {
-                                    type: CatalogType.Field,
-                                    yamlTags: tagsFromContext || undefined,
-                                    tables: [table.name],
-                                },
-                                userAttributes,
-                                context: CatalogSearchContext.MCP,
-                                paginateArgs: {
-                                    page: 1,
-                                    pageSize: args.tableName
-                                        ? args.fieldSearchSize
-                                        : args.fieldOverviewSearchSize,
-                                },
-                                sortArgs: {
-                                    sort: 'chartUsage',
-                                    order: 'desc' as const,
-                                },
-                            };
-
-                            const {
-                                data: dimensions,
-                                pagination: dimensionsPagination,
-                            } = await this.catalogService.searchCatalog({
-                                ...sharedArgs,
-                                catalogSearch: {
-                                    ...sharedArgs.catalogSearch,
-                                    filter: CatalogFilter.Dimensions,
-                                },
-                            });
-
-                            const {
-                                data: metrics,
-                                pagination: metricsPagination,
-                            } = await this.catalogService.searchCatalog({
-                                ...sharedArgs,
-                                catalogSearch: {
-                                    ...sharedArgs.catalogSearch,
-                                    filter: CatalogFilter.Metrics,
-                                },
-                            });
-
-                            return {
-                                table,
-                                dimensions: dimensions.filter(
-                                    (d) => d.type === CatalogType.Field,
-                                ),
-                                metrics: metrics.filter(
-                                    (m) => m.type === CatalogType.Field,
-                                ),
-                                dimensionsPagination,
-                                metricsPagination,
-                            };
-                        }),
-                );
+                const { data: metrics } =
+                    await this.catalogService.searchCatalog({
+                        ...sharedArgs,
+                        catalogSearch: {
+                            ...sharedArgs.catalogSearch,
+                            filter: CatalogFilter.Metrics,
+                        },
+                    });
 
                 return {
-                    tablesWithFields,
-                    pagination,
+                    explore,
+                    catalogFields: {
+                        dimensions: dimensions.filter(
+                            (d) => d.type === CatalogType.Field,
+                        ),
+                        metrics: metrics.filter(
+                            (m) => m.type === CatalogType.Field,
+                        ),
+                    },
                 };
             });
 
@@ -988,14 +1250,19 @@ export class McpServiceMain extends BaseService {
                         },
                     );
 
+                const explore = await this.getExplore(
+                    user,
+                    projectUuid,
+                    tagsFromContext,
+                    args.table,
+                );
+
                 const { data: catalogItems, pagination } =
                     await this.catalogService.searchCatalog({
                         projectUuid,
                         catalogSearch: {
                             type: CatalogType.Field,
                             searchQuery: args.fieldSearchQuery.label,
-                            yamlTags: tagsFromContext || undefined,
-                            tables: args.table ? [args.table] : undefined,
                         },
                         context: CatalogSearchContext.MCP,
                         paginateArgs: {
@@ -1003,6 +1270,7 @@ export class McpServiceMain extends BaseService {
                             pageSize: args.pageSize,
                         },
                         userAttributes,
+                        filteredExplore: explore,
                     });
 
                 const catalogFields = catalogItems.filter(
@@ -1193,7 +1461,6 @@ export class McpServiceMain extends BaseService {
                 projectUuid,
                 metricQuery: {
                     ...metricQuery,
-                    tableCalculations: [],
                     additionalMetrics: additionalMetrics ?? [],
                 },
                 exploreName: metricQuery.exploreName,
@@ -1269,217 +1536,6 @@ export class McpServiceMain extends BaseService {
         return searchFieldValues;
     }
 
-    async generateEmbedUrl(
-        args: {
-            resource_uuid: string;
-            resource_type?: 'chart' | 'dashboard';
-            expires_in?: string;
-            dashboard_filters_interactivity?: any;
-            can_export_csv?: boolean;
-            can_export_images?: boolean;
-            return_markdown?: boolean;
-            raw_directive?: boolean;
-            height?: number;
-        },
-        projectUuid: string,
-        context: McpProtocolContext,
-    ): Promise<string> {
-        const { user, account } = context.authInfo!.extra;
-        const { organizationUuid } = user;
-
-        if (!user || !organizationUuid || !account) {
-            throw new ForbiddenError('Authentication required');
-        }
-
-        // Set defaults (match Python exactly)
-        const resourceType = args.resource_type || 'chart';
-        const expiresIn = args.expires_in || '8h';
-        const canExportCsv = args.can_export_csv || false;
-        const canExportImages = args.can_export_images || false;
-        const returnMarkdown = args.return_markdown !== false; // default true
-        const rawDirective = args.raw_directive || false;
-        const defaultHeight = 600;
-        const embedHeight = args.height || defaultHeight;
-
-        try {
-            let embedUrl: string;
-            let title: string;
-
-            if (resourceType === 'dashboard') {
-                // Dashboard embedding (existing JWT-based logic)
-                const embedService = this.services.getEmbedService<EmbedService>();
-
-                const embedJwtData: any = {
-                    content: {
-                        type: 'dashboard' as const,
-                        dashboardUuid: args.resource_uuid,
-                        canExportCsv,
-                        canExportImages,
-                    },
-                    userAttributes: {
-                        organizationUuid,
-                    },
-                    expiresIn,
-                };
-
-                // Add optional dashboard filter interactivity
-                if (args.dashboard_filters_interactivity) {
-                    embedJwtData.content.dashboardFiltersInteractivity = args.dashboard_filters_interactivity;
-                }
-
-                // Generate the embed URL
-                const embedUrlResult = await embedService.getEmbedUrl(
-                    user,
-                    projectUuid,
-                    embedJwtData,
-                );
-
-                embedUrl = embedUrlResult.url;
-
-                // Try to get dashboard details for title
-                title = `Dashboard ${args.resource_uuid}`;
-                try {
-                    const dashboardService = this.services.getDashboardService();
-                    const dashboard = await dashboardService.getById(
-                        user,
-                        args.resource_uuid,
-                    );
-                    title = dashboard.name;
-                } catch (error) {
-                    this.logger.warn(`Failed to get dashboard details: ${error}. Using default title.`);
-                }
-
-            } else if (resourceType === 'chart') {
-                // Chart embedding (new logic - direct URL access)
-                try {
-                    // Get chart details using savedChartModel directly (like EmbedService does)
-                    const chart = await this.savedChartModel.get(args.resource_uuid);
-                    
-                    // Check if user has access to this chart
-                    const space = await this.spaceModel.getSpaceSummary(chart.spaceUuid);
-                    const access = await this.spaceModel.getUserSpaceAccess(
-                        user.userUuid,
-                        chart.spaceUuid,
-                    );
-
-                    if (
-                        user.ability.cannot(
-                            'view',
-                            subject('SavedChart', {
-                                organizationUuid,
-                                projectUuid: chart.projectUuid,
-                                isPrivate: space.isPrivate,
-                                access,
-                            }),
-                        )
-                    ) {
-                        throw new ForbiddenError('You do not have access to this chart');
-                    }
-                    
-                    title = chart.name;
-                    
-                    // Create URL for individual chart viewing
-                    const baseUrl = this.lightdashConfig.siteUrl;
-                    embedUrl = `${baseUrl}/projects/${projectUuid}/saved/${args.resource_uuid}`;
-                    
-                } catch (error) {
-                    if (error instanceof ForbiddenError) {
-                        throw error;
-                    }
-                    throw new NotFoundError(`Chart with UUID ${args.resource_uuid} not found`);
-                }
-
-            } else {
-                throw new ParameterError(`Unsupported resource type: ${resourceType}. Supported types: 'chart', 'dashboard'`);
-            }
-
-            // Format the response (match Python logic)
-            if (rawDirective) {
-                // Return HTML artifact instruction
-                const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-    </style>
-</head>
-<body>
-    <iframe 
-        src="${embedUrl}" 
-        title="${title}"
-        allow="fullscreen"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals">
-    </iframe>
-</body>
-</html>`;
-
-                const artifactInstruction = `Please create an artifact with the following properties:
-
-:::artifact identifier="lightdash-embed-${args.resource_uuid.substring(0, 8)}" type="text/html" title="${title}"
-${htmlContent}
-:::
-
-This will embed the Lightdash ${resourceType} directly in the chat.
-
-If the embed doesn't display due to security restrictions, you can open it directly at: ${embedUrl}`;
-
-                return artifactInstruction;
-            }
-
-            if (returnMarkdown) {
-                // Return ONLY the directive, no extra text or formatting
-                // Use the exact format that works - simple title and line break before closing :::
-                const simpleTitle = `Dashboard ${args.resource_uuid}`;
-                const lightdashDirective = `:::lightdash-${resourceType}{url="${embedUrl}" title="${simpleTitle}" height="${embedHeight}"}\n:::`;
-                return lightdashDirective;
-            } else {
-                // Return JSON response
-                const result = {
-                    url: embedUrl,
-                    title,
-                    resource_type: resourceType,
-                    resource_uuid: args.resource_uuid,
-                    height: embedHeight,
-                    expires_in: resourceType === 'dashboard' ? expiresIn : null, // Charts don't use JWT expiration
-                };
-                return JSON.stringify(result, null, 2);
-            }
-
-        } catch (error) {
-            if (error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ParameterError) {
-                throw error;
-            }
-            
-            let errorMsg = error instanceof Error ? error.message : String(error);
-            
-            // Provide helpful error messages
-            if (errorMsg.includes('embedService') && errorMsg.includes('no factory or provider')) {
-                errorMsg = 'Dashboard embedding is not available in your Lightdash instance. This feature requires an enterprise license.';
-            } else if (errorMsg.includes('422')) {
-                errorMsg = `Invalid request: ${errorMsg}`;
-            } else if (errorMsg.includes('404')) {
-                errorMsg = `${resourceType === 'dashboard' ? 'Dashboard' : 'Chart'} not found. Please check the UUID.`;
-            } else {
-                errorMsg = `Failed to generate embed URL: ${errorMsg}`;
-            }
-            
-            throw new ParameterError(errorMsg);
-        }
-    }
-
     public getServer(): McpServer {
         return this.mcpServer;
     }
@@ -1499,7 +1555,6 @@ If the embed doesn't display due to security restrictions, you can open it direc
         return { user, organizationUuid, account };
     }
 
-    // Update the canAccessMcp method
     public canAccessMcp(context: McpProtocolContext): boolean {
         if (!context.authInfo) {
             throw new ForbiddenError('Invalid authInfo context');
@@ -1507,33 +1562,19 @@ If the embed doesn't display due to security restrictions, you can open it direc
 
         const user = context.authInfo.extra?.user;
         const account = context.authInfo.extra?.account;
-        
-        if (!user || !account) {
-            throw new ForbiddenError('Missing user or account in context');
-        }
 
-        // Handle both OAuth and API Key accounts
-        if (account.isOauthUser()) {
-            const oauthAccount = account as OauthAccount;
-            const { scopes } = oauthAccount.authentication;
-            
-            // TODO replace with CASL ability check
-            // Do not enforce client scopes for now until more MCP clients support this
-            /*
-            if (
-                !scopes.includes(OAuthScope.MCP_READ) &&
-                !scopes.includes(OAuthScope.MCP_WRITE)
-            ) {
-                throw new ForbiddenError('You are not allowed to access MCP');
-            }
-            */
-        } else if (account.isPatUser()) {
-            // API Key/PAT accounts automatically have MCP access if MCP is enabled
-            // Additional permissions are checked via CASL in individual methods
-            // The PAT already went through authentication, so the user is valid
-        } else {
-            throw new ForbiddenError('Invalid account type for MCP access');
+        // TODO replace with CASL ability check
+        // Do not enforce client scopes for now until more MCP clients support this
+        /*
+        //const { scopes } = account.authentication;
+
+        if (
+            !scopes.includes(OAuthScope.MCP_READ) &&
+            !scopes.includes(OAuthScope.MCP_WRITE)
+        ) {
+            throw new ForbiddenError('You are not allowed to access MCP');
         }
+        */
 
         if (!this.lightdashConfig.mcp.enabled) {
             throw new MissingConfigError('MCP is not enabled');

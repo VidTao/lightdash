@@ -154,6 +154,7 @@ export type ColumnProperties = {
     visible?: boolean;
     name?: string;
     frozen?: boolean;
+    displayStyle?: 'text' | 'bar';
 };
 
 export type TableChart = {
@@ -335,6 +336,9 @@ export type CompleteCartesianChartLayout = {
     flipAxes?: boolean | undefined;
     showGridX?: boolean | undefined;
     showGridY?: boolean | undefined;
+    showXAxis?: boolean | undefined;
+    showYAxis?: boolean | undefined;
+    stack?: boolean | string | undefined; // Support both old boolean and new StackType string for backward compatibility
 };
 
 export type CartesianChartLayout = Partial<CompleteCartesianChartLayout>;

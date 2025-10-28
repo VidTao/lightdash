@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { baseOutputMetadataSchema } from '../outputMetadata';
 import { createToolSchema } from '../toolSchemaBuilder';
 
 export const TOOL_FIND_DASHBOARDS_DESCRIPTION = `Tool: "findDashboards"
@@ -12,14 +13,14 @@ Usage tips:
 - If results aren't relevant, retry with the full user query or more specific terms
 - Results are paginated — use the page parameter to get more results if needed
 - Dashboards with validation errors will be deprioritized
-- Returns dashboard URLs when available 
+- Returns dashboard URLs when available
 - It doesn't provide a dashboard summary yet, so don't suggest this capability
 `;
 
-export const toolFindDashboardsArgsSchema = createToolSchema(
-    'find_dashboards',
-    TOOL_FIND_DASHBOARDS_DESCRIPTION,
-)
+export const toolFindDashboardsArgsSchema = createToolSchema({
+    type: 'find_dashboards',
+    description: TOOL_FIND_DASHBOARDS_DESCRIPTION,
+})
     .extend({
         dashboardSearchQueries: z.array(
             z.object({
@@ -42,3 +43,12 @@ export const toolFindDashboardsArgsSchemaTransformed =
     toolFindDashboardsArgsSchema;
 
 export type ToolFindDashboardsArgsTransformed = ToolFindDashboardsArgs;
+
+export const toolFindDashboardsOutputSchema = z.object({
+    result: z.string(),
+    metadata: baseOutputMetadataSchema,
+});
+
+export type ToolFindDashboardsOutput = z.infer<
+    typeof toolFindDashboardsOutputSchema
+>;

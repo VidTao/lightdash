@@ -17,6 +17,8 @@ import {
     InlineErrorType,
     isDashboardFieldTarget,
     isExploreError,
+    isSqlTableCalculation,
+    isTemplateTableCalculation,
     isValidationTargetValid,
     OrganizationMemberRole,
     RequestMethod,
@@ -100,10 +102,34 @@ export class ValidationService extends BaseService {
         >((acc, tc) => {
             const regex = /\$\{([^}]+)\}/g;
 
-            const fieldsInSql = tc.sql.match(regex);
-            if (fieldsInSql != null) {
-                return [...acc, ...fieldsInSql.map(parseTableField)];
+            if (isSqlTableCalculation(tc)) {
+                const fieldsInSql = tc.sql.match(regex);
+                if (fieldsInSql != null) {
+                    return [...acc, ...fieldsInSql.map(parseTableField)];
+                }
             }
+
+            if (isTemplateTableCalculation(tc)) {
+                const fieldIdPart =
+                    'fieldId' in tc.template && tc.template.fieldId !== null
+                        ? [tc.template.fieldId]
+                        : [];
+                const orderByPart =
+                    'orderBy' in tc.template
+                        ? tc.template.orderBy.map((o) => o.fieldId)
+                        : [];
+                const partitionByPart =
+                    'partitionBy' in tc.template && tc.template.partitionBy
+                        ? tc.template.partitionBy
+                        : [];
+                const fieldsInTemplate = [
+                    ...fieldIdPart,
+                    ...orderByPart,
+                    ...partitionByPart,
+                ];
+                return [...acc, ...fieldsInTemplate];
+            }
+
             return acc;
         }, []);
         return tableCalculationFieldsInSql;
@@ -224,7 +250,11 @@ export class ValidationService extends BaseService {
                 if (selectedExplores === undefined) return true;
                 return selectedExplores.some((explore) => {
                     if (isExploreError(explore)) return false;
-                    return explore.baseTable === c.tableName;
+                    // Match by baseTable or explore name (for additional explores)
+                    return (
+                        explore.baseTable === c.tableName ||
+                        explore.name === c.tableName
+                    );
                 });
             })
             .flatMap(
@@ -573,6 +603,7 @@ export class ValidationService extends BaseService {
         projectUuid: string,
         compiledExplores?: (Explore | ExploreError)[],
         validationTargets?: Set<ValidationTarget>,
+        onlyValidateExploresInArgs?: boolean,
     ): Promise<CreateValidation[]> {
         const hasValidationTargets =
             validationTargets && validationTargets.size > 0;
@@ -615,7 +646,10 @@ export class ValidationService extends BaseService {
             );
         } else {
             explores = Object.values(
-                await this.projectModel.findExploresFromCache(projectUuid),
+                await this.projectModel.findExploresFromCache(
+                    projectUuid,
+                    'name',
+                ),
             );
         }
 
@@ -631,12 +665,19 @@ export class ValidationService extends BaseService {
                 const metrics = Object.values(explore.tables).flatMap((table) =>
                     Object.values(table.metrics),
                 );
+                const fieldData = {
+                    dimensionIds: dimensions.map(getItemId),
+                    metricIds: metrics.map(getItemId),
+                };
                 return {
                     ...acc,
-                    [explore.baseTable]: {
-                        dimensionIds: dimensions.map(getItemId),
-                        metricIds: metrics.map(getItemId),
-                    },
+                    // Index by baseTable for base explores and charts using baseTable
+                    [explore.baseTable]: fieldData,
+                    // Also index by explore name for additional explores
+                    // https://docs.lightdash.com/guides/explores
+                    ...(explore.name !== explore.baseTable
+                        ? { [explore.name]: fieldData }
+                        : {}),
                 };
             }, {}) || {};
 
@@ -676,7 +717,7 @@ export class ValidationService extends BaseService {
                 ? await this.validateCharts(
                       projectUuid,
                       exploreFields,
-                      compiledExplores,
+                      onlyValidateExploresInArgs ? compiledExplores : undefined,
                   )
                 : [];
 
@@ -699,6 +740,7 @@ export class ValidationService extends BaseService {
         context?: RequestMethod,
         explores?: (Explore | ExploreError)[],
         validationTargets?: ValidationTarget[],
+        onlyValidateExploresInArgs?: boolean,
     ): Promise<string> {
         const { organizationUuid } = await this.projectModel.getSummary(
             projectUuid,
@@ -725,6 +767,7 @@ export class ValidationService extends BaseService {
             organizationUuid,
             explores,
             validationTargets,
+            onlyValidateExploresInArgs,
         });
         return jobId;
     }

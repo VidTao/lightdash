@@ -41,6 +41,10 @@ import {
 } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
 import { useBlocker, useLocation, useNavigate, useParams } from 'react-router';
+import {
+    selectIsValidQuery,
+    useExplorerSelector,
+} from '../../../features/explorer/store';
 import { PromotionConfirmDialog } from '../../../features/promotion/components/PromotionConfirmDialog';
 import {
     usePromoteChartDiffMutation,
@@ -57,6 +61,7 @@ import { useChartViewStats } from '../../../hooks/chart/useChartViewStats';
 import useDashboardStorage from '../../../hooks/dashboard/useDashboardStorage';
 import { useChartPinningMutation } from '../../../hooks/pinning/useChartPinningMutation';
 import { useContentAction } from '../../../hooks/useContent';
+import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { useFeatureFlagEnabled } from '../../../hooks/useFeatureFlagEnabled';
 import { useProject } from '../../../hooks/useProject';
 import { useUpdateMutation } from '../../../hooks/useSavedQuery';
@@ -109,23 +114,28 @@ const SavedChartsHeader: FC = () => {
     const isEditMode = useExplorerContext(
         (context) => context.state.isEditMode,
     );
+
     const unsavedChartVersion = useExplorerContext(
-        (context) => context.state.unsavedChartVersion,
+        (context) => context.state.mergedUnsavedChartVersion,
     );
-    const hasUnsavedChanges = useExplorerContext(
-        (context) => context.state.hasUnsavedChanges,
-    );
+
+    // Get savedChart, comparison function, and isValidQuery from Context
     const savedChart = useExplorerContext(
         (context) => context.state.savedChart,
     );
+    const isUnsavedChartChanged = useExplorerContext(
+        (context) => context.actions.isUnsavedChartChanged,
+    );
     const reset = useExplorerContext((context) => context.actions.reset);
 
-    const itemsMap = useExplorerContext(
-        (context) => context.query.data?.fields,
-    );
-    const isValidQuery = useExplorerContext(
-        (context) => context.state.isValidQuery,
-    );
+    const hasUnsavedChanges = savedChart
+        ? isUnsavedChartChanged(unsavedChartVersion)
+        : false;
+
+    const { query } = useExplorerQuery();
+    const itemsMap = query.data?.fields;
+
+    const isValidQuery = useExplorerSelector(selectIsValidQuery);
 
     const isPinned = useMemo(() => {
         return Boolean(savedChart?.pinnedListUuid);

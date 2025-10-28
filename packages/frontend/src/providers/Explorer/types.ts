@@ -11,25 +11,21 @@ import {
     type Dimension,
     type FieldId,
     type FunnelChartConfig,
+    type Item,
     type Metric,
     type MetricQuery,
     type MetricType,
     type ParameterDefinitions,
-    type ParameterValue,
     type PieChartConfig,
     type ReplaceCustomFields,
     type SavedChart,
-    type SortField,
     type TableCalculation,
     type TableCalculationMetadata,
     type TableChartConfig,
     type TimeZone,
     type TreemapChartConfig,
 } from '@lightdash/common';
-import {
-    type useGetReadyQueryResults,
-    type useInfiniteQueryResults,
-} from '../../hooks/useQueryResults';
+import { type QueryResultsProps } from '../../hooks/useQueryResults';
 
 export enum ExplorerSection {
     FILTERS = 'FILTERS',
@@ -40,29 +36,13 @@ export enum ExplorerSection {
     PARAMETERS = 'PARAMETERS',
 }
 
-interface SwapSortFieldsPayload {
-    sourceIndex: number;
-    destinationIndex: number;
-}
-
 export enum ActionType {
     RESET,
     SET_TABLE_NAME,
-    REMOVE_FIELD,
-    TOGGLE_DIMENSION,
-    TOGGLE_METRIC,
-    TOGGLE_SORT_FIELD,
-    SET_SORT_FIELDS,
-    ADD_SORT_FIELD,
-    REMOVE_SORT_FIELD,
-    MOVE_SORT_FIELDS,
-    SET_SORT_FIELD_NULLS_FIRST,
+    SET_FILTERS,
     SET_ROW_LIMIT,
     SET_TIME_ZONE,
-    SET_FILTERS,
     SET_COLUMN_ORDER,
-    SET_PARAMETER,
-    CLEAR_ALL_PARAMETERS,
     ADD_TABLE_CALCULATION,
     UPDATE_TABLE_CALCULATION,
     DELETE_TABLE_CALCULATION,
@@ -83,8 +63,6 @@ export enum ActionType {
     TOGGLE_FORMAT_MODAL,
     UPDATE_METRIC_FORMAT,
     REPLACE_FIELDS,
-    OPEN_VISUALIZATION_CONFIG,
-    CLOSE_VISUALIZATION_CONFIG,
     SET_PARAMETER_REFERENCES,
 }
 
@@ -105,35 +83,8 @@ export type Action =
           payload: MetricQuery;
       }
     | { type: ActionType.SET_TABLE_NAME; payload: string }
+    | { type: ActionType.SET_FILTERS; payload: MetricQuery['filters'] }
     | { type: ActionType.TOGGLE_EXPANDED_SECTION; payload: ExplorerSection }
-    | {
-          type:
-              | ActionType.REMOVE_FIELD
-              | ActionType.TOGGLE_DIMENSION
-              | ActionType.TOGGLE_METRIC
-              | ActionType.TOGGLE_SORT_FIELD;
-          payload: FieldId;
-      }
-    | {
-          type: ActionType.SET_SORT_FIELDS;
-          payload: SortField[];
-      }
-    | {
-          type: ActionType.ADD_SORT_FIELD;
-          payload: SortField;
-      }
-    | {
-          type: ActionType.REMOVE_SORT_FIELD;
-          payload: FieldId;
-      }
-    | {
-          type: ActionType.MOVE_SORT_FIELDS;
-          payload: SwapSortFieldsPayload;
-      }
-    | {
-          type: ActionType.SET_SORT_FIELD_NULLS_FIRST;
-          payload: { fieldId: FieldId; nullsFirst: boolean | undefined };
-      }
     | {
           type: ActionType.SET_ROW_LIMIT;
           payload: number;
@@ -141,10 +92,6 @@ export type Action =
     | {
           type: ActionType.SET_TIME_ZONE;
           payload: TimeZone;
-      }
-    | {
-          type: ActionType.SET_FILTERS;
-          payload: MetricQuery['filters'];
       }
     | {
           type: ActionType.ADD_TABLE_CALCULATION;
@@ -162,14 +109,6 @@ export type Action =
           type: ActionType.SET_COLUMN_ORDER;
           payload: string[];
       }
-    | {
-          type: ActionType.SET_PARAMETER;
-          payload: {
-              key: string;
-              value: ParameterValue | null;
-          };
-      }
-    | { type: ActionType.CLEAR_ALL_PARAMETERS }
     | {
           type: ActionType.ADD_ADDITIONAL_METRIC;
           payload: AdditionalMetric;
@@ -251,12 +190,6 @@ export type Action =
           };
       }
     | {
-          type: ActionType.OPEN_VISUALIZATION_CONFIG;
-      }
-    | {
-          type: ActionType.CLOSE_VISUALIZATION_CONFIG;
-      }
-    | {
           type: ActionType.SET_PARAMETER_REFERENCES;
           payload: string[] | null;
       };
@@ -268,6 +201,8 @@ export interface ExplorerReduceState {
         tableCalculations?: TableCalculationMetadata[];
     };
     isVisualizationConfigOpen?: boolean;
+    isMinimal?: boolean;
+    isEditMode?: boolean;
     unsavedChartVersion: CreateSavedChartVersion;
     previouslyFetchedState?: MetricQuery;
     /**
@@ -298,50 +233,45 @@ export interface ExplorerReduceState {
             isOpen: boolean;
             items?: CustomDimension[] | AdditionalMetric[];
         };
+        itemDetail: {
+            isOpen: boolean;
+            itemType?: 'field' | 'table' | 'group';
+            label?: string;
+            description?: string;
+            fieldItem?: Item | AdditionalMetric;
+        };
     };
 
+    // Query execution state - manages TanStack Query arguments and history
+    queryExecution: {
+        validQueryArgs: QueryResultsProps | null;
+        unpivotedQueryArgs: QueryResultsProps | null;
+        queryUuidHistory: string[];
+        unpivotedQueryUuidHistory: string[];
+    };
     fromDashboard?: string;
 }
 
 export interface ExplorerState extends ExplorerReduceState {
-    activeFields: Set<FieldId>;
-    isValidQuery: boolean;
-    hasUnsavedChanges: boolean;
+    // activeFields removed - use selectActiveFields Redux selector instead
+    // isValidQuery removed - use selectIsValidQuery Redux selector instead
     isEditMode: boolean;
     savedChart: SavedChart | undefined;
-    missingRequiredParameters: string[] | null;
+    // Merged version combining Context fields (chartConfig, pivotConfig) with Redux fields
+    // This is the complete version that should be used when saving charts
+    mergedUnsavedChartVersion: CreateSavedChartVersion;
 }
 
 export interface ExplorerContextType {
     state: ExplorerState;
-    query: ReturnType<typeof useGetReadyQueryResults>;
-    queryResults: ReturnType<typeof useInfiniteQueryResults>;
-    unpivotedQuery: ReturnType<typeof useGetReadyQueryResults>;
-    unpivotedQueryResults: ReturnType<typeof useInfiniteQueryResults>;
     actions: {
         clearExplore: () => void;
         clearQuery: () => void;
         reset: () => void;
         setTableName: (tableName: string) => void;
-        removeActiveField: (fieldId: FieldId) => void;
-        toggleActiveField: (fieldId: FieldId, isDimension: boolean) => void;
-        toggleSortField: (fieldId: FieldId) => void;
-        setSortFields: (sortFields: SortField[]) => void;
-        addSortField: (
-            fieldId: FieldId,
-            options?: { descending: boolean },
-        ) => void;
-        removeSortField: (fieldId: FieldId) => void;
-        moveSortFields: (sourceIndex: number, destinationIndex: number) => void;
-        setSortFieldNullsFirst: (
-            fieldId: FieldId,
-            nullsFirst: boolean | undefined,
-        ) => void;
         setRowLimit: (limit: number) => void;
         setTimeZone: (timezone: string | null) => void;
         setFilters: (filters: MetricQuery['filters']) => void;
-        setParameter: (key: string, value: ParameterValue | null) => void;
-        clearAllParameters: () => void;
         addAdditionalMetric: (metric: AdditionalMetric) => void;
         editAdditionalMetric: (
             metric: AdditionalMetric,
@@ -364,9 +294,6 @@ export interface ExplorerContextType {
         setPivotFields: (fields: FieldId[] | undefined) => void;
         setChartType: (chartType: ChartType) => void;
         setChartConfig: (chartConfig: ChartConfig) => void;
-        fetchResults: () => void;
-        cancelQuery: () => void;
-        toggleExpandedSection: (section: ExplorerSection) => void;
         addCustomDimension: (customDimension: CustomDimension) => void;
         editCustomDimension: (
             customDimension: CustomDimension,
@@ -391,9 +318,11 @@ export interface ExplorerContextType {
             formatOptions: CustomFormat | undefined;
         }) => void;
         replaceFields: (fieldsToReplace: ReplaceCustomFields[string]) => void;
-        getDownloadQueryUuid: (limit: number | null) => Promise<string>;
         openVisualizationConfig: () => void;
         closeVisualizationConfig: () => void;
         setParameterReferences: (parameterReferences: string[] | null) => void;
+        isUnsavedChartChanged: (
+            chartVersion: CreateSavedChartVersion,
+        ) => boolean;
     };
 }

@@ -23,14 +23,14 @@ export interface LightdashScimExtension {
 export interface ScimUser extends ScimResource {
     schemas: string[];
     userName: string;
-    name: {
-        givenName: string;
-        familyName: string;
+    name?: {
+        givenName?: string;
+        familyName?: string;
     };
-    active: boolean;
+    active?: boolean;
     emails?: {
         value: string;
-        primary: boolean;
+        primary?: boolean;
     }[];
     [ScimSchemaType.LIGHTDASH_USER_EXTENSION]?: LightdashScimExtension;
 }
@@ -39,7 +39,7 @@ export interface ScimGroup extends ScimResource {
     schemas: string[];
     id: string;
     displayName: string;
-    members: ScimGroupMember[];
+    members?: ScimGroupMember[];
     meta: ScimResource['meta'] & {
         resourceType: 'Group';
         created: Date;
@@ -50,7 +50,7 @@ export interface ScimGroup extends ScimResource {
 
 export interface ScimGroupMember {
     value: string;
-    display: string;
+    display?: string;
 }
 
 export type ScimErrorPayload = {
@@ -119,7 +119,7 @@ export interface ScimListResponse<T extends ScimResource> {
 export interface ScimUpsertGroup {
     schemas: ScimSchemaType.GROUP[];
     displayName: string;
-    members: ScimGroupMember[];
+    members?: ScimGroupMember[];
 }
 
 export type ScimUpsertUser = Omit<ScimUser, 'id'> & {
@@ -131,3 +131,77 @@ export type ApiCreateScimServiceAccountRequest = Pick<
     ServiceAccount,
     'expiresAt' | 'description'
 >;
+
+export interface ScimServiceProviderConfig {
+    schemas: ScimSchemaType.SERVICE_PROVIDER_CONFIG[];
+    documentationUri?: string;
+    patch: {
+        supported: boolean;
+    };
+    bulk: {
+        supported: boolean;
+        maxOperations?: number;
+        maxPayloadSize?: number;
+    };
+    filter: {
+        supported: boolean;
+        maxResults?: number;
+    };
+    changePassword: {
+        supported: boolean;
+    };
+    sort: {
+        supported: boolean;
+    };
+    etag: {
+        supported: boolean;
+    };
+    authenticationSchemes: {
+        type: string;
+        name: string;
+        description: string;
+        specUri?: string;
+        documentationUri?: string;
+        primary?: boolean;
+    }[];
+}
+
+export interface ScimSchema extends ScimResource {
+    schemas: ScimSchemaType.SCHEMA[];
+    name?: string;
+    description?: string;
+    attributes: ScimSchemaAttribute[];
+}
+
+export interface ScimSchemaAttribute {
+    name: string;
+    type:
+        | 'string'
+        | 'boolean'
+        | 'decimal'
+        | 'integer'
+        | 'dateTime'
+        | 'reference'
+        | 'complex';
+    multiValued: boolean;
+    description?: string;
+    required: boolean;
+    canonicalValues?: string[];
+    caseExact: boolean;
+    mutability: 'readOnly' | 'readWrite' | 'immutable' | 'writeOnly';
+    returned: 'always' | 'never' | 'default' | 'request';
+    uniqueness: 'none' | 'server' | 'global';
+    subAttributes?: ScimSchemaAttribute[];
+}
+
+export interface ScimResourceType extends ScimResource {
+    schemas: ScimSchemaType.RESOURCE_TYPE[];
+    name: string;
+    description?: string;
+    endpoint: string;
+    schema: string;
+    schemaExtensions?: {
+        schema: string;
+        required: boolean;
+    }[];
+}

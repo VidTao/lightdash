@@ -1,31 +1,45 @@
 import {
+    getWebAiChartConfig,
+    type AiAgentChartTypeOption,
     type ApiAiAgentThreadMessageVizQuery,
+    type ChartConfig,
     type CreateSavedChartVersion,
+    type DashboardV2Visualization,
     type DashboardVisualization,
 } from '@lightdash/common';
-import { getChartConfigFromAiAgentVizConfig } from './echarts';
+
+export type VizQueryWithOverrides = ApiAiAgentThreadMessageVizQuery & {
+    expandedChartConfig: ChartConfig | undefined;
+    selectedChartType: AiAgentChartTypeOption | undefined;
+};
 
 function convertAiVisualizationToCreateSavedChartVersion(
-    aiVizData: ApiAiAgentThreadMessageVizQuery,
-    dashboardVisualization: DashboardVisualization,
+    aiVizData: VizQueryWithOverrides,
+    dashboardVisualization: DashboardVisualization | DashboardV2Visualization,
     options: {
         name: string;
         description?: string;
         dashboardUuid?: string;
         dashboardName?: string;
         userId?: string;
+        maxQueryLimit?: number;
     },
 ): CreateSavedChartVersion {
-    const { query, metadata } = aiVizData;
+    const { query, metadata, expandedChartConfig, selectedChartType } =
+        aiVizData;
     const { metricQuery } = query;
 
-    const chartConfig = getChartConfigFromAiAgentVizConfig({
-        vizConfig: dashboardVisualization,
-        metricQuery,
-        rows: [], // Empty rows array - charts will load data dynamically
-        maxQueryLimit: 500, // TODO :: useHealth health.query.maxLimit
-        fieldsMap: aiVizData.query.fields,
-    });
+    // Use expanded chart config if available (user made custom changes to the chart),
+    // otherwise generate config from dashboard visualization with chart type override
+    const finalChartConfig =
+        expandedChartConfig ??
+        getWebAiChartConfig({
+            vizConfig: dashboardVisualization,
+            metricQuery,
+            maxQueryLimit: options.maxQueryLimit,
+            fieldsMap: aiVizData.query.fields,
+            overrideChartType: selectedChartType ?? undefined,
+        }).echartsConfig;
 
     // Create table config with proper column order
     const tableConfig = {
@@ -40,7 +54,7 @@ function convertAiVisualizationToCreateSavedChartVersion(
         description: options.description || metadata.description || undefined,
         tableName: metricQuery.exploreName,
         metricQuery,
-        chartConfig: chartConfig.echartsConfig,
+        chartConfig: finalChartConfig,
         tableConfig,
         dashboardUuid: options.dashboardUuid,
         dashboardName: options.dashboardName,
@@ -53,13 +67,14 @@ export function convertDashboardVisualizationsToChartData(
     dashboardConfig: {
         title: string;
         description: string;
-        visualizations: DashboardVisualization[];
+        visualizations: (DashboardVisualization | DashboardV2Visualization)[];
     },
-    vizQueryResults: ApiAiAgentThreadMessageVizQuery[],
+    vizQueryResults: VizQueryWithOverrides[],
     options: {
         dashboardUuid?: string;
         dashboardName?: string;
         userId?: string;
+        maxQueryLimit?: number;
     },
 ): CreateSavedChartVersion[] {
     if (dashboardConfig.visualizations.length !== vizQueryResults.length) {
@@ -80,6 +95,7 @@ export function convertDashboardVisualizationsToChartData(
                 dashboardUuid: options.dashboardUuid,
                 dashboardName: options.dashboardName,
                 userId: options.userId,
+                maxQueryLimit: options.maxQueryLimit,
             },
         );
     });

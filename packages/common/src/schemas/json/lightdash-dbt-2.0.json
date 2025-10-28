@@ -148,7 +148,10 @@
                                                     "min",
                                                     "number",
                                                     "string",
-                                                    "sum"
+                                                    "sum",
+                                                    "percent_of_previous",
+                                                    "percent_of_total",
+                                                    "running_total"
                                                 ]
                                             },
                                             "label": {
@@ -483,6 +486,81 @@
                                         "required": ["label"]
                                     }
                                 }
+                            },
+                            "default_filters": {
+                                "type": "array",
+                                "description": "Default filters that are automatically applied when exploring this model",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "properties": {
+                                        "required": {
+                                            "type": "boolean",
+                                            "description": "If true, this filter cannot be removed by users"
+                                        }
+                                    }
+                                }
+                            },
+                            "required_filters": {
+                                "type": "array",
+                                "description": "Alias for default_filters (deprecated, use default_filters instead)",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "properties": {
+                                        "required": {
+                                            "type": "boolean",
+                                            "description": "If true, this filter cannot be removed by users"
+                                        }
+                                    }
+                                }
+                            },
+                            "explores": {
+                                "type": "object",
+                                "description": "Defines custom explores for this model",
+                                "patternProperties": {
+                                    "^[a-zA-Z0-9_]+$": {
+                                        "type": "object",
+                                        "properties": {
+                                            "default_filters": {
+                                                "type": "array",
+                                                "description": "Default filters that are automatically applied when exploring this explore",
+                                                "items": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "string"
+                                                    },
+                                                    "properties": {
+                                                        "required": {
+                                                            "type": "boolean",
+                                                            "description": "If true, this filter cannot be removed by users"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "required_filters": {
+                                                "type": "array",
+                                                "description": "Alias for default_filters (deprecated, use default_filters instead)",
+                                                "items": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "string"
+                                                    },
+                                                    "properties": {
+                                                        "required": {
+                                                            "type": "boolean",
+                                                            "description": "If true, this filter cannot be removed by users"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     },
@@ -555,7 +633,10 @@
                                                                 "min",
                                                                 "number",
                                                                 "string",
-                                                                "sum"
+                                                                "sum",
+                                                                "percent_of_previous",
+                                                                "percent_of_total",
+                                                                "running_total"
                                                             ]
                                                         },
                                                         "label": {

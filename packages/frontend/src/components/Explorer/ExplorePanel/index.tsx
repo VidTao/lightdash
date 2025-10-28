@@ -1,17 +1,11 @@
 import { subject } from '@casl/ability';
 import {
-    convertFieldRefToFieldId,
     convertReplaceableFieldMatchMapToReplaceFieldsMap,
     ExploreType,
     findReplaceableCustomMetrics,
-    getAllReferences,
-    getItemId,
     getMetrics,
-    getVisibleFields,
-    isCustomBinDimension,
-    isCustomSqlDimension,
 } from '@lightdash/common';
-import { ActionIcon, Group, Menu, Skeleton, Stack, Text } from '@mantine/core';
+import { ActionIcon, Group, Menu, Stack, Text } from '@mantine/core';
 import { IconDots, IconPencil, IconTrash } from '@tabler/icons-react';
 import {
     memo,
@@ -23,6 +17,14 @@ import {
     type FC,
 } from 'react';
 import { useParams } from 'react-router';
+import {
+    explorerActions,
+    selectAdditionalMetrics,
+    selectIsVisualizationConfigOpen,
+    selectTableName,
+    useExplorerDispatch,
+    useExplorerSelector,
+} from '../../../features/explorer/store';
 import {
     DeleteVirtualViewModal,
     EditVirtualViewModal,
@@ -36,22 +38,9 @@ import { EventName } from '../../../types/Events';
 import MantineIcon from '../../common/MantineIcon';
 import PageBreadcrumbs from '../../common/PageBreadcrumbs';
 import ExploreTree from '../ExploreTree';
+import LoadingSkeleton from '../ExploreTree/LoadingSkeleton';
 import { ItemDetailProvider } from '../ExploreTree/TableTree/ItemDetailProvider';
 import { VisualizationConfigPortalId } from './constants';
-
-const LoadingSkeleton = () => (
-    <Stack>
-        <Skeleton h="md" />
-
-        <Skeleton h="xxl" />
-
-        <Stack spacing="xxs">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => (
-                <Skeleton key={index} h="xxl" />
-            ))}
-        </Stack>
-    </Stack>
-);
 
 interface ExplorePanelProps {
     onBack?: () => void;
@@ -66,41 +55,41 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
     const [, startTransition] = useTransition();
 
     const { projectUuid } = useParams<{ projectUuid: string }>();
+
+    const activeTableName = useExplorerSelector(selectTableName);
+    const additionalMetrics = useExplorerSelector(selectAdditionalMetrics);
+
+    // Keep reading these from Context for now (will migrate later)
     const chartUuid = useExplorerContext(
         (context) => context.state.savedChart?.uuid,
-    );
-    const activeTableName = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.tableName,
-    );
-    const additionalMetrics = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.additionalMetrics,
-    );
-    const dimensions = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery.dimensions,
-    );
-    const customDimensions = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.customDimensions,
-    );
-    const metrics = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery.metrics,
-    );
-    const activeFields = useExplorerContext(
-        (context) => context.state.activeFields,
-    );
-    const toggleActiveField = useExplorerContext(
-        (context) => context.actions.toggleActiveField,
     );
     const replaceFields = useExplorerContext(
         (context) => context.actions.replaceFields,
     );
 
-    const isVisualizationConfigOpen = useExplorerContext(
-        (context) => context.state.isVisualizationConfigOpen,
+    const dispatch = useExplorerDispatch();
+
+    const toggleActiveField = useCallback(
+        (fieldId: string, isDimension: boolean) => {
+            if (isDimension) {
+                dispatch(explorerActions.toggleDimension(fieldId));
+            } else {
+                dispatch(explorerActions.toggleMetric(fieldId));
+            }
+        },
+        [dispatch],
     );
 
-    const { data: explore, status, error } = useExplore(activeTableName);
+    const isVisualizationConfigOpen = useExplorerSelector(
+        selectIsVisualizationConfigOpen,
+    );
+
+    const {
+        data: explore,
+        isFetching,
+        status,
+        error,
+    } = useExplore(activeTableName);
 
     useEffect(() => {
         if (
@@ -143,56 +132,6 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
         chartUuid,
     ]);
 
-    const missingFields = useMemo(() => {
-        if (explore) {
-            const visibleFields = getVisibleFields(explore);
-
-            const allFields = [
-                ...visibleFields,
-                ...(additionalMetrics || []),
-                ...(customDimensions || []),
-            ];
-            const selectedFields = [...metrics, ...dimensions];
-            const fieldIds = allFields.map((field) => getItemId(field));
-
-            const missingCustomMetrics = additionalMetrics?.filter((metric) => {
-                const table = explore.tables[metric.table];
-                return (
-                    !table ||
-                    (metric.baseDimensionName &&
-                        !table.dimensions[metric.baseDimensionName])
-                );
-            });
-
-            const missingCustomDimensions = customDimensions?.filter(
-                (customDimension) => {
-                    const isCustomBinDimensionMissing =
-                        isCustomBinDimension(customDimension) &&
-                        !fieldIds.includes(customDimension.dimensionId);
-
-                    const isCustomSqlDimensionMissing =
-                        isCustomSqlDimension(customDimension) &&
-                        getAllReferences(customDimension.sql)
-                            .map((ref) => convertFieldRefToFieldId(ref))
-                            .some(
-                                (refFieldId) => !fieldIds.includes(refFieldId),
-                            );
-
-                    return (
-                        isCustomBinDimensionMissing ||
-                        isCustomSqlDimensionMissing
-                    );
-                },
-            );
-
-            return {
-                all: selectedFields.filter((node) => !fieldIds.includes(node)),
-                customMetrics: missingCustomMetrics,
-                customDimensions: missingCustomDimensions,
-            };
-        }
-    }, [explore, additionalMetrics, metrics, dimensions, customDimensions]);
-
     const handleEditVirtualView = useCallback(() => {
         startTransition(() => setIsEditVirtualViewOpen(true));
     }, []);
@@ -212,7 +151,7 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
         return items;
     }, [onBack, explore]);
 
-    if (status === 'loading') {
+    if (isFetching) {
         return <LoadingSkeleton />;
     }
 
@@ -296,12 +235,7 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
                 <ItemDetailProvider>
                     <ExploreTree
                         explore={explore}
-                        additionalMetrics={additionalMetrics || []}
-                        selectedNodes={activeFields}
                         onSelectedFieldChange={toggleActiveField}
-                        customDimensions={customDimensions}
-                        selectedDimensions={dimensions}
-                        missingFields={missingFields}
                     />
                 </ItemDetailProvider>
 
@@ -326,5 +260,7 @@ const ExplorePanel: FC<ExplorePanelProps> = memo(({ onBack }) => {
         </>
     );
 });
+
+ExplorePanel.displayName = 'ExplorePanel';
 
 export default ExplorePanel;

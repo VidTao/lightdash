@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { baseOutputMetadataSchema } from '../outputMetadata';
 import { createToolSchema } from '../toolSchemaBuilder';
 
 export const TOOL_FIND_CHARTS_DESCRIPTION = `Tool: "findCharts"
@@ -14,10 +15,10 @@ Usage tips:
 - Returns chart URLs when available
 `;
 
-export const toolFindChartsArgsSchema = createToolSchema(
-    'find_charts',
-    TOOL_FIND_CHARTS_DESCRIPTION,
-)
+export const toolFindChartsArgsSchema = createToolSchema({
+    type: 'find_charts',
+    description: TOOL_FIND_CHARTS_DESCRIPTION,
+})
     .extend({
         chartSearchQueries: z.array(
             z.object({
@@ -37,3 +38,10 @@ export type ToolFindChartsArgs = z.infer<typeof toolFindChartsArgsSchema>;
 export const toolFindChartsArgsSchemaTransformed = toolFindChartsArgsSchema;
 
 export type ToolFindChartsArgsTransformed = ToolFindChartsArgs;
+
+export const toolFindChartsOutputSchema = z.object({
+    result: z.string(),
+    metadata: baseOutputMetadataSchema,
+});
+
+export type ToolFindChartsOutput = z.infer<typeof toolFindChartsOutputSchema>;

@@ -18,6 +18,8 @@ import {
     isDashboardScheduler,
     isFilterRule,
     isOrFilterGroup,
+    isSqlTableCalculation,
+    isTemplateTableCalculation,
     MetricFilterRule,
     MetricQuery,
     NameChanges,
@@ -25,6 +27,7 @@ import {
     RenameType,
     SavedChartDAO,
     SchedulerAndTargets,
+    TableCalculationTemplateType,
 } from '@lightdash/common';
 
 /* There are different methods to replace model names
@@ -547,7 +550,30 @@ export const renameMetricQuery = (
         filters: renameFilters(metricQuery.filters, replaceId),
         tableCalculations: metricQuery.tableCalculations?.map((tc) => ({
             ...tc,
-            sql: replaceReference(tc.sql),
+            ...(isSqlTableCalculation(tc) && {
+                sql: replaceReference(tc.sql),
+            }),
+            ...(isTemplateTableCalculation(tc) && {
+                template: {
+                    ...tc.template,
+                    ...('fieldId' in tc.template &&
+                        tc.template.fieldId && {
+                            fieldId: replaceId(tc.template.fieldId),
+                        }),
+                    ...('orderBy' in tc.template && {
+                        orderBy: tc.template.orderBy.map((o) => ({
+                            ...o,
+                            fieldId: replaceId(o.fieldId),
+                        })),
+                    }),
+                    ...('partitionBy' in tc.template && tc.template.partitionBy
+                        ? {
+                              partitionBy:
+                                  tc.template.partitionBy.map(replaceId),
+                          }
+                        : {}),
+                },
+            }),
         })),
         additionalMetrics: metricQuery.additionalMetrics?.map((am) => ({
             ...am,

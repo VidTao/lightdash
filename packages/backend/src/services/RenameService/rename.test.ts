@@ -10,6 +10,8 @@ import {
     FilterGroup,
     FilterOperator,
     isFilterRuleDefinedForFieldId,
+    isSqlTableCalculation,
+    isTemplateTableCalculation,
     MetricFilterRule,
     MetricType,
     removeFieldFromFilterGroup,
@@ -17,8 +19,11 @@ import {
     SavedChartDAO,
     SchedulerAndTargets,
     SchedulerFormat,
+    TableCalculationTemplate,
+    TableCalculationTemplateType,
     TableChartConfig,
     ThresholdOperator,
+    WindowFunctionType,
 } from '@lightdash/common';
 import { cloneDeep } from 'lodash';
 import {
@@ -415,7 +420,11 @@ describe('renameMetricQuery', () => {
         expect(
             (result.filters?.dimensions as AnyType).and[0].target?.fieldId,
         ).toBe('invoice_id');
-        expect(result.tableCalculations[0].sql).toBe('${invoice.amount} * 2');
+        expect(
+            isSqlTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].sql
+                : undefined,
+        ).toBe('${invoice.amount} * 2');
         expect(result.additionalMetrics?.[0].table).toBe('invoice');
         expect(result.additionalMetrics?.[0].sql).toBe('${TABLE}.status'); // Same
         expect(
@@ -498,12 +507,251 @@ describe('renameMetricQuery', () => {
         expect(
             (result.filters?.dimensions as AnyType).and[0].target?.fieldId,
         ).toBe('payment_cost');
-        expect(result.tableCalculations[0].sql).toBe('${payment.cost} * 2');
+        expect(
+            isSqlTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].sql
+                : undefined,
+        ).toBe('${payment.cost} * 2');
         expect(result.additionalMetrics?.[0].sql).toBe('${TABLE}.cost');
         expect(
             result.additionalMetrics?.[0].filters?.[0].target?.fieldRef,
         ).toBe('payment.cost');
         expect(result.sorts[0].fieldId).toBe('payment_cost');
+    });
+
+    test('should rename table calculation templates with sql', () => {
+        const metricQuery = {
+            exploreName: 'payment',
+            dimensions: ['payment_id'],
+            metrics: ['payment_amount'],
+            filters: {},
+            tableCalculations: [
+                {
+                    name: 'calc_with_sql',
+                    sql: '${payment.amount} * 2',
+                    displayName: 'Calculation with SQL',
+                },
+            ],
+            sorts: [],
+            limit: 100,
+        };
+
+        const result = renameMetricQuery(metricQuery, tableRename);
+
+        expect(
+            isSqlTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].sql
+                : undefined,
+        ).toBe('${invoice.amount} * 2');
+    });
+
+    test('should rename table calculation templates with template fieldId', () => {
+        const metricQuery = {
+            exploreName: 'payment',
+            dimensions: ['payment_id'],
+            metrics: ['payment_amount'],
+            filters: {},
+            tableCalculations: [
+                {
+                    name: 'percent_change_calc',
+                    sql: '', // Make sql present but empty since it's required by type
+                    displayName: 'Percent Change',
+                    template: {
+                        type: TableCalculationTemplateType.PERCENT_CHANGE_FROM_PREVIOUS,
+                        fieldId: 'payment_amount',
+                        orderBy: [
+                            { fieldId: 'payment_date', order: 'asc' },
+                            { fieldId: 'payment_id', order: 'desc' },
+                        ],
+                    } satisfies TableCalculationTemplate,
+                },
+            ],
+            sorts: [],
+            limit: 100,
+        };
+
+        const result = renameMetricQuery(metricQuery, tableRename);
+
+        expect(
+            isTemplateTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].template
+                : undefined,
+        ).toEqual({
+            type: TableCalculationTemplateType.PERCENT_CHANGE_FROM_PREVIOUS,
+            fieldId: 'invoice_amount',
+            orderBy: [
+                { fieldId: 'invoice_date', order: 'asc' },
+                { fieldId: 'invoice_id', order: 'desc' },
+            ],
+        });
+    });
+
+    test('should rename table calculation templates with field rename', () => {
+        const metricQuery = {
+            exploreName: 'payment',
+            dimensions: ['payment_id'],
+            metrics: ['payment_amount'],
+            filters: {},
+            tableCalculations: [
+                {
+                    name: 'running_total_calc',
+                    sql: '', // Make sql present but empty since it's required by type
+                    displayName: 'Running Total',
+                    template: {
+                        type: TableCalculationTemplateType.PERCENT_CHANGE_FROM_PREVIOUS,
+                        fieldId: 'payment_amount',
+                        orderBy: [
+                            {
+                                fieldId: 'payment_amount',
+                                order: 'asc',
+                            },
+                        ],
+                    } satisfies TableCalculationTemplate,
+                },
+            ],
+            sorts: [],
+            limit: 100,
+        };
+
+        const fr = createRenameFactory({
+            from: 'payment_amount',
+            to: 'payment_cost',
+            fromReference: 'payment.amount',
+            toReference: 'payment.cost',
+            isPrefix: false,
+            fromFieldName: 'amount',
+            toFieldName: 'cost',
+        });
+
+        const result = renameMetricQuery(metricQuery, fr);
+
+        expect(
+            isTemplateTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].template
+                : undefined,
+        ).toEqual({
+            type: TableCalculationTemplateType.PERCENT_CHANGE_FROM_PREVIOUS,
+            fieldId: 'payment_cost',
+            orderBy: [{ fieldId: 'payment_cost', order: 'asc' as const }],
+        });
+    });
+
+    test('should rename table calculation templates with partitionBy', () => {
+        const metricQuery = {
+            exploreName: 'payment',
+            dimensions: ['payment_id'],
+            metrics: ['payment_amount'],
+            filters: {},
+            tableCalculations: [
+                {
+                    name: 'percent_of_total_by_category',
+                    sql: '',
+                    displayName: 'Percent of Total by Category',
+                    template: {
+                        type: TableCalculationTemplateType.PERCENT_OF_COLUMN_TOTAL,
+                        fieldId: 'payment_amount',
+                        partitionBy: ['payment_category', 'payment_region'],
+                    } satisfies TableCalculationTemplate,
+                },
+            ],
+            sorts: [],
+            limit: 100,
+        };
+
+        const result = renameMetricQuery(metricQuery, tableRename);
+
+        expect(
+            isTemplateTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].template
+                : undefined,
+        ).toEqual({
+            type: TableCalculationTemplateType.PERCENT_OF_COLUMN_TOTAL,
+            fieldId: 'invoice_amount',
+            partitionBy: ['invoice_category', 'invoice_region'],
+        });
+    });
+
+    test('should rename table calculation window function templates with partitionBy and orderBy', () => {
+        const metricQuery = {
+            exploreName: 'payment',
+            dimensions: ['payment_id'],
+            metrics: ['payment_amount'],
+            filters: {},
+            tableCalculations: [
+                {
+                    name: 'row_number_by_country',
+                    sql: '',
+                    displayName: 'Row Number by Country',
+                    template: {
+                        type: TableCalculationTemplateType.WINDOW_FUNCTION,
+                        windowFunction: WindowFunctionType.ROW_NUMBER,
+                        fieldId: null,
+                        orderBy: [
+                            { fieldId: 'payment_amount', order: 'desc' },
+                            { fieldId: 'payment_date', order: 'asc' },
+                        ],
+                        partitionBy: ['payment_country', 'payment_status'],
+                    } satisfies TableCalculationTemplate,
+                },
+            ],
+            sorts: [],
+            limit: 100,
+        };
+
+        const result = renameMetricQuery(metricQuery, tableRename);
+
+        expect(
+            isTemplateTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].template
+                : undefined,
+        ).toEqual({
+            type: TableCalculationTemplateType.WINDOW_FUNCTION,
+            windowFunction: WindowFunctionType.ROW_NUMBER,
+            fieldId: null,
+            orderBy: [
+                { fieldId: 'invoice_amount', order: 'desc' },
+                { fieldId: 'invoice_date', order: 'asc' },
+            ],
+            partitionBy: ['invoice_country', 'invoice_status'],
+        });
+    });
+
+    test('should handle table calculation with both sql and template', () => {
+        const metricQuery = {
+            exploreName: 'payment',
+            dimensions: ['payment_id'],
+            metrics: ['payment_amount'],
+            filters: {},
+            tableCalculations: [
+                {
+                    name: 'mixed_calc',
+                    sql: '${payment.amount} * 2',
+                    displayName: 'Mixed Calculation',
+                    template: {
+                        type: TableCalculationTemplateType.RANK_IN_COLUMN,
+                        fieldId: 'payment_amount',
+                    } satisfies TableCalculationTemplate,
+                },
+            ],
+            sorts: [],
+            limit: 100,
+        };
+
+        const result = renameMetricQuery(metricQuery, tableRename);
+
+        expect(
+            isSqlTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].sql
+                : undefined,
+        ).toBe('${invoice.amount} * 2');
+        expect(
+            isTemplateTableCalculation(result.tableCalculations[0])
+                ? result.tableCalculations[0].template
+                : undefined,
+        ).toEqual({
+            type: TableCalculationTemplateType.RANK_IN_COLUMN,
+            fieldId: 'invoice_amount',
+        });
     });
 });
 

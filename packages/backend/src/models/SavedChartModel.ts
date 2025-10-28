@@ -20,6 +20,8 @@ import {
     isCustomBinDimension,
     isCustomSqlDimension,
     isFormat,
+    isSqlTableCalculation,
+    isTemplateTableCalculation,
     LightdashUser,
     MetricFilterRule,
     MetricOverrides,
@@ -30,6 +32,7 @@ import {
     SessionUser,
     SortField,
     Space,
+    TableCalculation,
     TimeZone,
     UpdatedByUser,
     UpdateMultipleSavedChart,
@@ -37,6 +40,7 @@ import {
 } from '@lightdash/common';
 import * as Sentry from '@sentry/node';
 import { Knex } from 'knex';
+import { validate as isValidUuid } from 'uuid';
 import { LightdashConfig } from '../config/parseConfig';
 import {
     DashboardsTableName,
@@ -252,13 +256,18 @@ const createSavedChartVersion = async (
             tableCalculations.map((tableCalculation) => ({
                 name: tableCalculation.name,
                 display_name: tableCalculation.displayName,
-                calculation_raw_sql: tableCalculation.sql,
+                calculation_raw_sql: isSqlTableCalculation(tableCalculation)
+                    ? tableCalculation.sql
+                    : '',
                 saved_queries_version_id: version.saved_queries_version_id,
                 format: tableCalculation.format,
                 order: tableConfig.columnOrder.findIndex(
                     (column) => column === tableCalculation.name,
                 ),
                 type: tableCalculation.type,
+                template: isTemplateTableCalculation(tableCalculation)
+                    ? tableCalculation.template
+                    : undefined,
             })),
         );
         await createSavedChartVersionCustomDimensions(
@@ -769,7 +778,7 @@ export class SavedChartModel {
     }
 
     async get(
-        savedChartUuid: string,
+        savedChartUuidOrSlug: string,
         versionUuid?: string,
     ): Promise<SavedChartDAO> {
         return Sentry.startSpan(
@@ -778,6 +787,9 @@ export class SavedChartModel {
                 name: 'SavedChartModel.get',
             },
             async () => {
+                const isUuid = isValidUuid(savedChartUuidOrSlug);
+                const filterField = isUuid ? 'saved_query_uuid' : 'slug';
+
                 const chartQuery = this.database
                     .from<DbSavedChartDetails>(SavedChartsTableName)
                     .leftJoin(
@@ -868,12 +880,27 @@ export class SavedChartModel {
                         `${SpaceTableName}.name as spaceName`,
                         `${PinnedListTableName}.pinned_list_uuid`,
                     ])
-                    .where(
-                        `${SavedChartsTableName}.saved_query_uuid`,
-                        savedChartUuid,
-                    )
                     .orderBy('saved_queries_versions.created_at', 'desc')
                     .limit(1);
+
+                if (isUuid) {
+                    void chartQuery.where((builder) => {
+                        void builder
+                            .where(
+                                `${SavedChartsTableName}.saved_query_uuid`,
+                                savedChartUuidOrSlug,
+                            )
+                            .orWhere(
+                                `${SavedChartsTableName}.slug`,
+                                savedChartUuidOrSlug,
+                            );
+                    });
+                } else {
+                    void chartQuery.where(
+                        `${SavedChartsTableName}.slug`,
+                        savedChartUuidOrSlug,
+                    );
+                }
 
                 if (versionUuid) {
                     void chartQuery.where(
@@ -911,6 +938,7 @@ export class SavedChartModel {
                         'order',
                         'format',
                         'type',
+                        'template',
                     ])
                     .where('saved_queries_version_id', savedQueriesVersionId);
 
@@ -1043,13 +1071,19 @@ export class SavedChartModel {
                         metricOverrides:
                             savedQuery.metric_overrides || undefined,
                         tableCalculations: tableCalculations.map(
-                            (tableCalculation) => ({
-                                name: tableCalculation.name,
-                                displayName: tableCalculation.display_name,
-                                sql: tableCalculation.calculation_raw_sql,
-                                format: tableCalculation.format || undefined,
-                                type: tableCalculation.type || undefined,
-                            }),
+                            (tableCalculation) =>
+                                ({
+                                    name: tableCalculation.name,
+                                    displayName: tableCalculation.display_name,
+                                    sql:
+                                        tableCalculation.calculation_raw_sql ||
+                                        undefined,
+                                    format:
+                                        tableCalculation.format || undefined,
+                                    type: tableCalculation.type || undefined,
+                                    template:
+                                        tableCalculation.template || undefined,
+                                } as TableCalculation),
                         ),
                         additionalMetrics,
                         customDimensions: [

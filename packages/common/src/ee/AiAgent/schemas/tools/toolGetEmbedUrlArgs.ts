@@ -14,8 +14,10 @@ Usage tips:
 `;
 
 export const toolGetEmbedUrlArgsSchema = createToolSchema(
-    'get_embed_url',
-    TOOL_GET_EMBED_URL_DESCRIPTION,
+   { 
+    type: 'get_embed_url',
+    description: TOOL_GET_EMBED_URL_DESCRIPTION,
+   }
 )
     .extend({
         resource_uuid: z

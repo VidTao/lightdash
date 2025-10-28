@@ -1,4 +1,5 @@
 import {
+    AiAgentToolResult,
     AiArtifact,
     FollowUpTools,
     followUpToolsText,
@@ -6,6 +7,7 @@ import {
     SlackPrompt,
 } from '@lightdash/common';
 import { Block, KnownBlock } from '@slack/bolt';
+import { partition } from 'lodash';
 
 export function getFollowUpToolBlocks(
     slackPrompt: SlackPrompt,
@@ -213,6 +215,22 @@ export function getDeepLinkBlocks(
         return [];
     }
 
+    // Check if any artifacts have dashboard configs
+    const hasDashboard = artifacts.some((artifact) => artifact.dashboardConfig);
+
+    // Add prominent dashboard link if dashboard artifact exists
+    if (hasDashboard) {
+        return [
+            {
+                type: 'section',
+                text: {
+                    type: 'mrkdwn',
+                    text: `📊 <${siteUrl}/projects/${slackPrompt.projectUuid}/ai-agents/${agentUuid}/threads/${slackPrompt.threadUuid}|View Dashboard in Lightdash ⚡️>`,
+                },
+            },
+        ];
+    }
+
     return [
         {
             type: 'section',
@@ -220,6 +238,62 @@ export function getDeepLinkBlocks(
                 type: 'mrkdwn',
                 text: `<${siteUrl}/projects/${slackPrompt.projectUuid}/ai-agents/${agentUuid}/threads/${slackPrompt.threadUuid}/messages/${slackPrompt.promptUuid}/debug|View message data in Lightdash ⚡️>`,
             },
+        },
+    ];
+}
+
+export function getProposeChangeBlocks(
+    slackPrompt: SlackPrompt,
+    siteUrl: string,
+    toolResults?: AiAgentToolResult[],
+): (Block | KnownBlock)[] {
+    if (!toolResults || toolResults.length === 0) {
+        return [];
+    }
+
+    const proposeChangeResults = toolResults.filter(
+        (result) => result.toolName === 'proposeChange',
+    );
+
+    if (proposeChangeResults.length === 0) {
+        return [];
+    }
+
+    const [successes, failures] = partition(
+        proposeChangeResults,
+        (r) => r.metadata.status === 'success',
+    );
+
+    return [
+        {
+            type: 'divider',
+        },
+        {
+            type: 'context',
+            elements: [
+                ...successes.map((success) => ({
+                    type: 'plain_text' as const,
+                    text: `✅ ${success.result}`,
+                })),
+                ...failures.map((failure) => ({
+                    type: 'plain_text' as const,
+                    text: `❌ ${failure.result}`,
+                })),
+            ],
+        },
+        {
+            type: 'actions',
+            elements: [
+                {
+                    type: 'button',
+                    url: `${siteUrl}/generalSettings/projectManagement/${slackPrompt.projectUuid}/changesets`,
+                    action_id: 'actions.view_changesets_button_click',
+                    text: {
+                        type: 'plain_text',
+                        text: 'View Changeset',
+                    },
+                },
+            ],
         },
     ];
 }

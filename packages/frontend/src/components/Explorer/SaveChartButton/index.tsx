@@ -2,7 +2,12 @@ import { getItemId, getMetrics } from '@lightdash/common';
 import { Button, Tooltip } from '@mantine-8/core';
 import { IconDeviceFloppy } from '@tabler/icons-react';
 import { useMemo, useState, type FC } from 'react';
+import {
+    selectIsValidQuery,
+    useExplorerSelector,
+} from '../../../features/explorer/store';
 import { useExplore } from '../../../hooks/useExplore';
+import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { useAddVersionMutation } from '../../../hooks/useSavedQuery';
 import useSearchParams from '../../../hooks/useSearchParams';
 import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
@@ -10,20 +15,30 @@ import MantineIcon from '../../common/MantineIcon';
 import ChartCreateModal from '../../common/modal/ChartCreateModal';
 
 const SaveChartButton: FC<{ isExplorer?: boolean }> = ({ isExplorer }) => {
+    // Get the merged version (Context chartConfig/pivotConfig + Redux fields)
     const unsavedChartVersion = useExplorerContext(
-        (context) => context.state.unsavedChartVersion,
+        (context) => context.state.mergedUnsavedChartVersion,
     );
-    const hasUnsavedChanges = useExplorerContext(
-        (context) => context.state.hasUnsavedChanges,
-    );
+
+    // Get savedChart and comparison function from Context
     const savedChart = useExplorerContext(
         (context) => context.state.savedChart,
     );
+    const isUnsavedChartChanged = useExplorerContext(
+        (context) => context.actions.isUnsavedChartChanged,
+    );
+
+    // Read isValidQuery from Redux
+    const isValidQuery = useExplorerSelector(selectIsValidQuery);
     const spaceUuid = useSearchParams('fromSpace');
 
-    const missingRequiredParameters = useExplorerContext(
-        (context) => context.state.missingRequiredParameters,
-    );
+    // For new charts, button is enabled when query is valid
+    // For existing charts, button is enabled when there are unsaved changes
+    const hasUnsavedChanges = savedChart
+        ? isUnsavedChartChanged(unsavedChartVersion)
+        : isValidQuery;
+
+    const { missingRequiredParameters } = useExplorerQuery();
 
     const [isQueryModalOpen, setIsQueryModalOpen] = useState<boolean>(false);
 

@@ -1,11 +1,14 @@
 import {
+    DimensionType,
     formatItemValue,
+    getItemId,
     getItemMap,
     isAdditionalMetric,
     isCustomDimension,
     isDimension,
     isField,
     isNumericItem,
+    isResultValue,
     itemsInMetricQuery,
     type AdditionalMetric,
     type CustomDimension,
@@ -19,6 +22,7 @@ import {
 import { Group, Tooltip } from '@mantine/core';
 import { IconExclamationCircle } from '@tabler/icons-react';
 import { type CellContext } from '@tanstack/react-table';
+import omit from 'lodash/omit';
 import { useMemo } from 'react';
 import { formatRowValueFromWarehouse } from '../components/DataViz/formatters/formatRowValueFromWarehouse';
 import MantineIcon from '../components/common/MantineIcon';
@@ -32,9 +36,20 @@ import {
     type TableColumn,
 } from '../components/common/Table/types';
 import useEmbed from '../ee/providers/Embed/useEmbed';
-import useExplorerContext from '../providers/Explorer/useExplorerContext';
+import {
+    selectAdditionalMetrics,
+    selectCustomDimensions,
+    selectMetricOverrides,
+    selectParameters,
+    selectSorts,
+    selectTableCalculations,
+    selectTableName,
+    useExplorerSelector,
+} from '../features/explorer/store';
+import { renderBarChartDisplay } from './barChartDisplay';
 import { useCalculateTotal } from './useCalculateTotal';
 import { useExplore } from './useExplore';
+import { useExplorerQuery } from './useExplorerQuery';
 
 export const getItemBgColor = (
     item: Field | AdditionalMetric | TableCalculation | CustomDimension,
@@ -51,47 +66,114 @@ export const formatCellContent = (data?: { value: ResultValue }) => {
     return data?.value.formatted ?? '-';
 };
 
+const isBarDisplay = (
+    info:
+        | CellContext<ResultRow, { value: ResultValue }>
+        | CellContext<RawResultRow, string>,
+) => {
+    const minMaxMap = info.table?.options.meta?.minMaxMap;
+    const columnProperties = info.table?.options.meta?.columnProperties;
+
+    // For pivot tables, get the base field ID from the item in meta
+    // This is needed because pivoted columns have different IDs than the base field
+    const item = info.column.columnDef.meta?.item;
+    const baseFieldId = item ? getItemId(item) : info.column.id;
+    const displayStyle = columnProperties?.[baseFieldId]?.displayStyle;
+
+    return minMaxMap && displayStyle === 'bar';
+};
+
+const formatBarDisplayCell = (
+    info:
+        | CellContext<ResultRow, { value: ResultValue }>
+        | CellContext<RawResultRow, string>,
+) => {
+    const cellValue = info.getValue();
+    const columnId = info.column.id;
+
+    const minMaxMap = info.table?.options.meta?.minMaxMap;
+
+    // For pivot tables, get the base field ID from the item in meta
+    // This is needed because pivoted columns have different IDs than the base field
+    const item = info.column.columnDef.meta?.item;
+    const baseFieldId = item ? getItemId(item) : columnId;
+
+    let formatted, value: number;
+
+    if (isResultValue(cellValue)) {
+        // Parse value - numeric metrics may return strings from the database (e.g., "1" for count_distinct)
+        const rawValue = cellValue.value.raw;
+        value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+        formatted = cellValue.value.formatted;
+
+        // Only render bar if value is a valid number
+        if (Number.isNaN(value)) {
+            return formatCellContent(cellValue);
+        }
+    } else {
+        value = Number(cellValue);
+        formatted = formatRowValueFromWarehouse(cellValue);
+    }
+
+    // Get min/max from minMaxMap (same as conditional formatting)
+    // For pivot tables, try baseFieldId first so all pivoted versions share the same scale
+    // Fall back to columnId for individual column scales
+    const minMax = minMaxMap[baseFieldId] ?? minMaxMap[columnId];
+    const min = minMax?.min ?? 0;
+    const max = minMax?.max ?? 100;
+
+    return renderBarChartDisplay({
+        value,
+        formatted,
+        min,
+        max,
+    });
+};
+
 export const getFormattedValueCell = (
     info: CellContext<ResultRow, { value: ResultValue }>,
-) => formatCellContent(info.getValue());
+) => {
+    const cellValue = info.getValue();
+
+    try {
+        if (isBarDisplay(info)) return formatBarDisplayCell(info);
+    } catch (error) {
+        console.error(`Unable to format value for bar display cell ${error}`);
+    }
+
+    return formatCellContent(cellValue);
+};
 
 export const getValueCell = (info: CellContext<RawResultRow, string>) => {
     const value = info.getValue();
+
+    try {
+        if (isBarDisplay(info)) return formatBarDisplayCell(info);
+    } catch (error) {
+        console.error(`Unable to get value for bar display cell ${error}`);
+    }
+
+    // Default text rendering
     const formatted = formatRowValueFromWarehouse(value);
     return <span>{formatted}</span>;
 };
 
 export const useColumns = (): TableColumn[] => {
-    const activeFields = useExplorerContext(
-        (context) => context.state.activeFields,
-    );
-    const tableName = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.tableName,
-    );
-    const tableCalculations = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.tableCalculations,
-    );
-    const customDimensions = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.customDimensions,
-    );
-    const additionalMetrics = useExplorerContext(
-        (context) =>
-            context.state.unsavedChartVersion.metricQuery.additionalMetrics,
-    );
-    const sorts = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery.sorts,
-    );
-    const resultsMetricQuery = useExplorerContext(
-        (context) => context.query.data?.metricQuery,
-    );
-    const resultsFields = useExplorerContext(
-        (context) => context.query.data?.fields,
-    );
-    const parameters = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.parameters,
-    );
+    // Use Redux for state that's available
+    const tableName = useExplorerSelector(selectTableName);
+    const tableCalculations = useExplorerSelector(selectTableCalculations);
+    const customDimensions = useExplorerSelector(selectCustomDimensions);
+    const additionalMetrics = useExplorerSelector(selectAdditionalMetrics);
+    const sorts = useExplorerSelector(selectSorts);
+    const metricOverrides = useExplorerSelector(selectMetricOverrides);
+
+    // Get state from new query hook
+    const { activeFields, query } = useExplorerQuery();
+    const resultsMetricQuery = query.data?.metricQuery;
+    const resultsFields = query.data?.fields;
+
+    // Get parameters from Redux
+    const parameters = useExplorerSelector(selectParameters);
 
     const { data: exploreData } = useExplore(tableName, {
         refetchOnMount: false,
@@ -100,24 +182,48 @@ export const useColumns = (): TableColumn[] => {
     const { embedToken } = useEmbed();
 
     const itemsMap = useMemo<ItemsMap | undefined>(() => {
-        if (exploreData) {
-            // Explore items for new columns and result items for existing columns with format overrides
-            return {
-                ...getItemMap(
-                    exploreData,
-                    additionalMetrics,
-                    tableCalculations,
-                    customDimensions,
-                ),
-                ...(resultsFields || {}),
-            };
-        }
+        if (!exploreData) return;
+
+        const baseItemsMap = getItemMap(
+            exploreData,
+            additionalMetrics,
+            tableCalculations,
+            customDimensions,
+        );
+
+        const mergedMap = {
+            ...baseItemsMap,
+            ...(resultsFields || {}),
+        };
+
+        return Object.fromEntries(
+            Object.entries(mergedMap).map(([key, value]) => {
+                const isFromResults = resultsFields && key in resultsFields;
+                if (isFromResults) {
+                    return [key, value];
+                }
+
+                if (!metricOverrides?.[key]) return [key, value];
+                const itemWithoutLegacyFormat = omit(value, [
+                    'format',
+                    'round',
+                ]);
+                return [
+                    key,
+                    {
+                        ...itemWithoutLegacyFormat,
+                        ...metricOverrides[key],
+                    },
+                ];
+            }),
+        );
     }, [
         resultsFields,
         exploreData,
         additionalMetrics,
         tableCalculations,
         customDimensions,
+        metricOverrides,
     ]);
 
     const { activeItemsMap, invalidActiveItems } = useMemo<{
@@ -203,7 +309,31 @@ export const useColumns = (): TableColumn[] => {
                             )}
                         </TableHeaderLabelContainer>
                     ),
-                    cell: getFormattedValueCell,
+                    cell: (
+                        info: CellContext<ResultRow, { value: ResultValue }>,
+                    ) => {
+                        const cellValue = info.getValue();
+                        if (!cellValue) return '-';
+                        // Use item from meta to ensure we get the latest version with overrides
+                        const currentItem = info.column.columnDef.meta?.item;
+
+                        // For DATE and TIMESTAMP types, use the pre-formatted value from backend
+                        // to avoid timezone issues when re-parsing UTC date strings on the frontend
+                        if (
+                            isField(currentItem) &&
+                            (currentItem.type === DimensionType.DATE ||
+                                currentItem.type === DimensionType.TIMESTAMP)
+                        ) {
+                            return cellValue.value.formatted;
+                        }
+
+                        // For everything else (metrics, numbers, etc.), format on frontend
+                        // to support metric overrides and other client-side formatting
+                        return formatItemValue(
+                            currentItem,
+                            cellValue.value.raw,
+                        );
+                    },
                     footer: () =>
                         totals?.[fieldId]
                             ? formatItemValue(item, totals[fieldId])

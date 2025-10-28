@@ -1,3 +1,5 @@
+import { AnyType } from "@lightdash/common";
+
 export function xmlBuilder(
     tag: string,
     props: Record<string, string | number | boolean> | null,
@@ -28,13 +30,14 @@ export function xmlBuilder(
 }
 
 // JSX namespace declaration for TypeScript
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            [elemName: string]: Record<
-                string,
-                string | number | boolean
-            > | null;
-        }
-    }
-}
+// declare global {
+//     namespace JSX {
+//         interface IntrinsicElements {
+//             [elemName: string]: Record<string, AnyType> | null;
+//         }
+//         interface Element extends String {}
+//         interface ElementClass {
+//             render: AnyType;
+//         }
+//     }
+// }

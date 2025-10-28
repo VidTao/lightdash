@@ -186,6 +186,12 @@ ${styles.bold('Examples:')}
         'Login using OAuth2 flow (opens browser for authentication)',
         false,
     )
+    .option(
+        '--project <project uuid>',
+        'Select a project by UUID after login',
+        parseProjectArgument,
+        undefined,
+    )
     .option('--verbose', undefined, false)
     .action(login);
 
@@ -592,6 +598,11 @@ program
     .option(
         '--skip-space-create',
         'Skip space creation if it does not exist',
+        false,
+    )
+    .option(
+        '--include-charts',
+        'Include charts updates when uploading dashboards',
         false,
     )
     .action(uploadHandler);

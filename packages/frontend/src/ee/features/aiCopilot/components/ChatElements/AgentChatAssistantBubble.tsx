@@ -1,4 +1,8 @@
-import { ChartKind, type AiAgentMessageAssistant } from '@lightdash/common';
+import {
+    ChartKind,
+    type AiAgentMessageAssistant,
+    type ToolProposeChangeArgs,
+} from '@lightdash/common';
 import {
     ActionIcon,
     Alert,
@@ -21,6 +25,7 @@ import {
     IconExclamationCircle,
     IconLayoutDashboard,
     IconRefresh,
+    IconTestPipe,
     IconThumbDown,
     IconThumbDownFilled,
     IconThumbUp,
@@ -30,6 +35,11 @@ import MDEditor from '@uiw/react-md-editor';
 import { memo, useCallback, type FC } from 'react';
 import MantineIcon from '../../../../../components/common/MantineIcon';
 import { getChartIcon } from '../../../../../components/common/ResourceIcon/utils';
+import {
+    mdEditorComponents,
+    rehypeRemoveHeaderLinks,
+    useMdEditorStyle,
+} from '../../../../../utils/markdownUtils';
 import { useUpdatePromptFeedbackMutation } from '../../hooks/useProjectAiAgents';
 import { setArtifact } from '../../store/aiArtifactSlice';
 import {
@@ -43,9 +53,11 @@ import {
 } from '../../streaming/useAiAgentThreadStreamQuery';
 import styles from './AgentChatAssistantBubble.module.css';
 import AgentChatDebugDrawer from './AgentChatDebugDrawer';
+import { AiArtifactInline } from './AiArtifactInline';
 import { AiArtifactButton } from './ArtifactButton/AiArtifactButton';
 import { rehypeAiAgentContentLinks } from './rehypeContentLinks';
 import { AiChartToolCalls } from './ToolCalls/AiChartToolCalls';
+import { AiProposeChangeToolCall } from './ToolCalls/AiProposeChangeToolCall';
 
 const AssistantBubbleContent: FC<{
     message: AiAgentMessageAssistant;
@@ -58,9 +70,13 @@ const AssistantBubbleContent: FC<{
         message.uuid,
     );
     const { streamMessage } = useAiAgentThreadStreamMutation();
+    const mdStyle = useMdEditorStyle();
 
     const hasStreamingError =
         streamingState?.error && streamingState?.messageUuid === message.uuid;
+    const hasNoResponse = !isStreaming && !message.message;
+    const shouldShowRetry = hasStreamingError || hasNoResponse;
+
     const messageContent =
         isStreaming && streamingState
             ? streamingState.content
@@ -81,9 +97,19 @@ const AssistantBubbleContent: FC<{
         projectUuid,
     ]);
 
+    const proposeChangeToolCall = isStreaming
+        ? (streamingState?.toolCalls.find((t) => t.toolName === 'proposeChange')
+              ?.toolArgs as ToolProposeChangeArgs)
+        : (message.toolCalls.find((t) => t.toolName === 'proposeChange')
+              ?.toolArgs as ToolProposeChangeArgs); // TODO: fix message type, it's `object` now
+
+    const proposeChangeToolResult = message.toolResults.find(
+        (result) => result.toolName === 'proposeChange',
+    );
+
     return (
         <>
-            {hasStreamingError && (
+            {shouldShowRetry && (
                 <Paper
                     withBorder
                     radius="md"
@@ -139,21 +165,30 @@ const AssistantBubbleContent: FC<{
                 <AiChartToolCalls
                     toolCalls={streamingState?.toolCalls}
                     type="streaming"
+                    projectUuid={projectUuid}
+                    agentUuid={agentUuid}
+                    threadUuid={message.threadUuid}
+                    promptUuid={message.uuid}
                 />
             )}
-
             {!isStreaming && message.toolCalls.length > 0 && (
                 <AiChartToolCalls
                     toolCalls={message.toolCalls}
                     type="persisted"
+                    projectUuid={projectUuid}
+                    agentUuid={agentUuid}
+                    threadUuid={message.threadUuid}
+                    promptUuid={message.uuid}
                 />
             )}
             {messageContent.length > 0 ? (
                 <MDEditor.Markdown
+                    rehypeRewrite={rehypeRemoveHeaderLinks}
                     source={messageContent}
-                    style={{ padding: `0.5rem 0`, fontSize: '0.875rem' }}
+                    style={{ ...mdStyle, padding: `0.5rem 0` }}
                     rehypePlugins={[rehypeAiAgentContentLinks]}
                     components={{
+                        ...mdEditorComponents,
                         a: ({ node, children, ...props }) => {
                             const contentType =
                                 'data-content-type' in props &&
@@ -257,6 +292,17 @@ const AssistantBubbleContent: FC<{
                 />
             ) : null}
             {isStreaming ? <Loader type="dots" color="gray" /> : null}
+            {proposeChangeToolCall && (
+                <AiProposeChangeToolCall
+                    change={proposeChangeToolCall.change}
+                    entityTableName={proposeChangeToolCall.entityTableName}
+                    projectUuid={projectUuid}
+                    agentUuid={agentUuid}
+                    threadUuid={message.threadUuid}
+                    promptUuid={message.uuid}
+                    toolResult={proposeChangeToolResult}
+                />
+            )}
         </>
     );
 };
@@ -267,18 +313,33 @@ type Props = {
     debug?: boolean;
     projectUuid: string;
     agentUuid: string;
+    onAddToEvals?: (promptUuid: string) => void;
+    renderArtifactsInline?: boolean;
+    showAddToEvalsButton?: boolean;
 };
 
 export const AssistantBubble: FC<Props> = memo(
-    ({ message, isActive = false, debug = false, projectUuid, agentUuid }) => {
+    ({
+        message,
+        isActive = false,
+        debug = false,
+        projectUuid,
+        agentUuid,
+        onAddToEvals,
+        renderArtifactsInline = false,
+        showAddToEvalsButton = false,
+    }) => {
         const artifact = useAiAgentStoreSelector(
             (state) => state.aiArtifact.artifact,
         );
         const dispatch = useAiAgentStoreDispatch();
+
         if (!projectUuid) throw new Error(`Project Uuid not found`);
         if (!agentUuid) throw new Error(`Agent Uuid not found`);
 
-        const isArtifactAvailable = !!message.artifact;
+        const isArtifactAvailable = !!(
+            message.artifacts && message.artifacts.length > 0
+        );
 
         const [isDrawerOpen, { open: openDrawer, close: closeDrawer }] =
             useDisclosure(debug);
@@ -332,33 +393,53 @@ export const AssistantBubble: FC<Props> = memo(
                 />
 
                 {isArtifactAvailable && projectUuid && agentUuid && (
-                    <AiArtifactButton
-                        onClick={() => {
-                            if (
-                                artifact?.artifactUuid ===
-                                    message.artifact?.uuid &&
-                                artifact?.versionUuid ===
-                                    message.artifact?.versionUuid
-                            ) {
-                                return;
-                            }
-                            dispatch(
-                                setArtifact({
-                                    artifactUuid: message.artifact!.uuid,
-                                    versionUuid: message.artifact!.versionUuid,
-                                    message: message,
-                                    projectUuid: projectUuid,
-                                    agentUuid: agentUuid,
-                                }),
-                            );
-                        }}
-                        isArtifactOpen={
-                            artifact?.artifactUuid === message.artifact?.uuid &&
-                            artifact?.versionUuid ===
-                                message.artifact?.versionUuid
-                        }
-                        artifact={message.artifact}
-                    />
+                    <Stack gap="xs">
+                        {renderArtifactsInline
+                            ? // Render artifacts inline directly
+                              message.artifacts!.map((messageArtifact) => (
+                                  <AiArtifactInline
+                                      key={`${messageArtifact.artifactUuid}-${messageArtifact.versionUuid}`}
+                                      artifact={messageArtifact}
+                                      message={message}
+                                      projectUuid={projectUuid}
+                                      agentUuid={agentUuid}
+                                  />
+                              ))
+                            : // Render artifact buttons that open modals
+                              message.artifacts!.map((messageArtifact) => (
+                                  <AiArtifactButton
+                                      key={`${messageArtifact.artifactUuid}-${messageArtifact.versionUuid}`}
+                                      onClick={() => {
+                                          if (
+                                              artifact?.artifactUuid ===
+                                                  messageArtifact.artifactUuid &&
+                                              artifact?.versionUuid ===
+                                                  messageArtifact.versionUuid
+                                          ) {
+                                              return;
+                                          }
+                                          dispatch(
+                                              setArtifact({
+                                                  artifactUuid:
+                                                      messageArtifact.artifactUuid,
+                                                  versionUuid:
+                                                      messageArtifact.versionUuid,
+                                                  message: message,
+                                                  projectUuid: projectUuid,
+                                                  agentUuid: agentUuid,
+                                              }),
+                                          );
+                                      }}
+                                      isArtifactOpen={
+                                          artifact?.artifactUuid ===
+                                              messageArtifact.artifactUuid &&
+                                          artifact?.versionUuid ===
+                                              messageArtifact.versionUuid
+                                      }
+                                      artifact={messageArtifact}
+                                  />
+                              ))}
+                    </Stack>
                 )}
                 <Group gap={0}>
                     <CopyButton value={message.message ?? ''}>
@@ -424,6 +505,20 @@ export const AssistantBubble: FC<Props> = memo(
                         </ActionIcon>
                     )}
 
+                    {showAddToEvalsButton && onAddToEvals && (
+                        <Tooltip label="Add this response to evals">
+                            <ActionIcon
+                                variant="subtle"
+                                color="gray"
+                                aria-label="Add to evaluation set"
+                                onClick={() => onAddToEvals(message.uuid)}
+                                display={isLoading ? 'none' : 'block'}
+                            >
+                                <MantineIcon icon={IconTestPipe} color="gray" />
+                            </ActionIcon>
+                        </Tooltip>
+                    )}
+
                     {isArtifactAvailable && (
                         <ActionIcon
                             variant="subtle"
@@ -437,12 +532,13 @@ export const AssistantBubble: FC<Props> = memo(
                 </Group>
 
                 <AgentChatDebugDrawer
+                    agentUuid={agentUuid}
+                    projectUuid={projectUuid}
+                    artifacts={message.artifacts}
+                    toolCalls={message.toolCalls}
                     isVisualizationAvailable={isArtifactAvailable}
                     isDrawerOpen={isDrawerOpen}
-                    closeDrawer={closeDrawer}
-                    toolCalls={message.toolCalls}
-                    vizConfig={null}
-                    metricQuery={null}
+                    onClose={closeDrawer}
                 />
             </Stack>
         );

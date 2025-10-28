@@ -4,8 +4,30 @@ import {
     assertUnreachable,
     type OrganizationProject,
 } from '@lightdash/common';
-import { Badge, Box, Button, Group, Menu, Text, Tooltip } from '@mantine/core';
-import { IconArrowRight, IconPlus } from '@tabler/icons-react';
+import {
+    ActionIcon,
+    Badge,
+    Box,
+    Button,
+    Collapse,
+    Group,
+    Highlight,
+    Menu,
+    Stack,
+    Text,
+    TextInput,
+    Tooltip,
+    UnstyledButton,
+} from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
+import {
+    IconArrowRight,
+    IconChevronDown,
+    IconChevronRight,
+    IconPlus,
+    IconSearch,
+    IconX,
+} from '@tabler/icons-react';
 import { useCallback, useMemo, useState, type FC } from 'react';
 import { matchRoutes, useLocation, useMatch, useNavigate } from 'react-router';
 import useToaster from '../../hooks/toaster/useToaster';
@@ -20,20 +42,81 @@ import MantineIcon from '../common/MantineIcon';
 import { CreatePreviewModal } from './CreatePreviewProjectModal';
 
 const MENU_TEXT_PROPS = {
-    c: 'gray.2',
+    c: 'gray.1',
     fz: 'xs',
     fw: 500,
 };
 
-const InactiveProjectItem: FC<{
+type GroupState = 'expanded' | 'collapsed' | 'filtered';
+
+interface GroupStates {
+    base: GroupState;
+    preview: GroupState;
+}
+
+const GroupHeader: FC<{
+    title: string;
+    count: number;
+    state: GroupState;
+    onToggle: () => void;
+    badgeColor: string;
+    isVisible: boolean;
+}> = ({ title, count, onToggle, badgeColor, isVisible }) => {
+    // Show as expanded if group is visible (either naturally expanded or auto-expanded by search)
+    const isExpanded = isVisible;
+
+    return (
+        <UnstyledButton
+            onClick={onToggle}
+            w="100%"
+            p="xs"
+            sx={(theme) => ({
+                '&:hover': {
+                    backgroundColor: theme.colors.dark[6],
+                },
+            })}
+        >
+            <Group spacing="xs" position="apart" noWrap>
+                <Group spacing="xs" noWrap>
+                    <Text {...MENU_TEXT_PROPS} fw={600} c="gray.4">
+                        {title}
+                    </Text>
+                    <Badge
+                        color={badgeColor}
+                        variant="light"
+                        size="xs"
+                        radius="sm"
+                        fw={700}
+                        sx={{
+                            textTransform: 'none',
+                        }}
+                    >
+                        {count}
+                    </Badge>
+                </Group>
+                <MantineIcon
+                    icon={isExpanded ? IconChevronDown : IconChevronRight}
+                    size="sm"
+                    color="gray.5"
+                />
+            </Group>
+        </UnstyledButton>
+    );
+};
+
+const ProjectItem: FC<{
     item: OrganizationProject;
     handleProjectChange: (newUuid: string) => void;
-}> = ({ item, handleProjectChange }) => {
+    searchQuery?: string;
+    isActive?: boolean;
+}> = ({ item, handleProjectChange, searchQuery, isActive = false }) => {
     const { ref: truncatedRef, isTruncated } = useIsTruncated<HTMLDivElement>();
+
     return (
         <Menu.Item
             key={item.projectUuid}
-            onClick={() => handleProjectChange(item.projectUuid)}
+            onClick={() => !isActive && handleProjectChange(item.projectUuid)}
+            disabled={isActive}
         >
             <Group spacing="sm" position="apart" noWrap>
                 <Tooltip
@@ -45,19 +128,26 @@ const InactiveProjectItem: FC<{
                     color="dark"
                     multiline
                 >
-                    <Text
+                    <Highlight
                         ref={truncatedRef}
+                        highlight={
+                            searchQuery && searchQuery.length >= 2
+                                ? searchQuery
+                                : ''
+                        }
                         {...MENU_TEXT_PROPS}
                         truncate
                         maw={350}
+                        fw={isActive ? 600 : 500}
+                        c={isActive ? 'gray.5' : 'inherit'}
                     >
                         {item.name}
-                    </Text>
+                    </Highlight>
                 </Tooltip>
 
-                {item.type === ProjectType.PREVIEW && (
+                {(item.type === ProjectType.PREVIEW || isActive) && (
                     <Badge
-                        color="yellow.1"
+                        color={isActive ? 'green' : 'yellow.1'}
                         variant="light"
                         size="xs"
                         radius="sm"
@@ -66,7 +156,7 @@ const InactiveProjectItem: FC<{
                             textTransform: 'none',
                         }}
                     >
-                        Preview
+                        {isActive ? 'Active' : 'Preview'}
                     </Badge>
                 )}
             </Group>
@@ -115,6 +205,38 @@ const ProjectSwitcher = () => {
     const { mutate: setLastProjectMutation } = useUpdateActiveProjectMutation();
     const location = useLocation();
     const isHomePage = !!useMatch(`/projects/${activeProjectUuid}/home`);
+
+    const [isCreatePreviewOpen, setIsCreatePreview] = useState(false);
+    const [groupStates, setGroupStates] = useState<GroupStates>({
+        base: 'expanded',
+        preview: 'expanded',
+    });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
+
+    const handleGroupToggle = useCallback((groupType: 'base' | 'preview') => {
+        setGroupStates((prev) => {
+            const currentState = prev[groupType];
+
+            // Cycle through states: expanded -> collapsed -> filtered -> expanded
+            switch (currentState) {
+                case 'expanded':
+                    return { ...prev, [groupType]: 'collapsed' };
+                case 'collapsed':
+                    // Enter filter mode: this group filtered, other collapsed
+                    if (groupType === 'base') {
+                        return { base: 'filtered', preview: 'collapsed' };
+                    } else {
+                        return { base: 'collapsed', preview: 'filtered' };
+                    }
+                case 'filtered':
+                    // Back to default: both expanded
+                    return { base: 'expanded', preview: 'expanded' };
+                default:
+                    return prev;
+            }
+        });
+    }, []);
 
     const routeMatches =
         matchRoutes(
@@ -193,11 +315,17 @@ const ProjectSwitcher = () => {
         );
     }, [user.data]);
 
-    const inactiveProjects = useMemo(() => {
-        if (!activeProjectUuid || !projects) return [];
-        return projects
-            .filter((p) => p.projectUuid !== activeProjectUuid)
-            .filter((project) => {
+    const { baseProjects, previewProjects, shouldShowBase, shouldShowPreview } =
+        useMemo(() => {
+            if (!activeProjectUuid || !projects)
+                return {
+                    baseProjects: [],
+                    previewProjects: [],
+                    shouldShowBase: false,
+                    shouldShowPreview: false,
+                };
+
+            const availableProjects = projects.filter((project) => {
                 switch (project.type) {
                     case ProjectType.DEFAULT:
                         return true;
@@ -222,7 +350,47 @@ const ProjectSwitcher = () => {
                         );
                 }
             });
-    }, [activeProjectUuid, projects, orgRoleCanCreatePreviews, user.data]);
+
+            // Apply search filter if query exists
+            const searchFiltered =
+                debouncedSearchQuery.length >= 2
+                    ? availableProjects.filter((project) =>
+                          project.name
+                              .toLowerCase()
+                              .includes(debouncedSearchQuery.toLowerCase()),
+                      )
+                    : availableProjects;
+
+            const base = searchFiltered.filter(
+                (p) => p.type === ProjectType.DEFAULT,
+            );
+            const preview = searchFiltered.filter(
+                (p) => p.type === ProjectType.PREVIEW,
+            );
+
+            // Determine visibility based on group states and search
+            const hasSearchResults = debouncedSearchQuery.length >= 2;
+            const showBase =
+                groupStates.base !== 'collapsed' ||
+                (hasSearchResults && base.length > 0);
+            const showPreview =
+                groupStates.preview !== 'collapsed' ||
+                (hasSearchResults && preview.length > 0);
+
+            return {
+                baseProjects: base,
+                previewProjects: preview,
+                shouldShowBase: showBase && base.length > 0,
+                shouldShowPreview: showPreview && preview.length > 0,
+            };
+        }, [
+            activeProjectUuid,
+            projects,
+            orgRoleCanCreatePreviews,
+            user.data,
+            groupStates,
+            debouncedSearchQuery,
+        ]);
 
     const userCanCreatePreview = useMemo(() => {
         if (isLoadingProjects || !projects || !user.data) return false;
@@ -240,8 +408,6 @@ const ProjectSwitcher = () => {
                 ),
             );
     }, [isLoadingProjects, projects, user.data]);
-
-    const [isCreatePreviewOpen, setIsCreatePreview] = useState(false);
 
     if (
         isLoadingProjects ||
@@ -262,6 +428,7 @@ const ProjectSwitcher = () => {
                 offset={-2}
                 styles={{
                     dropdown: {
+                        minWidth: 250,
                         maxHeight: 450,
                         overflow: 'auto',
                     },
@@ -290,27 +457,154 @@ const ProjectSwitcher = () => {
                 </Menu.Target>
 
                 <Menu.Dropdown maw={400}>
-                    {inactiveProjects.length > 0 && (
-                        <Box
-                            pos="sticky"
-                            top={0}
-                            bg="gray.9"
-                            sx={(theme) => ({
-                                boxShadow: `0 -4px ${theme.colors.gray[9]}`,
-                            })}
-                        >
-                            <Menu.Label py={0}>All Projects</Menu.Label>
-                            <Menu.Divider />
-                        </Box>
-                    )}
-
-                    {inactiveProjects.map((item) => (
-                        <InactiveProjectItem
-                            key={item.projectUuid}
-                            item={item}
-                            handleProjectChange={handleProjectChange}
+                    {/* Search Header */}
+                    <Box
+                        pos="sticky"
+                        top={0}
+                        bg="gray.9"
+                        p="sm"
+                        sx={(theme) => ({
+                            boxShadow: `0 2px 8px ${theme.colors.gray[9]}`,
+                            borderBottom: `1px solid ${theme.colors.dark[4]}`,
+                        })}
+                    >
+                        <TextInput
+                            placeholder="Search projects..."
+                            value={searchQuery}
+                            onChange={(e) =>
+                                setSearchQuery(e.currentTarget.value)
+                            }
+                            icon={<MantineIcon icon={IconSearch} size="sm" />}
+                            rightSection={
+                                searchQuery ? (
+                                    <ActionIcon
+                                        size="sm"
+                                        variant="transparent"
+                                        onClick={() => setSearchQuery('')}
+                                    >
+                                        <MantineIcon icon={IconX} size="xs" />
+                                    </ActionIcon>
+                                ) : null
+                            }
+                            size="xs"
+                            styles={{
+                                input: {
+                                    backgroundColor: 'transparent',
+                                    border: `1px solid var(--mantine-color-dark-4)`,
+                                    '&:focus': {
+                                        borderColor:
+                                            'var(--mantine-color-blue-6)',
+                                    },
+                                },
+                            }}
                         />
-                    ))}
+                    </Box>
+
+                    <Stack spacing={0}>
+                        {/* Base Projects Group */}
+                        {baseProjects.length > 0 && (
+                            <Box>
+                                <GroupHeader
+                                    title="Projects"
+                                    count={baseProjects.length}
+                                    state={groupStates.base}
+                                    onToggle={() => handleGroupToggle('base')}
+                                    badgeColor="blue"
+                                    isVisible={shouldShowBase}
+                                />
+                                <Collapse in={shouldShowBase}>
+                                    <Box
+                                        sx={{
+                                            maxHeight: 200,
+                                            overflow: 'auto',
+                                        }}
+                                    >
+                                        <Stack spacing={0}>
+                                            {baseProjects.map((item) => (
+                                                <ProjectItem
+                                                    key={item.projectUuid}
+                                                    item={item}
+                                                    handleProjectChange={
+                                                        handleProjectChange
+                                                    }
+                                                    searchQuery={
+                                                        debouncedSearchQuery
+                                                    }
+                                                    isActive={
+                                                        item.projectUuid ===
+                                                        activeProjectUuid
+                                                    }
+                                                />
+                                            ))}
+                                        </Stack>
+                                    </Box>
+                                </Collapse>
+                            </Box>
+                        )}
+
+                        {/* Preview Projects Group */}
+                        {previewProjects.length > 0 && (
+                            <Box>
+                                <Menu.Divider />
+                                <GroupHeader
+                                    title="Preview"
+                                    count={previewProjects.length}
+                                    state={groupStates.preview}
+                                    onToggle={() =>
+                                        handleGroupToggle('preview')
+                                    }
+                                    badgeColor="yellow"
+                                    isVisible={shouldShowPreview}
+                                />
+                                <Collapse in={shouldShowPreview}>
+                                    <Box
+                                        sx={{
+                                            maxHeight: 200,
+                                            overflow: 'auto',
+                                        }}
+                                    >
+                                        <Stack spacing={0}>
+                                            {previewProjects.map((item) => (
+                                                <ProjectItem
+                                                    key={item.projectUuid}
+                                                    item={item}
+                                                    handleProjectChange={
+                                                        handleProjectChange
+                                                    }
+                                                    searchQuery={
+                                                        debouncedSearchQuery
+                                                    }
+                                                    isActive={
+                                                        item.projectUuid ===
+                                                        activeProjectUuid
+                                                    }
+                                                />
+                                            ))}
+                                        </Stack>
+                                    </Box>
+                                </Collapse>
+                            </Box>
+                        )}
+
+                        {/* Empty State */}
+                        {baseProjects.length === 0 &&
+                            previewProjects.length === 0 && (
+                                <Box p="lg" ta="center">
+                                    <Stack spacing="xs" align="center">
+                                        <MantineIcon
+                                            icon={IconSearch}
+                                            size="lg"
+                                            color="gray.5"
+                                        />
+                                        <Text {...MENU_TEXT_PROPS}>
+                                            {debouncedSearchQuery.length >= 2
+                                                ? `No projects found for "${debouncedSearchQuery}"`
+                                                : 'No projects available'}
+                                        </Text>
+                                    </Stack>
+                                </Box>
+                            )}
+                    </Stack>
 
                     {/* {userCanCreatePreview && (
                         <Box
@@ -322,7 +616,8 @@ const ProjectSwitcher = () => {
                                 boxShadow: `0 4px ${theme.colors.gray[9]}`,
                             })}
                         >
-                            {inactiveProjects.length > 0 && <Menu.Divider />}
+                            {(baseProjects.length > 0 ||
+                                previewProjects.length > 0) && <Menu.Divider />}
 
                             <Menu.Item
                                 onClick={(

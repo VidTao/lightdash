@@ -1,5 +1,6 @@
 import {
     AdditionalMetric,
+    AgentToolOutput,
     AiArtifact,
     AiMetricQueryWithFilters,
     AiWebAppPrompt,
@@ -8,19 +9,27 @@ import {
     CacheMetadata,
     CatalogField,
     CatalogTable,
+    ChangesetWithChanges,
+    CreateChangeParams,
     DashboardSearchResult,
     Explore,
+    ExploreCompiler,
     Filters,
     ItemsMap,
     KnexPaginateArgs,
+    SearchResult,
     SlackPrompt,
     ToolFindChartsArgs,
+    ToolFindContentArgs,
     ToolFindDashboardsArgs,
     ToolFindFieldsArgs,
     UpdateSlackResponse,
     UpdateWebAppResponse,
 } from '@lightdash/common';
-import { AiAgentResponseStreamed } from '../../../../analytics/LightdashAnalytics';
+import {
+    AiAgentResponseStreamed,
+    AiAgentToolCallEvent,
+} from '../../../../analytics/LightdashAnalytics';
 import { PostSlackFile } from '../../../../clients/Slack/SlackClient';
 
 type Pagination = KnexPaginateArgs & {
@@ -28,22 +37,17 @@ type Pagination = KnexPaginateArgs & {
     totalResults: number;
 };
 
-export type FindExploresFn = (
-    args: {
-        tableName: string | null;
-        fieldOverviewSearchSize?: number;
-        fieldSearchSize?: number;
-        includeFields: boolean;
-    } & KnexPaginateArgs,
-) => Promise<{
-    tablesWithFields: {
-        table: CatalogTable;
-        dimensions?: CatalogField[];
-        metrics?: CatalogField[];
-        dimensionsPagination?: Pagination;
-        metricsPagination?: Pagination;
-    }[];
-    pagination: Pagination | undefined;
+export type ListExploresFn = () => Promise<Explore[]>;
+
+export type FindExploresFn = (args: {
+    exploreName: string;
+    fieldSearchSize: number;
+}) => Promise<{
+    explore: Explore;
+    catalogFields: {
+        dimensions: CatalogField[];
+        metrics: CatalogField[];
+    };
 }>;
 
 export type FindFieldFn = (
@@ -72,6 +76,12 @@ export type FindChartsFn = (
 ) => Promise<{
     charts: AllChartsSearchResult[];
     pagination: Pagination | undefined;
+}>;
+
+export type FindContentFn = (args: {
+    searchQuery: ToolFindContentArgs['searchQueries'][number];
+}) => Promise<{
+    content: (AllChartsSearchResult | DashboardSearchResult)[];
 }>;
 
 export type GetExploreFn = (args: { exploreName: string }) => Promise<Explore>;
@@ -109,10 +119,13 @@ export type StoreToolResultsFn = (
         toolCallId: string;
         toolName: string;
         result: string;
+        metadata?: AgentToolOutput['metadata'];
     }>,
 ) => Promise<void>;
 
-export type TrackEventFn = (event: AiAgentResponseStreamed) => void;
+export type TrackEventFn = (
+    event: AiAgentResponseStreamed | AiAgentToolCallEvent,
+) => void;
 
 export type SearchFieldValuesFn = (args: {
     table: string;
@@ -129,3 +142,18 @@ export type CreateOrUpdateArtifactFn = (data: {
     description?: string;
     vizConfig: Record<string, unknown>;
 }) => Promise<AiArtifact>;
+
+export type CheckUserPermissionFn = (args: {
+    userId: string;
+    organizationId: string;
+    permission: string;
+}) => Promise<boolean>;
+
+export type CreateChangeFn = (
+    params: Pick<
+        CreateChangeParams,
+        'type' | 'entityName' | 'entityType' | 'entityTableName' | 'payload'
+    >,
+) => Promise<string>;
+
+export type GetExploreCompilerFn = () => Promise<ExploreCompiler>;

@@ -427,6 +427,7 @@ describe('McpSchemaCompatLayer', () => {
                     limit: null,
                 },
                 filters: null,
+                tableCalculations: null,
             });
         });
 
@@ -466,7 +467,9 @@ describe('McpSchemaCompatLayer', () => {
                             fieldFilterType: 'date',
                         },
                     ],
+                    tableCalculations: null,
                 },
+                tableCalculations: null,
             });
 
             expect(() => schemaTransformed.parse(parsed)).not.toThrow();
@@ -503,6 +506,7 @@ describe('McpSchemaCompatLayer', () => {
                         },
                     ],
                 },
+                tableCalculations: null,
             });
             expect(
                 mapped.parse({
@@ -533,6 +537,7 @@ describe('McpSchemaCompatLayer', () => {
                         },
                     ],
                 },
+                tableCalculations: null,
             });
         });
     });
@@ -593,11 +598,3 @@ describe('McpSchemaCompatLayer', () => {
         });
     });
 });
-// console.dir(
-//   applyCompatLayer({
-//     schema,
-//     compatLayers: [mcpSchemaCompatLayer],
-//     mode: "jsonSchema",
-//   }),
-//   { depth: null }
-// );

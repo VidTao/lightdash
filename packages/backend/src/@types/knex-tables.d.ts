@@ -1,4 +1,10 @@
 import {
+    ChangesetsTable,
+    ChangesetsTableName,
+    ChangesTable,
+    ChangesTableName,
+} from '../database/entities/changesets';
+import {
     DashboardsTableName,
     DashboardTable,
     DashboardTabsTable,
@@ -135,6 +141,10 @@ import {
     DashboardTileCommentsTableName,
 } from '../database/entities/comments';
 import {
+    DownloadAuditTable,
+    DownloadAuditTableName,
+} from '../database/entities/downloadAudit';
+import {
     DownloadFileTable,
     DownloadFileTableName,
 } from '../database/entities/downloadFile';
@@ -146,6 +156,10 @@ import {
     GithubAppInstallationTable,
     GithubAppInstallationTableName,
 } from '../database/entities/githubAppInstallation';
+import {
+    GitlabAppInstallationTable,
+    GitlabAppInstallationTableName,
+} from '../database/entities/gitlabAppInstallation';
 import {
     GroupMembershipTable,
     GroupMembershipTableName,
@@ -159,6 +173,10 @@ import {
     OrganizationColorPaletteTable,
     OrganizationColorPaletteTableName,
 } from '../database/entities/organizationColorPalettes';
+import {
+    OrganizationWarehouseCredentialsTable,
+    OrganizationWarehouseCredentialsTableName,
+} from '../database/entities/organizationWarehouseCredentials';
 import {
     OrganizationAllowedEmailDomainProjectsTable,
     OrganizationAllowedEmailDomainProjectsTableName,
@@ -233,6 +251,7 @@ import {
     WarehouseAvailableTablesTableName,
 } from '../database/entities/warehouseAvailableTables';
 import {
+    AiAgentToolCallTable,
     AiAgentToolCallTableName,
     AiAgentToolResultTable,
     AiAgentToolResultTableName,
@@ -268,6 +287,16 @@ import {
     AiArtifactVersionsTable,
     AiArtifactVersionsTableName,
 } from '../ee/database/entities/aiArtifacts';
+import {
+    AiEvalPromptTable,
+    AiEvalPromptTableName,
+    AiEvalRunResultTable,
+    AiEvalRunResultTableName,
+    AiEvalRunTable,
+    AiEvalRunTableName,
+    AiEvalTable,
+    AiEvalTableName,
+} from '../ee/database/entities/aiEvals';
 import {
     DashboardSummariesTable,
     DashboardSummariesTableName,
@@ -349,7 +378,9 @@ declare module 'knex/types/tables' {
         [SavedChartCustomDimensionsTableName]: SavedChartCustomDimensionsTable;
         [SavedChartCustomSqlDimensionsTableName]: SavedChartCustomSqlDimensionsTable;
         [DownloadFileTableName]: DownloadFileTable;
+        [DownloadAuditTableName]: DownloadAuditTable;
         [GithubAppInstallationTableName]: GithubAppInstallationTable;
+        [GitlabAppInstallationTableName]: GitlabAppInstallationTable;
         [DashboardTileCommentsTableName]: DashboardTileCommentsTable;
         [AiThreadTableName]: AiThreadTable;
         [AiSlackThreadTableName]: AiSlackThreadTable;
@@ -378,9 +409,16 @@ declare module 'knex/types/tables' {
         [MetricsTreeEdgesTableName]: MetricsTreeEdgesTable;
         [SpotlightTableConfigTableName]: SpotlightTableConfigTable;
         [OrganizationColorPaletteTableName]: OrganizationColorPaletteTable;
+        [OrganizationWarehouseCredentialsTableName]: OrganizationWarehouseCredentialsTable;
         [QueryHistoryTableName]: QueryHistoryTable;
         [ProjectParametersTableName]: ProjectParametersTable;
         [RolesTableName]: RoleTable;
         [ScopedRolesTableName]: ScopedRoleTable;
+        [AiEvalTableName]: AiEvalTable;
+        [AiEvalPromptTableName]: AiEvalPromptTable;
+        [AiEvalRunTableName]: AiEvalRunTable;
+        [AiEvalRunResultTableName]: AiEvalRunResultTable;
+        [ChangesetsTableName]: ChangesetsTable;
+        [ChangesTableName]: ChangesTable;
     }
 }

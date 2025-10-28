@@ -1,12 +1,15 @@
 import { Box, MantineProvider, type MantineThemeOverride } from '@mantine/core';
-import { type FC, useMemo } from 'react';
+import { memo, useMemo, type FC } from 'react';
+import { Provider } from 'react-redux';
 import { useParams } from 'react-router';
 import LightdashVisualization from '../components/LightdashVisualization';
 import VisualizationProvider from '../components/LightdashVisualization/VisualizationProvider';
-import { useDateZoomGranularitySearch } from '../hooks/useExplorerRoute';
+import { explorerStore } from '../features/explorer/store';
+import { useExplorerQuery } from '../hooks/useExplorerQuery';
+import { useExplorerQueryEffects } from '../hooks/useExplorerQueryEffects';
 import { useSavedQuery } from '../hooks/useSavedQuery';
-import useSearchParams from '../hooks/useSearchParams';
 import useApp from '../providers/App/useApp';
+import { defaultQueryExecution } from '../providers/Explorer/defaultState';
 import ExplorerProvider from '../providers/Explorer/ExplorerProvider';
 import { ExplorerSection } from '../providers/Explorer/types';
 import useExplorerContext from '../providers/Explorer/useExplorerContext';
@@ -18,10 +21,15 @@ const themeOverride: MantineThemeOverride = {
         },
     }),
 };
-const MinimalExplorer: FC = () => {
+
+const MinimalExplorerContent = memo(() => {
+    // Run the query effects hook - orchestrates all query effects
+    useExplorerQueryEffects({ minimal: true });
+
     const { health } = useApp();
-    const queryResults = useExplorerContext((context) => context.queryResults);
-    const query = useExplorerContext((context) => context.query);
+
+    // Get query state from hook
+    const { query, queryResults } = useExplorerQuery();
 
     const resultsData = useMemo(
         () => ({
@@ -36,10 +44,8 @@ const MinimalExplorer: FC = () => {
         (context) => context.state.savedChart,
     );
 
-    const isLoadingQueryResults = useExplorerContext(
-        (context) =>
-            context.query.isFetching || context.queryResults.isFetchingRows,
-    );
+    const isLoadingQueryResults =
+        query.isFetching || queryResults.isFetchingRows;
 
     if (!savedChart || health.isInitialLoading || !health.data) {
         return null;
@@ -69,20 +75,16 @@ const MinimalExplorer: FC = () => {
             </MantineProvider>
         </VisualizationProvider>
     );
-};
+});
 
 const MinimalSavedExplorer: FC = () => {
     const { savedQueryUuid } = useParams<{
         savedQueryUuid: string;
-        projectUuid: string;
     }>();
-    const context = useSearchParams('context') || undefined;
 
     const { data, isInitialLoading, isError, error } = useSavedQuery({
         id: savedQueryUuid,
     });
-
-    const dateZoomGranularity = useDateZoomGranularitySearch();
 
     if (isInitialLoading) {
         return null;
@@ -93,53 +95,52 @@ const MinimalSavedExplorer: FC = () => {
     }
 
     return (
-        <ExplorerProvider
-            minimal={true}
-            viewModeQueryArgs={
-                savedQueryUuid
-                    ? { chartUuid: savedQueryUuid, context }
-                    : undefined
-            }
-            dateZoomGranularity={dateZoomGranularity}
-            savedChart={data}
-            initialState={
-                data
-                    ? {
-                          parameterReferences: Object.keys(
-                              data.parameters ?? {},
-                          ),
-                          parameterDefinitions: {},
-                          expandedSections: [ExplorerSection.VISUALIZATION],
-                          unsavedChartVersion: {
-                              tableName: data.tableName,
-                              chartConfig: data.chartConfig,
-                              metricQuery: data.metricQuery,
-                              tableConfig: data.tableConfig,
-                              pivotConfig: data.pivotConfig,
-                              parameters: data.parameters,
-                          },
-                          modals: {
-                              format: {
-                                  isOpen: false,
+        <Provider store={explorerStore}>
+            <ExplorerProvider
+                savedChart={data}
+                initialState={
+                    data
+                        ? {
+                              parameterReferences: Object.keys(
+                                  data.parameters ?? {},
+                              ),
+                              parameterDefinitions: {},
+                              expandedSections: [ExplorerSection.VISUALIZATION],
+                              unsavedChartVersion: {
+                                  tableName: data.tableName,
+                                  chartConfig: data.chartConfig,
+                                  metricQuery: data.metricQuery,
+                                  tableConfig: data.tableConfig,
+                                  pivotConfig: data.pivotConfig,
+                                  parameters: data.parameters,
                               },
-                              additionalMetric: {
-                                  isOpen: false,
+                              modals: {
+                                  format: {
+                                      isOpen: false,
+                                  },
+                                  additionalMetric: {
+                                      isOpen: false,
+                                  },
+                                  customDimension: {
+                                      isOpen: false,
+                                  },
+                                  writeBack: {
+                                      isOpen: false,
+                                  },
+                                  itemDetail: {
+                                      isOpen: false,
+                                  },
                               },
-                              customDimension: {
-                                  isOpen: false,
-                              },
-                              writeBack: {
-                                  isOpen: false,
-                              },
-                          },
-                      }
-                    : undefined
-            }
-        >
-            <MantineProvider inherit theme={themeOverride}>
-                <MinimalExplorer />
-            </MantineProvider>
-        </ExplorerProvider>
+                              queryExecution: defaultQueryExecution,
+                          }
+                        : undefined
+                }
+            >
+                <MantineProvider inherit theme={themeOverride}>
+                    <MinimalExplorerContent />
+                </MantineProvider>
+            </ExplorerProvider>
+        </Provider>
     );
 };
 

@@ -21,10 +21,22 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import ErrorBoundary from '../../../features/errorBoundary/ErrorBoundary';
+import {
+    explorerActions,
+    selectColumnOrder,
+    selectIsEditMode,
+    selectIsVisualizationConfigOpen,
+    selectIsVisualizationExpanded,
+    selectMetricQuery,
+    selectTableName,
+    useExplorerDispatch,
+    useExplorerSelector,
+} from '../../../features/explorer/store';
 import { type EChartSeries } from '../../../hooks/echarts/useEchartsCartesianConfig';
 import { uploadGsheet } from '../../../hooks/gdrive/useGdrive';
 import { useOrganization } from '../../../hooks/organization/useOrganization';
 import { useExplore } from '../../../hooks/useExplore';
+import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { Can } from '../../../providers/Ability';
 import useApp from '../../../providers/App/useApp';
 import { ExplorerSection } from '../../../providers/Explorer/types';
@@ -59,12 +71,9 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
         (context) => context.state.savedChart,
     );
 
-    const isLoadingQueryResults = useExplorerContext(
-        (context) =>
-            context.query.isFetching || context.queryResults.isFetchingRows,
-    );
-    const query = useExplorerContext((context) => context.query);
-    const queryResults = useExplorerContext((context) => context.queryResults);
+    const { query, queryResults, isLoading, getDownloadQueryUuid } =
+        useExplorerQuery();
+    const isLoadingQueryResults = isLoading || queryResults.isFetchingRows;
 
     const resultsData = useMemo(
         () => ({
@@ -84,28 +93,46 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     const setChartConfig = useExplorerContext(
         (context) => context.actions.setChartConfig,
     );
-    const expandedSections = useExplorerContext(
-        (context) => context.state.expandedSections,
+
+    const isOpen = useExplorerSelector(selectIsVisualizationExpanded);
+    const isEditMode = useExplorerSelector(selectIsEditMode);
+    const isVisualizationConfigOpen = useExplorerSelector(
+        selectIsVisualizationConfigOpen,
     );
-    const isEditMode = useExplorerContext(
-        (context) => context.state.isEditMode,
-    );
-    const toggleExpandedSection = useExplorerContext(
-        (context) => context.actions.toggleExpandedSection,
-    );
-    const unsavedChartVersion = useExplorerContext(
-        (context) => context.state.unsavedChartVersion,
-    );
-    const tableCalculationsMetadata = useExplorerContext(
-        (context) => context.state.metadata?.tableCalculations,
-    );
-    const getDownloadQueryUuid = useExplorerContext(
-        (context) => context.actions.getDownloadQueryUuid,
+    const dispatch = useExplorerDispatch();
+
+    const toggleExpandedSection = useCallback(
+        (section: ExplorerSection) => {
+            dispatch(explorerActions.toggleExpandedSection(section));
+        },
+        [dispatch],
     );
 
-    const isOpen = useMemo(
-        () => expandedSections.includes(ExplorerSection.VISUALIZATION),
-        [expandedSections],
+    const tableName = useExplorerSelector(selectTableName);
+    const metricQuery = useExplorerSelector(selectMetricQuery);
+    const columnOrder = useExplorerSelector(selectColumnOrder);
+
+    // Read chartConfig and pivotConfig from Context (not synced to Redux)
+    const chartConfig = useExplorerContext(
+        (context) => context.state.unsavedChartVersion.chartConfig,
+    );
+    const pivotConfig = useExplorerContext(
+        (context) => context.state.unsavedChartVersion.pivotConfig,
+    );
+
+    const unsavedChartVersion = useMemo(
+        () => ({
+            tableName,
+            metricQuery,
+            tableConfig: { columnOrder },
+            chartConfig,
+            pivotConfig,
+        }),
+        [tableName, metricQuery, columnOrder, chartConfig, pivotConfig],
+    );
+
+    const tableCalculationsMetadata = useExplorerContext(
+        (context) => context.state.metadata?.tableCalculations,
     );
 
     const toggleSection = useCallback(
@@ -121,14 +148,13 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     const [echartsClickEvent, setEchartsClickEvent] =
         useState<EchartsClickEvent>();
 
-    const isVisualizationConfigOpen = useExplorerContext(
-        (context) => context.state.isVisualizationConfigOpen,
+    const openVisualizationConfig = useCallback(
+        () => dispatch(explorerActions.openVisualizationConfig()),
+        [dispatch],
     );
-    const openVisualizationConfig = useExplorerContext(
-        (context) => context.actions.openVisualizationConfig,
-    );
-    const closeVisualizationConfig = useExplorerContext(
-        (context) => context.actions.closeVisualizationConfig,
+    const closeVisualizationConfig = useCallback(
+        () => dispatch(explorerActions.closeVisualizationConfig()),
+        [dispatch],
     );
 
     const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
@@ -165,9 +191,7 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
         [unsavedChartVersion],
     );
 
-    const missingRequiredParameters = useExplorerContext(
-        (context) => context.state.missingRequiredParameters,
-    );
+    const { missingRequiredParameters } = useExplorerQuery();
 
     const apiErrorDetail = useMemo(() => {
         const queryError = query.error?.error ?? queryResults.error?.error;
@@ -192,7 +216,7 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     }
 
     const getGsheetLink = async (
-        columnOrder: string[],
+        exportColumnOrder: string[],
         showTableNames: boolean,
         customLabels?: Record<string, string>,
     ) => {
@@ -201,7 +225,7 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
                 projectUuid,
                 exploreId: explore?.name,
                 metricQuery: unsavedChartVersion?.metricQuery,
-                columnOrder,
+                columnOrder: exportColumnOrder,
                 showTableNames,
                 customLabels,
                 hiddenFields: getHiddenTableFields(

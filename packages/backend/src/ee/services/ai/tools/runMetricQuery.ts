@@ -1,4 +1,5 @@
 import {
+    convertAiTableCalcsSchemaToTableCalcs,
     Explore,
     getItemLabelWithoutTableName,
     getTotalFilterRules,
@@ -6,19 +7,23 @@ import {
     toolRunMetricQueryArgsSchema,
     toolRunMetricQueryArgsSchemaTransformed,
     ToolRunMetricQueryArgsTransformed,
+    toolRunMetricQueryOutputSchema,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import { stringify } from 'csv-stringify/sync';
 import { CsvService } from '../../../../services/CsvService/CsvService';
+import { NO_RESULTS_RETRY_PROMPT } from '../prompts/noResultsRetry';
 import type {
     GetExploreFn,
     RunMiniMetricQueryFn,
 } from '../types/aiAgentDependencies';
 import { populateCustomMetricsSQL } from '../utils/populateCustomMetricsSQL';
 import { serializeData } from '../utils/serializeData';
+import { toModelOutput } from '../utils/toModelOutput';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
 import {
     validateCustomMetricsDefinition,
+    validateFieldEntityType,
     validateFilterRules,
     validateMetricDimensionFilterPlacement,
     validateSelectedFieldsExistence,
@@ -41,35 +46,49 @@ export const getRunMetricQuery = ({
         explore: Explore,
     ) => {
         const filterRules = getTotalFilterRules(vizTool.filters);
-        const fieldsToValidate = [
-            ...vizTool.vizConfig.dimensions,
-            ...vizTool.vizConfig.metrics,
-            ...vizTool.vizConfig.sorts.map((sortField) => sortField.fieldId),
-        ].filter((x) => typeof x === 'string');
-
-        validateSelectedFieldsExistence(
+        validateFieldEntityType(
             explore,
-            fieldsToValidate,
+            vizTool.vizConfig.dimensions,
+            'dimension',
+        );
+        validateFieldEntityType(
+            explore,
+            vizTool.vizConfig.metrics,
+            'metric',
             vizTool.customMetrics,
         );
         validateCustomMetricsDefinition(explore, vizTool.customMetrics);
-        validateFilterRules(explore, filterRules, vizTool.customMetrics);
+        validateFilterRules(
+            explore,
+            filterRules,
+            vizTool.customMetrics,
+            vizTool.tableCalculations,
+        );
         validateMetricDimensionFilterPlacement(
             explore,
-            vizTool.filters,
             vizTool.customMetrics,
+            vizTool.tableCalculations,
+            vizTool.filters,
+        );
+        validateSelectedFieldsExistence(
+            explore,
+            vizTool.vizConfig.sorts.map((sort) => sort.fieldId),
+            vizTool.customMetrics,
+            vizTool.tableCalculations,
         );
         validateSortFieldsAreSelected(
             vizTool.vizConfig.sorts,
             vizTool.vizConfig.dimensions,
             vizTool.vizConfig.metrics,
             vizTool.customMetrics,
+            vizTool.tableCalculations,
         );
     };
 
     return tool({
         description: toolRunMetricQueryArgsSchema.description,
-        parameters: toolRunMetricQueryArgsSchema,
+        inputSchema: toolRunMetricQueryArgsSchema,
+        outputSchema: toolRunMetricQueryOutputSchema,
         execute: async (toolArgs) => {
             try {
                 const vizTool =
@@ -86,6 +105,9 @@ export const getRunMetricQuery = ({
                     filters: vizTool.filters,
                     maxLimit,
                     customMetrics: vizTool.customMetrics,
+                    tableCalculations: convertAiTableCalcsSchemaToTableCalcs(
+                        vizTool.tableCalculations,
+                    ),
                 });
 
                 const results = await runMiniMetricQuery(
@@ -93,6 +115,15 @@ export const getRunMetricQuery = ({
                     maxLimit,
                     populateCustomMetricsSQL(vizTool.customMetrics, explore),
                 );
+
+                if (results.rows.length === 0) {
+                    return {
+                        result: NO_RESULTS_RETRY_PROMPT,
+                        metadata: {
+                            status: 'success',
+                        },
+                    };
+                }
 
                 const fieldIds = results.rows[0]
                     ? Object.keys(results.rows[0])
@@ -120,10 +151,21 @@ export const getRunMetricQuery = ({
                     columns: csvHeaders,
                 });
 
-                return serializeData(csv, 'csv');
+                return {
+                    result: serializeData(csv, 'csv'),
+                    metadata: {
+                        status: 'success',
+                    },
+                };
             } catch (e) {
-                return toolErrorHandler(e, 'Error running metric query.');
+                return {
+                    result: toolErrorHandler(e, 'Error running metric query.'),
+                    metadata: {
+                        status: 'error',
+                    },
+                };
             }
         },
+        toModelOutput: (output) => toModelOutput(output),
     });
 };

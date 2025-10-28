@@ -8,7 +8,7 @@ export type DbAiThread = {
     created_at: Date;
     organization_uuid: string;
     project_uuid: string;
-    created_from: string; // slack, web, etc
+    created_from: 'slack' | 'web_app' | 'evals'; // slack, web_app, evals etc
     title: string | null;
     title_generated_at: Date | null;
 };
@@ -165,7 +165,9 @@ export type DbAiAgentToolResult = {
     tool_call_id: string;
     tool_name: string;
     result: string;
+    metadata: object | null;
     created_at: Date;
+    // TODO add updated_at
 };
 
 export type AiAgentToolResultTable = Knex.CompositeTableType<
@@ -173,6 +175,22 @@ export type AiAgentToolResultTable = Knex.CompositeTableType<
     Pick<
         DbAiAgentToolResult,
         'ai_prompt_uuid' | 'tool_call_id' | 'tool_name' | 'result'
-    >,
-    never
+    > &
+        Partial<Pick<DbAiAgentToolResult, 'metadata'>>,
+    Partial<Pick<DbAiAgentToolResult, 'metadata'>>
+>;
+
+export const AiOrganizationSettingsTableName = 'ai_organization_settings';
+
+export type DbAiOrganizationSettings = {
+    organization_uuid: string;
+    ai_agents_visible: boolean;
+    created_at: Date;
+    updated_at: Date;
+};
+
+export type AiOrganizationSettingsTable = Knex.CompositeTableType<
+    DbAiOrganizationSettings,
+    Pick<DbAiOrganizationSettings, 'organization_uuid' | 'ai_agents_visible'>,
+    Partial<Pick<DbAiOrganizationSettings, 'ai_agents_visible'>>
 >;

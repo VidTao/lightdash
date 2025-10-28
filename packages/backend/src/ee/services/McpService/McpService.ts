@@ -1,13 +1,16 @@
 import {
     Account,
     AnyType,
+    ApiKeyAccount,
     CatalogFilter,
     CatalogType,
     CommercialFeatureFlags,
+    Explore,
     filterExploreByTags,
     ForbiddenError,
-    getItemId,
+    isExploreError,
     MissingConfigError,
+    NotFoundError,
     OauthAccount,
     ParameterError,
     QueryExecutionContext,
@@ -16,8 +19,8 @@ import {
     toolFindChartsArgsSchema,
     ToolFindDashboardsArgs,
     toolFindDashboardsArgsSchema,
-    ToolFindExploresArgs,
-    toolFindExploresArgsSchema,
+    toolFindExploresArgsSchemaV2,
+    ToolFindExploresArgsV2,
     ToolFindFieldsArgs,
     toolFindFieldsArgsSchema,
     ToolRunMetricQueryArgs,
@@ -25,6 +28,7 @@ import {
     ToolSearchFieldValuesArgs,
     toolSearchFieldValuesArgsSchema,
 } from '@lightdash/common';
+import * as Sentry from '@sentry/node';
 // eslint-disable-next-line import/extensions
 import { subject } from '@casl/ability';
 // eslint-disable-next-line import/extensions
@@ -36,13 +40,9 @@ import {
     LightdashAnalytics,
     McpToolCallEvent,
 } from '../../../analytics/LightdashAnalytics';
-import { fromSession } from '../../../auth/account';
 import { LightdashConfig } from '../../../config/parseConfig';
 import { CatalogSearchContext } from '../../../models/CatalogModel/CatalogModel';
-import {
-    McpContextModel,
-    McpContext as ProjectContext,
-} from '../../../models/McpContextModel';
+import { McpContextModel } from '../../../models/McpContextModel';
 import { ProjectModel } from '../../../models/ProjectModel/ProjectModel';
 import { SearchModel } from '../../../models/SearchModel';
 import { SpaceModel } from '../../../models/SpaceModel';
@@ -50,14 +50,16 @@ import { UserAttributesModel } from '../../../models/UserAttributesModel';
 import { BaseService } from '../../../services/BaseService';
 import { CatalogService } from '../../../services/CatalogService/CatalogService';
 import { FeatureFlagService } from '../../../services/FeatureFlag/FeatureFlagService';
-import { OAuthScope } from '../../../services/OAuthService/OAuthService';
 import { ProjectService } from '../../../services/ProjectService/ProjectService';
 import { SpaceService } from '../../../services/SpaceService/SpaceService';
+import {
+    doesExploreMatchRequiredAttributes,
+    getFilteredExplore,
+} from '../../../services/UserAttributesService/UserAttributeUtils';
 import { wrapSentryTransaction } from '../../../utils';
 import { VERSION } from '../../../version';
 import { getFindCharts } from '../ai/tools/findCharts';
 import { getFindDashboards } from '../ai/tools/findDashboards';
-// eslint-disable-next-line import/extensions
 import { getFindExplores } from '../ai/tools/findExplores';
 import { getFindFields } from '../ai/tools/findFields';
 import { getRunMetricQuery } from '../ai/tools/runMetricQuery';
@@ -100,7 +102,10 @@ type McpServiceArguments = {
     featureFlagService: FeatureFlagService;
 };
 
-export type ExtraContext = { user: SessionUser; account: OauthAccount };
+export type ExtraContext = {
+    user: SessionUser;
+    account: OauthAccount | ApiKeyAccount;
+};
 type McpProtocolContext = {
     authInfo?: AuthInfo & {
         extra: ExtraContext;
@@ -161,12 +166,12 @@ export class McpService extends BaseService {
         this.featureFlagService = featureFlagService;
         this.mcpCompatLayer = new McpSchemaCompatLayer();
         try {
-            this.mcpServer = new McpServer({
-                name: 'Lightdash MCP Server',
-                version: VERSION,
-            });
-            console.log('initialized MCP server Drasko!');
-            this.logger.info('initialized MCP server Drasko!');
+            this.mcpServer = Sentry.wrapMcpServerWithSentry(
+                new McpServer({
+                    name: 'Lightdash MCP Server',
+                    version: VERSION,
+                }),
+            );
             this.setupHandlers();
         } catch (error) {
             this.logger.error('Error initializing MCP server:', error);
@@ -174,8 +179,32 @@ export class McpService extends BaseService {
         }
     }
 
+    static async streamToolResult(
+        result:
+            | { result: string }
+            | AsyncIterable<{
+                  result: string;
+              }>,
+    ): Promise<string> {
+        if (
+            'result' in result &&
+            typeof result.result === 'string' &&
+            Symbol.asyncIterator in result === false
+        ) {
+            return result.result;
+        }
+
+        let out = '';
+        for await (const chunk of result as AsyncIterable<{
+            result: string;
+            metadata: { status: 'error' | 'success' };
+        }>) {
+            out += chunk.result;
+        }
+        return out;
+    }
+
     private getMcpCompatibleSchema(schema: z.ZodSchema<unknown>): ZodRawShape {
-        // @ts-expect-error - shape is not a property of ZodTypeAny
         return this.mcpCompatLayer.processZodType(schema).shape;
     }
 
@@ -207,13 +236,13 @@ export class McpService extends BaseService {
         this.mcpServer.registerTool(
             McpToolName.FIND_EXPLORES,
             {
-                description: toolFindExploresArgsSchema.description,
+                description: toolFindExploresArgsSchemaV2.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolFindExploresArgsSchema,
+                    toolFindExploresArgsSchemaV2,
                 ) as AnyType,
             },
             async (_args, context) => {
-                const args = _args as ToolFindExploresArgs;
+                const args = _args as ToolFindExploresArgsV2;
 
                 const projectUuid = await this.resolveProjectUuid(
                     context as McpProtocolContext,
@@ -234,12 +263,62 @@ export class McpService extends BaseService {
 
                 const findExploresTool = getFindExplores({
                     findExplores,
-                    pageSize: 15,
-                    maxDescriptionLength: 100,
+                    updateProgress: async () => {}, // No-op for MCP context
                     fieldSearchSize: 200,
-                    fieldOverviewSearchSize: 5,
                 });
-                const result = await findExploresTool.execute(argsWithProject, {
+                const result = await findExploresTool.execute!(
+                    argsWithProject,
+                    {
+                        toolCallId: '',
+                        messages: [],
+                    },
+                );
+
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: await McpService.streamToolResult(result),
+                        },
+                    ],
+                };
+            },
+        );
+
+        this.mcpServer.registerTool(
+            McpToolName.FIND_FIELDS,
+            {
+                description: toolFindFieldsArgsSchema.description,
+                inputSchema: this.getMcpCompatibleSchema(
+                    toolFindFieldsArgsSchema,
+                ) as AnyType,
+            },
+            async (_args, context) => {
+                const args = _args as ToolFindFieldsArgs;
+
+                const projectUuid = await this.resolveProjectUuid(
+                    context as McpProtocolContext,
+                );
+                const argsWithProject = { ...args, projectUuid };
+
+                this.trackToolCall(
+                    context as McpProtocolContext,
+                    McpToolName.FIND_FIELDS,
+                    projectUuid,
+                );
+
+                const findFields: FindFieldFn =
+                    await this.getFindFieldsFunction(
+                        argsWithProject,
+                        context as McpProtocolContext,
+                    );
+
+                const findFieldsTool = getFindFields({
+                    findFields,
+                    updateProgress: async () => {}, // No-op for MCP context
+                    pageSize: 15,
+                });
+                const result = await findFieldsTool.execute!(argsWithProject, {
                     toolCallId: '',
                     messages: [],
                 });
@@ -248,60 +327,12 @@ export class McpService extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpService.streamToolResult(result),
                         },
                     ],
                 };
             },
         );
-
-        // this.mcpServer.registerTool(
-        //     McpToolName.FIND_FIELDS,
-        //     {
-        //         description: toolFindFieldsArgsSchema.description,
-        //         inputSchema: this.getMcpCompatibleSchema(
-        //             toolFindFieldsArgsSchema,
-        //         ) as AnyType,
-        //     },
-        //     async (_args, context) => {
-        //         const args = _args as ToolFindFieldsArgs;
-
-        //         const projectUuid = await this.resolveProjectUuid(
-        //             context as McpProtocolContext,
-        //         );
-        //         const argsWithProject = { ...args, projectUuid };
-
-        //         this.trackToolCall(
-        //             context as McpProtocolContext,
-        //             McpToolName.FIND_FIELDS,
-        //             projectUuid,
-        //         );
-
-        //         const findFields: FindFieldFn =
-        //             await this.getFindFieldsFunction(
-        //                 argsWithProject,
-        //                 context as McpProtocolContext,
-        //             );
-
-        //         const findFieldsTool = getFindFields({
-        //             findFields,
-        //             pageSize: 15,
-        //         });
-        //         const result = await findFieldsTool.execute(argsWithProject, {
-        //             toolCallId: '',
-        //             messages: [],
-        //         });
-
-        //         return {
-        //             content: [
-        //                 {
-        //                     type: 'text',
-        //                     text: result,
-        //                 },
-        //             ],
-        //         };
-        //     },
-        // );
 
         this.mcpServer.registerTool(
             McpToolName.FIND_DASHBOARDS,
@@ -336,7 +367,7 @@ export class McpService extends BaseService {
                     pageSize: 10,
                     siteUrl: this.lightdashConfig.siteUrl,
                 });
-                const result = await findDashboardsTool.execute(
+                const result = await findDashboardsTool.execute!(
                     argsWithProject,
                     {
                         toolCallId: '',
@@ -348,7 +379,7 @@ export class McpService extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpService.streamToolResult(result),
                         },
                     ],
                 };
@@ -388,7 +419,7 @@ export class McpService extends BaseService {
                     pageSize: 10,
                     siteUrl: this.lightdashConfig.siteUrl,
                 });
-                const result = await findChartsTool.execute(argsWithProject, {
+                const result = await findChartsTool.execute!(argsWithProject, {
                     toolCallId: '',
                     messages: [],
                 });
@@ -397,7 +428,7 @@ export class McpService extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpService.streamToolResult(result),
                         },
                     ],
                 };
@@ -614,7 +645,7 @@ export class McpService extends BaseService {
                     maxLimit: this.lightdashConfig.ai.copilot.maxQueryLimit,
                 });
 
-                const result = await runMetricQueryTool.execute(
+                const result = await runMetricQueryTool.execute!(
                     argsWithProject,
                     {
                         toolCallId: '',
@@ -626,7 +657,7 @@ export class McpService extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpService.streamToolResult(result),
                         },
                     ],
                 };
@@ -664,7 +695,7 @@ export class McpService extends BaseService {
                 const searchFieldValuesTool = getSearchFieldValues({
                     searchFieldValues,
                 });
-                const result = await searchFieldValuesTool.execute(
+                const result = await searchFieldValuesTool.execute!(
                     argsWithProject,
                     {
                         toolCallId: '',
@@ -676,7 +707,7 @@ export class McpService extends BaseService {
                     content: [
                         {
                             type: 'text',
-                            text: result,
+                            text: await McpService.streamToolResult(result),
                         },
                     ],
                 };
@@ -731,8 +762,81 @@ export class McpService extends BaseService {
         return projectUuid;
     }
 
+    async getAvailableExplores(
+        user: SessionUser,
+        projectUuid: string,
+        availableTags: string[] | null,
+    ) {
+        return wrapSentryTransaction(
+            'AiAgent.getAvailableExplores',
+            {
+                projectUuid,
+                availableTags,
+            },
+            async () => {
+                const { organizationUuid } = user;
+                if (!organizationUuid) {
+                    throw new ForbiddenError('Organization not found');
+                }
+
+                const userAttributes =
+                    await this.userAttributesModel.getAttributeValuesForOrgMember(
+                        { organizationUuid, userUuid: user.userUuid },
+                    );
+
+                const allExplores = Object.values(
+                    await this.projectModel.findExploresFromCache(
+                        projectUuid,
+                        'name',
+                    ),
+                );
+
+                return allExplores
+                    .filter(
+                        (explore): explore is Explore =>
+                            !isExploreError(explore),
+                    )
+                    .filter((explore) =>
+                        doesExploreMatchRequiredAttributes(
+                            explore.tables[explore.baseTable]
+                                .requiredAttributes,
+                            userAttributes,
+                        ),
+                    )
+                    .map((explore) =>
+                        getFilteredExplore(explore, userAttributes),
+                    )
+                    .filter((explore) =>
+                        filterExploreByTags({ explore, availableTags }),
+                    )
+                    .filter((explore): explore is Explore => !!explore);
+            },
+        );
+    }
+
+    private async getExplore(
+        user: SessionUser,
+        projectUuid: string,
+        availableTags: string[] | null,
+        exploreName: string,
+    ) {
+        const explores = await this.getAvailableExplores(
+            user,
+            projectUuid,
+            availableTags,
+        );
+
+        const explore = explores.find((e) => e.name === exploreName);
+
+        if (!explore) {
+            throw new NotFoundError('Explore not found');
+        }
+
+        return explore;
+    }
+
     async getFindExploresFunction(
-        toolArgs: ToolFindExploresArgs & { projectUuid: string },
+        toolArgs: ToolFindExploresArgsV2 & { projectUuid: string },
         context: McpProtocolContext,
     ): Promise<FindExploresFn> {
         const { user, account } = context.authInfo!.extra;
@@ -773,107 +877,60 @@ export class McpService extends BaseService {
                         },
                     );
 
-                const { data: tables, pagination } =
+                const explore = await this.getExplore(
+                    user,
+                    projectUuid,
+                    tagsFromContext,
+                    args.exploreName,
+                );
+
+                const sharedArgs = {
+                    projectUuid,
+                    catalogSearch: {
+                        type: CatalogType.Field,
+                        yamlTags: tagsFromContext || undefined,
+                        tables: [args.exploreName],
+                    },
+                    userAttributes,
+                    context: CatalogSearchContext.MCP,
+                    paginateArgs: {
+                        page: 1,
+                        pageSize: args.fieldSearchSize,
+                    },
+                    sortArgs: {
+                        sort: 'chartUsage',
+                        order: 'desc' as const,
+                    },
+                };
+
+                const { data: dimensions } =
                     await this.catalogService.searchCatalog({
-                        projectUuid,
+                        ...sharedArgs,
                         catalogSearch: {
-                            type: CatalogType.Table,
-                            yamlTags: tagsFromContext || undefined,
-                            tables: args.tableName
-                                ? [args.tableName]
-                                : undefined,
-                        },
-                        userAttributes,
-                        context: CatalogSearchContext.MCP,
-                        paginateArgs: {
-                            page: args.page,
-                            pageSize: args.pageSize,
+                            ...sharedArgs.catalogSearch,
+                            filter: CatalogFilter.Dimensions,
                         },
                     });
 
-                const tablesWithFields = await Promise.all(
-                    tables
-                        .filter((table) => table.type === CatalogType.Table)
-                        .map(async (table) => {
-                            if (!args.includeFields) {
-                                return {
-                                    table,
-                                    dimensions: [],
-                                    metrics: [],
-                                    dimensionsPagination: undefined,
-                                    metricsPagination: undefined,
-                                };
-                            }
-
-                            if (
-                                !args.fieldSearchSize ||
-                                !args.fieldOverviewSearchSize
-                            ) {
-                                throw new Error(
-                                    'fieldSearchSize and fieldOverviewSearchSize are required when includeFields is true',
-                                );
-                            }
-
-                            const sharedArgs = {
-                                projectUuid,
-                                catalogSearch: {
-                                    type: CatalogType.Field,
-                                    yamlTags: tagsFromContext || undefined,
-                                    tables: [table.name],
-                                },
-                                userAttributes,
-                                context: CatalogSearchContext.MCP,
-                                paginateArgs: {
-                                    page: 1,
-                                    pageSize: args.tableName
-                                        ? args.fieldSearchSize
-                                        : args.fieldOverviewSearchSize,
-                                },
-                                sortArgs: {
-                                    sort: 'chartUsage',
-                                    order: 'desc' as const,
-                                },
-                            };
-
-                            const {
-                                data: dimensions,
-                                pagination: dimensionsPagination,
-                            } = await this.catalogService.searchCatalog({
-                                ...sharedArgs,
-                                catalogSearch: {
-                                    ...sharedArgs.catalogSearch,
-                                    filter: CatalogFilter.Dimensions,
-                                },
-                            });
-
-                            const {
-                                data: metrics,
-                                pagination: metricsPagination,
-                            } = await this.catalogService.searchCatalog({
-                                ...sharedArgs,
-                                catalogSearch: {
-                                    ...sharedArgs.catalogSearch,
-                                    filter: CatalogFilter.Metrics,
-                                },
-                            });
-
-                            return {
-                                table,
-                                dimensions: dimensions.filter(
-                                    (d) => d.type === CatalogType.Field,
-                                ),
-                                metrics: metrics.filter(
-                                    (m) => m.type === CatalogType.Field,
-                                ),
-                                dimensionsPagination,
-                                metricsPagination,
-                            };
-                        }),
-                );
+                const { data: metrics } =
+                    await this.catalogService.searchCatalog({
+                        ...sharedArgs,
+                        catalogSearch: {
+                            ...sharedArgs.catalogSearch,
+                            filter: CatalogFilter.Metrics,
+                        },
+                    });
 
                 return {
-                    tablesWithFields,
-                    pagination,
+                    explore,
+                    catalogFields: {
+                        dimensions: dimensions.filter(
+                            (d) => d.type === CatalogType.Field,
+                        ),
+                        metrics: metrics.filter(
+                            (m) => m.type === CatalogType.Field,
+                        ),
+                    },
                 };
             });
 
@@ -922,14 +979,19 @@ export class McpService extends BaseService {
                         },
                     );
 
+                const explore = await this.getExplore(
+                    user,
+                    projectUuid,
+                    tagsFromContext,
+                    args.table,
+                );
+
                 const { data: catalogItems, pagination } =
                     await this.catalogService.searchCatalog({
                         projectUuid,
                         catalogSearch: {
                             type: CatalogType.Field,
                             searchQuery: args.fieldSearchQuery.label,
-                            yamlTags: tagsFromContext || undefined,
-                            tables: args.table ? [args.table] : undefined,
                         },
                         context: CatalogSearchContext.MCP,
                         paginateArgs: {
@@ -937,6 +999,7 @@ export class McpService extends BaseService {
                             pageSize: args.pageSize,
                         },
                         userAttributes,
+                        filteredExplore: explore,
                     });
 
                 const catalogFields = catalogItems.filter(
@@ -1127,7 +1190,6 @@ export class McpService extends BaseService {
                 projectUuid,
                 metricQuery: {
                     ...metricQuery,
-                    tableCalculations: [],
                     additionalMetrics: additionalMetrics ?? [],
                 },
                 exploreName: metricQuery.exploreName,
@@ -1229,11 +1291,12 @@ export class McpService extends BaseService {
 
         const user = context.authInfo.extra?.user;
         const account = context.authInfo.extra?.account;
-        const { scopes } = account.authentication;
 
         // TODO replace with CASL ability check
         // Do not enforce client scopes for now until more MCP clients support this
         /*
+        //const { scopes } = account.authentication;
+
         if (
             !scopes.includes(OAuthScope.MCP_READ) &&
             !scopes.includes(OAuthScope.MCP_WRITE)

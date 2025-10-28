@@ -205,6 +205,7 @@ export const lightdashConfigMock: LightdashConfig = {
                     apiKey: 'mock_api_key',
                     modelName: 'mock_model_name',
                     temperature: 0.2,
+                    responsesApi: false,
                 },
             },
         },
@@ -231,6 +232,11 @@ export const lightdashConfigMock: LightdashConfig = {
         appName: 'lightdash-app-dev',
         redirectDomain: 'test',
     },
+    gitlab: {
+        clientId: undefined,
+        clientSecret: undefined,
+        redirectDomain: 'test',
+    },
     headlessBrowser: {
         internalLightdashHost: 'https://test.lightdash.cloud',
         browserEndpoint: 'ws://headless-browser:3000',
@@ -245,6 +251,9 @@ export const lightdashConfigMock: LightdashConfig = {
     serviceAccount: {
         enabled: false,
     },
+    organizationWarehouseCredentials: {
+        enabled: false,
+    },
     googleCloudPlatform: {
         projectId: 'test-project-id',
     },
@@ -253,5 +262,10 @@ export const lightdashConfigMock: LightdashConfig = {
     },
     customRoles: {
         enabled: false,
+    },
+    experimentalExplorerImprovements: false,
+    experimentalVirtualizedSideBar: false,
+    dashboardComments: {
+        enabled: true,
     },
 };

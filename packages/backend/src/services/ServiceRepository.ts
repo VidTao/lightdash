@@ -9,6 +9,7 @@ import { AnalyticsService } from './AnalyticsService/AnalyticsService';
 import { AsyncQueryService } from './AsyncQueryService/AsyncQueryService';
 import { BaseService } from './BaseService';
 import { CatalogService } from './CatalogService/CatalogService';
+import { ChangesetService } from './ChangesetService';
 import { CoderService } from './CoderService/CoderService';
 import { CommentService } from './CommentService/CommentService';
 import { ContentService } from './ContentService/ContentService';
@@ -19,6 +20,7 @@ import { FeatureFlagService } from './FeatureFlag/FeatureFlagService';
 import { GdriveService } from './GdriveService/GdriveService';
 import { GithubAppService } from './GithubAppService/GithubAppService';
 import { GitIntegrationService } from './GitIntegrationService/GitIntegrationService';
+import { GitlabAppService } from './GitlabAppService/GitlabAppService';
 import { GroupsService } from './GroupService';
 import { HealthService } from './HealthService/HealthService';
 import { LightdashAnalyticsService } from './LightdashAnalyticsService/LightdashAnalyticsService';
@@ -65,6 +67,7 @@ interface ServiceManifest {
     downloadFileService: DownloadFileService;
     gitIntegrationService: GitIntegrationService;
     githubAppService: GithubAppService;
+    gitlabAppService: GitlabAppService;
     gdriveService: GdriveService;
     groupService: GroupsService;
     healthService: HealthService;
@@ -105,6 +108,7 @@ interface ServiceManifest {
     aiService: unknown;
     aiAgentService: unknown;
     aiAgentAdminService: unknown;
+    aiOrganizationSettingsService: unknown;
     scimService: unknown;
     supportService: unknown;
     cacheService: unknown;
@@ -115,6 +119,8 @@ interface ServiceManifest {
     mcpService: McpService;
     rolesService: RolesService;
     slackService: SlackService;
+    changesetService: ChangesetService;
+    organizationWarehouseCredentialsService: unknown;
 }
 
 /**
@@ -280,6 +286,7 @@ export class ServiceRepository
                     commentModel: this.models.getCommentModel(),
                     notificationsModel: this.models.getNotificationsModel(),
                     userModel: this.models.getUserModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -317,6 +324,7 @@ export class ServiceRepository
                     pinnedListModel: this.models.getPinnedListModel(),
                     schedulerModel: this.models.getSchedulerModel(),
                     savedChartModel: this.models.getSavedChartModel(),
+                    savedChartService: this.getSavedChartService(),
                     projectModel: this.models.getProjectModel(),
                     schedulerClient: this.clients.getSchedulerClient(),
                     slackClient: this.clients.getSlackClient(),
@@ -359,6 +367,20 @@ export class ServiceRepository
                 new GithubAppService({
                     githubAppInstallationsModel:
                         this.models.getGithubAppInstallationsModel(),
+                    userModel: this.models.getUserModel(),
+                    lightdashConfig: this.context.lightdashConfig,
+                    analytics: this.context.lightdashAnalytics,
+                }),
+        );
+    }
+
+    public getGitlabAppService(): GitlabAppService {
+        return this.getService(
+            'gitlabAppService',
+            () =>
+                new GitlabAppService({
+                    gitlabAppInstallationsModel:
+                        this.models.getGitlabAppInstallationsModel(),
                     userModel: this.models.getUserModel(),
                     lightdashConfig: this.context.lightdashConfig,
                     analytics: this.context.lightdashAnalytics,
@@ -536,6 +558,10 @@ export class ServiceRepository
                     featureFlagModel: this.models.getFeatureFlagModel(),
                     projectParametersModel:
                         this.models.getProjectParametersModel(),
+                    organizationWarehouseCredentialsModel:
+                        this.models.getOrganizationWarehouseCredentialsModel(),
+                    projectCompileLogModel:
+                        this.models.getProjectCompileLogModel(),
                 }),
         );
     }
@@ -573,11 +599,16 @@ export class ServiceRepository
                     encryptionUtil: this.utils.getEncryptionUtil(),
                     userModel: this.models.getUserModel(),
                     queryHistoryModel: this.models.getQueryHistoryModel(),
+                    downloadAuditModel: this.models.getDownloadAuditModel(),
                     savedSqlModel: this.models.getSavedSqlModel(),
                     storageClient: this.clients.getResultsFileStorageClient(),
                     featureFlagModel: this.models.getFeatureFlagModel(),
                     projectParametersModel:
                         this.models.getProjectParametersModel(),
+                    organizationWarehouseCredentialsModel:
+                        this.models.getOrganizationWarehouseCredentialsModel(),
+                    projectCompileLogModel:
+                        this.models.getProjectCompileLogModel(),
                     pivotTableService: this.getPivotTableService(),
                     prometheusMetrics: this.prometheusMetrics,
                     permissionsService: this.getPermissionsService(),
@@ -796,6 +827,19 @@ export class ServiceRepository
                     savedChartModel: this.models.getSavedChartModel(),
                     spaceModel: this.models.getSpaceModel(),
                     tagsModel: this.models.getTagsModel(),
+                    changesetModel: this.models.getChangesetModel(),
+                }),
+        );
+    }
+
+    public getChangesetService(): ChangesetService {
+        return this.getService(
+            'changesetService',
+            () =>
+                new ChangesetService({
+                    changesetModel: this.models.getChangesetModel(),
+                    catalogModel: this.models.getCatalogModel(),
+                    projectModel: this.models.getProjectModel(),
                 }),
         );
     }
@@ -906,6 +950,12 @@ export class ServiceRepository
         return this.getService('aiAgentAdminService');
     }
 
+    public getAiOrganizationSettingsService<
+        AiOrganizationSettingsServiceImplT,
+    >(): AiOrganizationSettingsServiceImplT {
+        return this.getService('aiOrganizationSettingsService');
+    }
+
     public getRolesService(): RolesService {
         return this.getService(
             'rolesService',
@@ -990,6 +1040,12 @@ export class ServiceRepository
         ServiceAccountServiceImplT,
     >(): ServiceAccountServiceImplT {
         return this.getService('serviceAccountService');
+    }
+
+    public getOrganizationWarehouseCredentialsService<
+        OrganizationWarehouseCredentialsServiceImplT,
+    >(): OrganizationWarehouseCredentialsServiceImplT {
+        return this.getService('organizationWarehouseCredentialsService');
     }
 
     public getInstanceConfigurationService<

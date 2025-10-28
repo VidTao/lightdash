@@ -1,13 +1,13 @@
 import { type AiAgent, type AiAgentThreadSummary } from '@lightdash/common';
 import {
-    ActionIcon,
+    Alert,
     Box,
     Button,
     Group,
     Loader,
-    Menu,
     NavLink,
     Paper,
+    rem,
     Stack,
     Text,
     Title,
@@ -17,17 +17,18 @@ import {
     IconBrandSlack,
     IconChevronDown,
     IconCirclePlus,
-    IconDots,
-    IconPlus,
+    IconInfoCircle,
     IconSettings,
+    IconSparkles,
 } from '@tabler/icons-react';
 import { type FC, useState } from 'react';
 import { Link, Navigate, Outlet, useParams } from 'react-router';
 import MantineIcon from '../../../components/common/MantineIcon';
-import { AgentSwitcher } from '../../features/aiCopilot/components/AgentSwitcher';
+import { AgentSelector } from '../../features/aiCopilot/components/AgentSelector';
 import { AiAgentPageLayout } from '../../features/aiCopilot/components/AiAgentPageLayout/AiAgentPageLayout';
 import { SidebarButton } from '../../features/aiCopilot/components/AiAgentPageLayout/SidebarButton';
 import { useAiAgentPermission } from '../../features/aiCopilot/hooks/useAiAgentPermission';
+import { useAiOrganizationSettings } from '../../features/aiCopilot/hooks/useAiOrganizationSettings';
 import {
     useProjectAiAgent as useAiAgent,
     useAiAgentThreads,
@@ -54,10 +55,7 @@ const ThreadNavLink: FC<ThreadNavLinkProps> = ({
         key={thread.uuid}
         to={`/projects/${projectUuid}/ai-agents/${thread.agentUuid}/threads/${thread.uuid}`}
         px="xs"
-        py={4}
-        ml={-8}
-        // to compensate for negative left margin and balanced visual alignment
-        w={`calc(100% + 1rem)`}
+        py={rem(4)}
         style={(theme) => ({
             borderRadius: theme.radius.sm,
         })}
@@ -84,11 +82,15 @@ const AgentSidebar: FC<{
     threadUuid?: string;
     isAgentSidebarCollapsed: boolean;
 }> = ({ agent, projectUuid, threadUuid, isAgentSidebarCollapsed }) => {
+    const organizationSettingsQuery = useAiOrganizationSettings();
+    const isTrial =
+        organizationSettingsQuery.isSuccess &&
+        organizationSettingsQuery.data?.isTrial;
     const { data: threads } = useAiAgentThreads(projectUuid, agent.uuid);
     const [showMaxItems, setShowMaxItems] = useState(INITIAL_MAX_THREADS);
 
     return (
-        <Stack gap="md">
+        <Stack gap="md" style={{ flexGrow: 1, overflowY: 'auto' }}>
             <Box>
                 <SidebarButton
                     leftSection={<MantineIcon icon={IconCirclePlus} />}
@@ -99,7 +101,6 @@ const AgentSidebar: FC<{
                     {...(!isAgentSidebarCollapsed && {
                         fullWidth: true,
                         justify: 'flex-start',
-                        w: 'calc(100% + 1rem)',
                     })}
                 >
                     {isAgentSidebarCollapsed ? '' : 'New thread'}
@@ -107,12 +108,17 @@ const AgentSidebar: FC<{
             </Box>
 
             {projectUuid && threads && !isAgentSidebarCollapsed && (
-                <Stack gap="xs">
-                    <Group justify="space-between">
-                        <Title order={6} c="dimmed" tt="uppercase" size="xs">
-                            Recent
-                        </Title>
-                    </Group>
+                <Stack gap="xs" style={{ flexGrow: 1, overflowY: 'auto' }}>
+                    <Title
+                        order={6}
+                        c="dimmed"
+                        tt="uppercase"
+                        size="xs"
+                        ml="xs"
+                    >
+                        Recent
+                    </Title>
+
                     <Stack gap={2}>
                         {threads.length === 0 && (
                             <Paper
@@ -133,19 +139,22 @@ const AgentSidebar: FC<{
                                 </Text>
                             </Paper>
                         )}
-                        {threads.slice(0, showMaxItems).map((thread) => (
-                            <ThreadNavLink
-                                key={thread.uuid}
-                                thread={thread}
-                                isActive={thread.uuid === threadUuid}
-                                projectUuid={projectUuid}
-                            />
-                        ))}
+
+                        <Box>
+                            {threads.slice(0, showMaxItems).map((thread) => (
+                                <ThreadNavLink
+                                    key={thread.uuid}
+                                    thread={thread}
+                                    isActive={thread.uuid === threadUuid}
+                                    projectUuid={projectUuid}
+                                />
+                            ))}
+                        </Box>
                     </Stack>
+
                     <Box>
                         {threads.length >= showMaxItems && (
                             <Button
-                                mx={-8}
                                 size="compact-xs"
                                 variant="subtle"
                                 onClick={() =>
@@ -167,6 +176,36 @@ const AgentSidebar: FC<{
                         )}
                     </Box>
                 </Stack>
+            )}
+            {isTrial && (
+                <Alert
+                    icon={<MantineIcon icon={IconSparkles} />}
+                    variant="outline"
+                    color="indigo.6"
+                    bg="indigo.0"
+                    fz="xs"
+                    p="xs"
+                    title={
+                        <Text size="xs" fw={500}>
+                            You're currently using Lightdash AI Agents in free
+                            trial mode
+                        </Text>
+                    }
+                >
+                    <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="indigo"
+                        leftSection={
+                            <MantineIcon icon={IconInfoCircle} size="sm" />
+                        }
+                        component={Link}
+                        to="https://docs.lightdash.com/guides/ai-agents"
+                        target="_blank"
+                    >
+                        Learn more
+                    </Button>
+                </Alert>
             )}
         </Stack>
     );
@@ -226,49 +265,34 @@ const AgentPage = () => {
             }
             Header={
                 <Group align="center" justify="space-between">
-                    <Group gap="sm">
-                        <Box maw={300}>
-                            {agentsList && agentsList.length && (
-                                <AgentSwitcher
-                                    projectUuid={projectUuid!}
-                                    agents={agentsList}
-                                    selectedAgent={agent}
-                                />
-                            )}
-                        </Box>
-                    </Group>
-                    <Group gap="sm">
-                        {canManageAgents && (
-                            <Menu>
-                                <Menu.Target>
-                                    <ActionIcon variant="subtle" color="gray">
-                                        <MantineIcon icon={IconDots} />
-                                    </ActionIcon>
-                                </Menu.Target>
-
-                                <Menu.Dropdown>
-                                    <Menu.Item
-                                        leftSection={
-                                            <MantineIcon icon={IconPlus} />
-                                        }
-                                        component={Link}
-                                        to={`/projects/${projectUuid}/ai-agents/new`}
-                                    >
-                                        New agent
-                                    </Menu.Item>
-                                    <Menu.Item
-                                        component={Link}
-                                        to={`/projects/${projectUuid}/ai-agents/${agent.uuid}/edit`}
-                                        leftSection={
-                                            <MantineIcon icon={IconSettings} />
-                                        }
-                                    >
-                                        Settings
-                                    </Menu.Item>
-                                </Menu.Dropdown>
-                            </Menu>
+                    <Box>
+                        {agentsList && agentsList.length && (
+                            <AgentSelector
+                                projectUuid={projectUuid!}
+                                agents={agentsList}
+                                selectedAgent={agent}
+                            />
                         )}
-                    </Group>
+                    </Box>
+
+                    {canManageAgents && (
+                        <Button
+                            component={Link}
+                            variant="default"
+                            to={`/projects/${projectUuid}/ai-agents/${agent.uuid}/edit`}
+                            leftSection={<MantineIcon icon={IconSettings} />}
+                            styles={(theme) => ({
+                                root: {
+                                    borderColor: theme.colors.gray[2],
+                                    boxShadow: `var(--mantine-shadow-subtle)`,
+                                    color: theme.colors.gray[7],
+                                    fontSize: theme.fontSizes.xs,
+                                },
+                            })}
+                        >
+                            Settings
+                        </Button>
+                    )}
                 </Group>
             }
         >

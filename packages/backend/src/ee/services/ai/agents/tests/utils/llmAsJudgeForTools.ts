@@ -1,7 +1,20 @@
 import {
-    AgentToolCallArgsSchema,
     isToolName,
-    ToolName,
+    toolDashboardArgsSchema,
+    toolDashboardV2ArgsSchema,
+    toolFindChartsArgsSchema,
+    toolFindContentArgsSchema,
+    toolFindDashboardsArgsSchema,
+    toolFindExploresArgsSchemaV2,
+    toolFindFieldsArgsSchema,
+    toolImproveContextArgsSchema,
+    type ToolName,
+    toolProposeChangeArgsSchema,
+    toolRunQueryArgsSchema,
+    toolSearchFieldValuesArgsSchema,
+    toolTableVizArgsSchema,
+    toolTimeSeriesArgsSchema,
+    toolVerticalBarArgsSchema,
 } from '@lightdash/common';
 import { generateObject } from 'ai';
 import { JSONDiff } from 'autoevals';
@@ -14,30 +27,46 @@ import { defaultAgentOptions } from '../../agent';
 const TOOL_NAME_TO_DB_TOOL_NAME = {
     findExplores: 'find_explores',
     findFields: 'find_fields',
+    searchFieldValues: 'search_field_values',
+    findContent: 'find_content',
     findDashboards: 'find_dashboards',
     findCharts: 'find_charts',
     generateTableVizConfig: 'table',
     generateTimeSeriesVizConfig: 'time_series_chart',
     generateBarVizConfig: 'vertical_bar_chart',
+    runQuery: 'query_result',
     generateDashboard: 'generate_dashboard',
+    improveContext: 'improve_context',
+    proposeChange: 'propose_change',
 } satisfies Record<ToolName, string>;
+
+// Explicit mapping of tool names to their schemas
+const TOOL_SCHEMAS = {
+    findExplores: toolFindExploresArgsSchemaV2,
+    findFields: toolFindFieldsArgsSchema,
+    searchFieldValues: toolSearchFieldValuesArgsSchema,
+    generateBarVizConfig: toolVerticalBarArgsSchema,
+    generateTableVizConfig: toolTableVizArgsSchema,
+    generateTimeSeriesVizConfig: toolTimeSeriesArgsSchema,
+    // TODO: agent needs to be v2 for this to work
+    generateDashboard: toolDashboardV2ArgsSchema,
+    findContent: toolFindContentArgsSchema,
+    findDashboards: toolFindDashboardsArgsSchema,
+    findCharts: toolFindChartsArgsSchema,
+    improveContext: toolImproveContextArgsSchema,
+    proposeChange: toolProposeChangeArgsSchema,
+    runQuery: toolRunQueryArgsSchema,
+} satisfies Record<ToolName, z.ZodSchema>;
 
 const getToolInfo = (toolName: string) => {
     if (!isToolName(toolName)) {
         throw new Error(`Tool ${toolName} is not a valid tool`);
     }
-    const tool = AgentToolCallArgsSchema.options.find(
-        (schema) =>
-            schema.shape.type.value === TOOL_NAME_TO_DB_TOOL_NAME[toolName],
-    );
-    if (!tool) {
-        throw new Error(`Tool info not found for tool: ${toolName}`);
-    }
-    return tool;
+    return TOOL_SCHEMAS[toolName];
 };
 
-const availableTools = AgentToolCallArgsSchema.options.map((schema) => ({
-    name: schema.shape.type.value,
+const availableTools = Object.entries(TOOL_SCHEMAS).map(([name, schema]) => ({
+    name: TOOL_NAME_TO_DB_TOOL_NAME[name as ToolName],
     description: schema.description,
 }));
 
@@ -297,7 +326,7 @@ Evaluate the tool usage across three dimensions:
    - adequate: Tools accomplished the expected outcome but with some issues
    - poor: Tools partially accomplished the expected outcome with significant issues
    - failed: Tools did not accomplish the expected outcome
-   
+
    Consider:
    - Did the tools accomplish the expected outcome?
    - Were the tool arguments appropriate and complete?

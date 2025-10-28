@@ -720,6 +720,7 @@ type ProjectSearch = BaseTrack & {
         tablesResultsCount: number;
         fieldsResultsCount: number;
         dashboardTabsResultsCount: number;
+        source: 'omnibar' | 'ai_search_box';
     };
 };
 type DashboardUpdateMultiple = BaseTrack & {
@@ -1325,6 +1326,43 @@ export type AiAgentResponseStreamed = BaseTrack & {
     };
 };
 
+export type AiAgentEvalCreatedEvent = BaseTrack & {
+    event: 'ai_agent_eval.created';
+    userId: string;
+    properties: {
+        organizationId: string;
+        projectId: string;
+        aiAgentId: string;
+        evalId: string;
+        promptsCount: number;
+    };
+};
+
+export type AiAgentEvalRunEvent = BaseTrack & {
+    event: 'ai_agent_eval.run';
+    userId: string;
+    properties: {
+        organizationId: string;
+        projectId: string;
+        aiAgentId: string;
+        evalId: string;
+        runId: string;
+        promptsCount: number;
+    };
+};
+
+export type AiAgentEvalAppendedEvent = BaseTrack & {
+    event: 'ai_agent_eval.appended';
+    userId: string;
+    properties: {
+        organizationId: string;
+        projectId: string;
+        aiAgentId: string;
+        evalId: string;
+        promptsCount: number;
+    };
+};
+
 export type RenameResourceEvent = BaseTrack & {
     event:
         | 'rename_chart.executed'
@@ -1368,6 +1406,20 @@ export type McpToolCallEvent = BaseTrack & {
         organizationId: string;
         projectId?: string;
         toolName: string;
+    };
+};
+
+export type AiAgentToolCallEvent = BaseTrack & {
+    event: 'ai_agent_tool_call';
+    userId: string;
+    properties: {
+        organizationId: string;
+        projectId: string;
+        aiAgentId: string;
+        agentName: string;
+        toolName: string;
+        threadId: string;
+        promptId: string;
     };
 };
 
@@ -1465,7 +1517,11 @@ type TypedEvent =
     | AiAgentUpdatedEvent
     | AiAgentPromptCreatedEvent
     | AiAgentPromptFeedbackEvent
-    | McpToolCallEvent;
+    | AiAgentEvalCreatedEvent
+    | AiAgentEvalRunEvent
+    | AiAgentEvalAppendedEvent
+    | McpToolCallEvent
+    | AiAgentToolCallEvent;
 
 type UntypedEvent<T extends BaseTrack> = Omit<BaseTrack, 'event'> &
     T & {

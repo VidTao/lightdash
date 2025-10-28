@@ -52,6 +52,14 @@ export class S3ResultsFileStorageClient extends S3CacheClient {
 
         const passThrough = new PassThrough();
 
+        const contentDisposition = createContentDispositionHeader(
+            attachmentDownloadName || fileName,
+        );
+
+        Logger.debug(
+            `Creating upload stream for ${this.configuration.bucket}/${fileName} with content disposition: ${contentDisposition} and contentType: ${opts.contentType}`,
+        );
+
         const upload = new Upload({
             client: this.s3,
             params: {
@@ -59,9 +67,7 @@ export class S3ResultsFileStorageClient extends S3CacheClient {
                 Key: fileName,
                 Body: passThrough,
                 ContentType: opts.contentType,
-                ContentDisposition: createContentDispositionHeader(
-                    attachmentDownloadName || fileName,
-                ),
+                ContentDisposition: contentDisposition,
             },
         });
 
@@ -77,14 +83,15 @@ export class S3ResultsFileStorageClient extends S3CacheClient {
                 passThrough.end(); // signal EOF
                 await upload.done(); // wait for upload to finish
                 Logger.debug(
-                    `Successfully closed upload stream to s3://${this.configuration.bucket}/${fileName}`,
+                    `Successfully closed upload stream to ${this.configuration.bucket}/${fileName}`,
                 );
             } catch (error) {
                 Logger.error(
-                    `Error closing upload stream to s3://${
+                    `Error closing upload stream to ${
                         this.configuration.bucket
                     }/${fileName}: ${getErrorMessage(error)}`,
                 );
+                Logger.debug(`Full error: ${JSON.stringify(error)}`);
                 throw error;
             }
         };
@@ -247,7 +254,7 @@ export class S3ResultsFileStorageClient extends S3CacheClient {
         try {
             await upload.done();
             Logger.debug(
-                `Successfully uploaded file to s3://${this.configuration.bucket}/${fileName}`,
+                `Successfully uploaded file to ${this.configuration.bucket}/${fileName}`,
             );
 
             // Determine file extension for URL generation
@@ -256,7 +263,7 @@ export class S3ResultsFileStorageClient extends S3CacheClient {
             return await this.getFileUrl(fileName, fileExtension);
         } catch (error) {
             Logger.error(
-                `Failed to upload file to s3://${
+                `Failed to upload file to ${
                     this.configuration.bucket
                 }/${fileName}: ${getErrorMessage(error)}`,
             );

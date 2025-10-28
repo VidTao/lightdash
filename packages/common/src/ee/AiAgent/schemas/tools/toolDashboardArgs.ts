@@ -2,7 +2,9 @@ import { z } from 'zod';
 import assertUnreachable from '../../../../utils/assertUnreachable';
 import { AiResultType } from '../../types';
 import { customMetricsSchema } from '../customMetrics';
-import { filtersSchema } from '../filters';
+import { filtersSchemaV2 } from '../filters';
+import { baseOutputMetadataSchema } from '../outputMetadata';
+import { tableCalcsSchema } from '../tableCalcs/tableCalcs';
 import { createToolSchema } from '../toolSchemaBuilder';
 import visualizationMetadataSchema from '../visualizationMetadata';
 import {
@@ -22,7 +24,7 @@ Create "summary" or "executive" level dashboards that provide high-level overvie
 Recommended Dashboard Structure:
 1. **Summary Metrics at the Top**: Start with key performance indicators (KPIs) as tables showing overall summary metrics
 2. **Time-Series Analysis**: Include time-series charts with appropriate granularities to show how metrics trend over time:
-   - Use line charts for smaller granularities (daily, weekly) 
+   - Use line charts for smaller granularities (daily, weekly)
    - Use bar charts for more grouped data (monthly, quarterly)
 3. **Detailed Breakdowns**: Add tables with more detail and specific line items that have the biggest impact on metrics
    - Show problematic areas that need attention (e.g., longest response times, highest churn segments)
@@ -43,7 +45,8 @@ Usage tips:
 const baseVisualizationSchema = z.object({
     ...visualizationMetadataSchema.shape,
     customMetrics: customMetricsSchema,
-    filters: filtersSchema
+    tableCalculations: tableCalcsSchema,
+    filters: filtersSchemaV2
         .nullable()
         .describe(
             'Filters to apply to the query. Filtered fields must exist in the selected explore or should be referenced from the custom metrics.',
@@ -78,10 +81,10 @@ export type DashboardVisualization = z.infer<
     typeof dashboardVisualizationSchema
 >;
 
-export const toolDashboardArgsSchema = createToolSchema(
-    AiResultType.DASHBOARD_RESULT,
-    TOOL_DASHBOARD_DESCRIPTION,
-)
+export const toolDashboardArgsSchema = createToolSchema({
+    type: AiResultType.DASHBOARD_RESULT,
+    description: TOOL_DASHBOARD_DESCRIPTION,
+})
     .extend({
         title: z.string().describe('A descriptive title for the dashboard'),
         description: z
@@ -121,3 +124,10 @@ export const toolDashboardArgsSchemaTransformed =
 export type ToolDashboardArgsTransformed = z.infer<
     typeof toolDashboardArgsSchemaTransformed
 >;
+
+export const toolDashboardOutputSchema = z.object({
+    result: z.string(),
+    metadata: baseOutputMetadataSchema,
+});
+
+export type ToolDashboardOutput = z.infer<typeof toolDashboardOutputSchema>;

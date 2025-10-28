@@ -36,6 +36,7 @@ export enum SupportedDbtAdapter {
     REDSHIFT = 'redshift',
     POSTGRES = 'postgres',
     TRINO = 'trino',
+    CLICKHOUSE = 'clickhouse',
 }
 
 export type DbtNodeConfig = {
@@ -81,31 +82,43 @@ type ExploreConfig = {
     joins?: DbtModelJoin[];
 };
 
-type DbtModelLightdashConfig = ExploreConfig & {
-    metrics?: Record<string, DbtModelLightdashMetric>;
-    order_fields_by?: OrderFieldsByStrategy;
-    group_label?: string;
-    sql_filter?: string;
-    sql_where?: string; // alias for sql_filter
-    sql_from?: string; // overrides dbt model relation_name
+type SharedDbtModelLightdashConfig = {
     default_filters?: RequiredFilter[];
     required_filters?: RequiredFilter[]; // Alias for default_filters, for backwards compatibility
-    required_attributes?: Record<string, string | string[]>;
-    group_details?: Record<string, DbtModelGroup>;
-    default_time_dimension?: {
-        field: string;
-        interval: TimeFrames;
-    };
-    spotlight?: {
-        visibility?: NonNullable<
-            LightdashProjectConfig['spotlight']
-        >['default_visibility'];
-        categories?: string[]; // yaml_reference
-    };
-    explores?: Record<string, ExploreConfig>;
-    ai_hint?: string | string[];
-    parameters?: LightdashProjectConfig['parameters'];
 };
+
+export type FieldSetDefinition = {
+    fields: string[];
+};
+
+type DbtModelLightdashConfig = ExploreConfig &
+    SharedDbtModelLightdashConfig & {
+        metrics?: Record<string, DbtModelLightdashMetric>;
+        sets?: Record<string, FieldSetDefinition>;
+        order_fields_by?: OrderFieldsByStrategy;
+        group_label?: string;
+        sql_filter?: string;
+        sql_where?: string; // alias for sql_filter
+        sql_from?: string; // overrides dbt model relation_name
+        required_attributes?: Record<string, string | string[]>;
+        group_details?: Record<string, DbtModelGroup>;
+        default_time_dimension?: {
+            field: string;
+            interval: TimeFrames;
+        };
+        spotlight?: {
+            visibility?: NonNullable<
+                LightdashProjectConfig['spotlight']
+            >['default_visibility'];
+            categories?: string[]; // yaml_reference
+        };
+        explores?: Record<
+            string,
+            ExploreConfig & SharedDbtModelLightdashConfig
+        >;
+        ai_hint?: string | string[];
+        parameters?: LightdashProjectConfig['parameters'];
+    };
 
 export type DbtModelGroup = {
     label: string;
@@ -125,6 +138,7 @@ type DbtModelJoin = {
     always?: boolean;
     relationship?: JoinRelationship;
     primary_key?: string | string[];
+    description?: string;
 };
 export type DbtColumnMetadata = DbtColumnLightdashConfig & {};
 type DbtColumnLightdashConfig = {
@@ -208,6 +222,8 @@ export const normaliseModelDatabase = (
                 );
             }
             return { ...model, database: model.database as string };
+        case SupportedDbtAdapter.CLICKHOUSE:
+            return { ...model, database: '' }; // Clickhouse doesn't have a database field
         case SupportedDbtAdapter.DATABRICKS:
             return { ...model, database: model.database || 'DEFAULT' };
         default:
@@ -683,11 +699,14 @@ export function getCompiledModels(
     manifestModels: DbtModelNode[],
     compiledModelIds?: string[],
 ) {
+    const isAnyModelCompiled = manifestModels.some((model) => model.compiled);
+
     return manifestModels.filter((model) => {
         if (compiledModelIds) {
             return compiledModelIds.includes(model.unique_id);
         }
 
-        return model.compiled;
+        // In case any model is compiled, we only return the compiled models otherwise we return all models (this maintains backwards compatibility + adds ability to use parse)
+        return isAnyModelCompiled ? model.compiled : true;
     });
 }

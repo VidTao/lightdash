@@ -272,6 +272,63 @@ describe('ScimService', () => {
     });
 
     describe('updateUser', () => {
+        test('should downgrade role to MEMBER and remove project and group memberships when deactivating user', async () => {
+            const { organizationMemberProfileModel, rolesModel, groupsModel } =
+                ScimServiceArgumentsMock;
+
+            // Force current org role to ADMIN so downgrade path is executed
+            jest.spyOn(
+                organizationMemberProfileModel,
+                'getOrganizationMemberByUuid',
+            ).mockResolvedValueOnce({
+                ...mockUser,
+                role: OrganizationMemberRole.ADMIN,
+            });
+
+            // Deactivation payload
+            const scimUser = {
+                schemas: [ScimSchemaType.USER],
+                userName: mockUser.email,
+                name: {
+                    givenName: mockUser.firstName,
+                    familyName: mockUser.lastName,
+                },
+                active: false,
+                emails: [
+                    {
+                        value: mockUser.email,
+                        primary: true,
+                    },
+                ],
+            };
+
+            await service.updateUser({
+                user: scimUser,
+                userUuid: mockUser.userUuid,
+                organizationUuid: mockUser.organizationUuid,
+            });
+
+            // Org role downgraded to MEMBER
+            expect(
+                organizationMemberProfileModel.updateOrganizationMember,
+            ).toHaveBeenCalledWith(
+                mockUser.organizationUuid,
+                mockUser.userUuid,
+                { role: OrganizationMemberRole.MEMBER },
+            );
+
+            // Removed from all projects
+            expect(
+                rolesModel.removeUserAccessFromAllProjects,
+            ).toHaveBeenCalledWith(mockUser.userUuid);
+
+            // Removed from all groups in org
+            expect(groupsModel.removeUserFromAllGroups).toHaveBeenCalledWith({
+                organizationUuid: mockUser.organizationUuid,
+                userUuid: mockUser.userUuid,
+            });
+        });
+
         test('should throw error when an invalid role is provided', async () => {
             // Create a SCIM user with an invalid role in the extension schema
             const scimUser = {
@@ -448,6 +505,192 @@ describe('ScimService', () => {
             expect(() =>
                 ScimService.convertScimToKnexPagination(2, 2),
             ).toThrow();
+        });
+    });
+
+    describe('Discovery Endpoints', () => {
+        describe('getServiceProviderConfig', () => {
+            test('should return correct service provider config', async () => {
+                const config = ScimService.getServiceProviderConfig();
+
+                expect(config).toEqual({
+                    schemas: [ScimSchemaType.SERVICE_PROVIDER_CONFIG],
+                    documentationUri: 'https://docs.lightdash.com/guides/scim',
+                    patch: { supported: true },
+                    bulk: { supported: false },
+                    filter: { supported: true, maxResults: 200 },
+                    changePassword: { supported: false },
+                    sort: { supported: false },
+                    etag: { supported: false },
+                    authenticationSchemes: [
+                        {
+                            type: 'oauthbearertoken',
+                            name: 'OAuth Bearer Token',
+                            description:
+                                'Authentication scheme using the OAuth 2.0 Bearer Token standard',
+                            primary: true,
+                        },
+                    ],
+                });
+            });
+        });
+
+        describe('getSchemas', () => {
+            test('should return correct schemas array', async () => {
+                const schemasResponse = ScimService.getSchemas();
+
+                expect(schemasResponse.schemas).toEqual([
+                    ScimSchemaType.LIST_RESPONSE,
+                ]);
+                expect(schemasResponse.totalResults).toBe(5);
+                expect(schemasResponse.itemsPerPage).toBe(5);
+                expect(schemasResponse.startIndex).toBe(1);
+                expect(schemasResponse.Resources).toHaveLength(5);
+                expect(schemasResponse.Resources.map((s) => s.id)).toEqual([
+                    ScimSchemaType.USER,
+                    ScimSchemaType.GROUP,
+                    ScimSchemaType.LIGHTDASH_USER_EXTENSION,
+                    ScimSchemaType.SERVICE_PROVIDER_CONFIG,
+                    ScimSchemaType.RESOURCE_TYPE,
+                ]);
+
+                // Test User schema
+                const userSchema = schemasResponse.Resources.find(
+                    (s) => s.id === ScimSchemaType.USER,
+                );
+                expect(userSchema).toBeDefined();
+                expect(userSchema!.name).toBe('User');
+                expect(userSchema!.attributes).toContainEqual(
+                    expect.objectContaining({
+                        name: 'userName',
+                        type: 'string',
+                        required: true,
+                        uniqueness: 'server',
+                    }),
+                );
+
+                // Test Group schema
+                const groupSchema = schemasResponse.Resources.find(
+                    (s) => s.id === ScimSchemaType.GROUP,
+                );
+                expect(groupSchema).toBeDefined();
+                expect(groupSchema!.name).toBe('Group');
+                expect(groupSchema!.attributes).toContainEqual(
+                    expect.objectContaining({
+                        name: 'displayName',
+                        type: 'string',
+                        required: true,
+                    }),
+                );
+
+                // Test Lightdash extension schema
+                const extensionSchema = schemasResponse.Resources.find(
+                    (s) => s.id === ScimSchemaType.LIGHTDASH_USER_EXTENSION,
+                );
+                expect(extensionSchema).toBeDefined();
+                expect(extensionSchema!.name).toBe('Lightdash User Extension');
+                expect(extensionSchema!.attributes).toContainEqual(
+                    expect.objectContaining({
+                        name: 'role',
+                        type: 'string',
+                        canonicalValues: [
+                            'admin',
+                            'editor',
+                            'interactive_viewer',
+                            'viewer',
+                        ],
+                    }),
+                );
+
+                // Test ServiceProviderConfig schema
+                const serviceProviderConfigSchema =
+                    schemasResponse.Resources.find(
+                        (s) => s.id === ScimSchemaType.SERVICE_PROVIDER_CONFIG,
+                    );
+                expect(serviceProviderConfigSchema).toBeDefined();
+                expect(serviceProviderConfigSchema!.name).toBe(
+                    'Service Provider Configuration',
+                );
+                expect(serviceProviderConfigSchema!.attributes).toContainEqual(
+                    expect.objectContaining({
+                        name: 'documentationUri',
+                        type: 'reference',
+                        required: false,
+                    }),
+                );
+
+                // Test ResourceType schema
+                const resourceTypeSchema = schemasResponse.Resources.find(
+                    (s) => s.id === ScimSchemaType.RESOURCE_TYPE,
+                );
+                expect(resourceTypeSchema).toBeDefined();
+                expect(resourceTypeSchema!.name).toBe('Resource Type');
+                expect(resourceTypeSchema!.attributes).toContainEqual(
+                    expect.objectContaining({
+                        name: 'name',
+                        type: 'string',
+                        required: true,
+                    }),
+                );
+            });
+        });
+
+        describe('getResourceTypes', () => {
+            test('should return correct resource types as array', async () => {
+                const resourceTypesResponse = ScimService.getResourceTypes();
+
+                expect(resourceTypesResponse.schemas).toEqual([
+                    ScimSchemaType.LIST_RESPONSE,
+                ]);
+                expect(resourceTypesResponse.totalResults).toBe(2);
+                expect(resourceTypesResponse.itemsPerPage).toBe(2);
+                expect(resourceTypesResponse.startIndex).toBe(1);
+                expect(resourceTypesResponse.Resources).toHaveLength(2);
+
+                // Test User resource type
+                const userResourceType = resourceTypesResponse.Resources.find(
+                    (rt) => rt.name === 'User',
+                );
+                expect(userResourceType).toEqual({
+                    schemas: [ScimSchemaType.RESOURCE_TYPE],
+                    id: 'User',
+                    name: 'User',
+                    description: 'User Account',
+                    endpoint: '/Users',
+                    schema: ScimSchemaType.USER,
+                    schemaExtensions: [
+                        {
+                            schema: ScimSchemaType.LIGHTDASH_USER_EXTENSION,
+                            required: false,
+                        },
+                    ],
+                    meta: {
+                        resourceType: 'ResourceType',
+                        location: expect.stringContaining(
+                            '/api/v1/scim/v2/ResourceTypes/User',
+                        ),
+                    },
+                });
+
+                // Test Group resource type
+                const groupResourceType = resourceTypesResponse.Resources.find(
+                    (rt) => rt.name === 'Group',
+                );
+                expect(groupResourceType).toEqual({
+                    schemas: [ScimSchemaType.RESOURCE_TYPE],
+                    id: 'Group',
+                    name: 'Group',
+                    description: 'Group',
+                    endpoint: '/Groups',
+                    schema: ScimSchemaType.GROUP,
+                    meta: {
+                        resourceType: 'ResourceType',
+                        location: expect.stringContaining(
+                            '/api/v1/scim/v2/ResourceTypes/Group',
+                        ),
+                    },
+                });
+            });
         });
     });
 });

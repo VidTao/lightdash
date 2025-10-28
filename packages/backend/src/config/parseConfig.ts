@@ -477,6 +477,11 @@ export const getUpdateSetupConfig = (): LightdashConfig['updateSetup'] => {
         dbt: {
             personal_access_token: process.env.LD_SETUP_GITHUB_PAT,
         },
+        embed: {
+            allowAllDashboards:
+                process.env.LD_SETUP_EMBED_ALLOW_ALL_DASHBOARDS === 'true',
+            secret: process.env.LD_SETUP_EMBED_SECRET,
+        },
     };
 };
 
@@ -741,6 +746,8 @@ export type LightdashConfig = {
     logging: LoggingConfig;
     ai: {
         copilot: AiCopilotConfigSchemaType;
+        analyticsProjectUuid?: string;
+        analyticsDashboardUuid?: string;
     };
     embedding: {
         enabled: boolean;
@@ -760,8 +767,16 @@ export type LightdashConfig = {
     serviceAccount: {
         enabled: boolean;
     };
+    organizationWarehouseCredentials: {
+        enabled: boolean;
+    };
     github: {
         appName: string;
+        redirectDomain: string;
+    };
+    gitlab: {
+        clientId: string | undefined;
+        clientSecret: string | undefined;
         redirectDomain: string;
     };
     contentAsCode: {
@@ -822,11 +837,21 @@ export type LightdashConfig = {
             token: string;
             expirationTime: Date | null;
         };
+        embed?: {
+            allowAllDashboards?: boolean;
+            secret?: string;
+        };
     };
     mcp: {
         enabled: boolean;
     };
     customRoles: {
+        enabled: boolean;
+    };
+    analyticsEmbedSecret?: string;
+    experimentalExplorerImprovements: boolean;
+    experimentalVirtualizedSideBar: boolean;
+    dashboardComments: {
         enabled: boolean;
     };
 };
@@ -1085,6 +1110,7 @@ export const parseConfig = (): LightdashConfig => {
                       baseUrl: process.env.OPENAI_BASE_URL,
                       temperature:
                           getFloatFromEnvironmentVariable('OPENAI_TEMPERATURE'),
+                      responsesApi: process.env.OPENAI_RESPONSES_API === 'true',
                   }
                 : undefined,
             anthropic: process.env.ANTHROPIC_API_KEY
@@ -1534,6 +1560,8 @@ export const parseConfig = (): LightdashConfig => {
         },
         ai: {
             copilot: copilotConfig,
+            analyticsProjectUuid: process.env.AI_ANALYTICS_PROJECT_UUID,
+            analyticsDashboardUuid: process.env.AI_ANALYTICS_DASHBOARD_UUID,
         },
         embedding: {
             enabled: process.env.EMBEDDING_ENABLED === 'true',
@@ -1561,10 +1589,22 @@ export const parseConfig = (): LightdashConfig => {
         serviceAccount: {
             enabled: process.env.SERVICE_ACCOUNT_ENABLED === 'true',
         },
+        organizationWarehouseCredentials: {
+            enabled:
+                process.env.ORGANIZATION_WAREHOUSE_CREDENTIALS_ENABLED ===
+                'true',
+        },
         github: {
             appName: process.env.GITHUB_APP_NAME || 'lightdash-app-dev',
             redirectDomain:
                 process.env.GITHUB_REDIRECT_DOMAIN ||
+                siteUrl.split('.')[0].split('//')[1],
+        },
+        gitlab: {
+            clientId: process.env.GITLAB_CLIENT_ID,
+            clientSecret: process.env.GITLAB_CLIENT_SECRET,
+            redirectDomain:
+                process.env.GITLAB_REDIRECT_DOMAIN ||
                 siteUrl.split('.')[0].split('//')[1],
         },
         contentAsCode: {
@@ -1592,6 +1632,14 @@ export const parseConfig = (): LightdashConfig => {
         },
         customRoles: {
             enabled: process.env.CUSTOM_ROLES_ENABLED === 'true',
+        },
+        analyticsEmbedSecret: process.env.ANALYTICS_EMBED_SECRET,
+        experimentalExplorerImprovements:
+            process.env.EXPERIMENTAL_EXPLORER_IMPROVEMENTS === 'true',
+        experimentalVirtualizedSideBar:
+            process.env.EXPERIMENTAL_VIRTUALIZED_SIDE_BAR === 'true',
+        dashboardComments: {
+            enabled: process.env.DISABLE_DASHBOARD_COMMENTS !== 'true',
         },
     };
 };

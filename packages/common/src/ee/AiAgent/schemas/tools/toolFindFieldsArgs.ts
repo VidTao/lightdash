@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { baseOutputMetadataSchema } from '../outputMetadata';
 import { createToolSchema } from '../toolSchemaBuilder';
 
 export const TOOL_FIND_FIELDS_DESCRIPTION = `Tool: "findFields"
@@ -15,10 +16,10 @@ Usage tips:
 - Results are paginated — use the next page token to get more results if needed.
 `;
 
-export const toolFindFieldsArgsSchema = createToolSchema(
-    'find_fields',
-    TOOL_FIND_FIELDS_DESCRIPTION,
-)
+export const toolFindFieldsArgsSchema = createToolSchema({
+    type: 'find_fields',
+    description: TOOL_FIND_FIELDS_DESCRIPTION,
+})
     .extend({
         table: z.string().describe('The table to search in.'),
         fieldSearchQueries: z.array(
@@ -35,3 +36,10 @@ export type ToolFindFieldsArgs = z.infer<typeof toolFindFieldsArgsSchema>;
 export const toolFindFieldsArgsSchemaTransformed = toolFindFieldsArgsSchema;
 
 export type ToolFindFieldsArgsTransformed = ToolFindFieldsArgs;
+
+export const toolFindFieldsOutputSchema = z.object({
+    result: z.string(),
+    metadata: baseOutputMetadataSchema,
+});
+
+export type ToolFindFieldsOutput = z.infer<typeof toolFindFieldsOutputSchema>;

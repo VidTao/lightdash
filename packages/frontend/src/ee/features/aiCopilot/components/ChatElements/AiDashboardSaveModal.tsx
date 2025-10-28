@@ -1,10 +1,7 @@
 import { subject } from '@casl/ability';
 import {
     type AiArtifact,
-    type CreateDashboard,
     type Dashboard,
-    type DashboardVersionedFields,
-    type SavedChart,
     type ToolDashboardArgs,
 } from '@lightdash/common';
 import {
@@ -25,12 +22,8 @@ import MantineModal, {
     type MantineModalProps,
 } from '../../../../../components/common/MantineModal';
 import SaveToSpaceForm from '../../../../../components/common/modal/ChartCreateModal/SaveToSpaceForm';
-import {
-    useCreateMutation,
-    useUpdateMutation,
-} from '../../../../../hooks/dashboard/useDashboard';
+import { useCreateDashboardWithChartsMutation } from '../../../../../hooks/dashboard/useDashboard';
 import useToaster from '../../../../../hooks/toaster/useToaster';
-import { useCreateMutation as useCreateChartMutation } from '../../../../../hooks/useSavedQuery';
 import { useSpaceManagement } from '../../../../../hooks/useSpaceManagement';
 import { useSpaceSummaries } from '../../../../../hooks/useSpaces';
 import useApp from '../../../../../providers/App/useApp';
@@ -38,8 +31,10 @@ import {
     getAiAgentDashboardChartVizQueryKey,
     useUpdateArtifactVersion,
 } from '../../hooks/useProjectAiAgents';
-import { convertDashboardVisualizationsToChartData } from '../../utils/dashboardChartConverter';
-import { createTwoColumnTiles } from '../../utils/dashboardTileLayout';
+import {
+    convertDashboardVisualizationsToChartData,
+    type VizQueryWithOverrides,
+} from '../../utils/dashboardChartConverter';
 
 enum ModalStep {
     InitialInfo = 'initialInfo',
@@ -79,19 +74,10 @@ export const AiDashboardSaveModal: FC<Props> = ({
     const [currentStep, setCurrentStep] = useState<ModalStep>(
         ModalStep.InitialInfo,
     );
-    const { mutateAsync: patchDashboard } = useUpdateMutation();
-
-    const { mutateAsync: createDashboard } = useCreateMutation(
-        projectUuid,
-        false,
-        {
-            showToastOnSuccess: false,
-        },
-    );
-    const { mutateAsync: createChart } = useCreateChartMutation({
-        redirectOnSuccess: false,
-        showToastOnSuccess: false,
-    });
+    const { mutateAsync: createDashboardWithCharts } =
+        useCreateDashboardWithChartsMutation(projectUuid, {
+            showToastOnSuccess: false, // We'll handle success toast manually
+        });
 
     const { mutateAsync: updateArtifactVersion } = useUpdateArtifactVersion(
         projectUuid,
@@ -140,7 +126,7 @@ export const AiDashboardSaveModal: FC<Props> = ({
 
     // Read cached viz-query results from react-query client using exported key
     const getCachedVizQueries = useCallback(() => {
-        const results: any[] = [];
+        const results: (VizQueryWithOverrides | undefined)[] = [];
         for (let i = 0; i < dashboardConfig.visualizations.length; i++) {
             const key = getAiAgentDashboardChartVizQueryKey({
                 projectUuid,
@@ -149,7 +135,7 @@ export const AiDashboardSaveModal: FC<Props> = ({
                 versionUuid: artifactData.versionUuid,
                 chartIndex: i,
             });
-            const data = queryClient.getQueryData(key);
+            const data = queryClient.getQueryData<VizQueryWithOverrides>(key);
             results.push(data);
         }
         return results;
@@ -214,78 +200,54 @@ export const AiDashboardSaveModal: FC<Props> = ({
                     targetSpaceUuid = newSpace?.uuid || values.spaceUuid;
                 }
 
-                // 1. Create empty dashboard
-                const dashboardData: CreateDashboard = {
-                    name: values.dashboardName,
-                    description: values.dashboardDescription,
-                    spaceUuid: targetSpaceUuid!,
-                    tiles: [],
-                    tabs: [],
-                };
-
-                const dashboard = await createDashboard(dashboardData);
-                await updateArtifactVersion({
-                    savedDashboardUuid: dashboard.uuid,
-                });
-
-                // 2. Get all visualization query results from cache
-                const cached = getCachedVizQueries();
-                if (cached.some((q) => !q)) {
+                // Get all visualization query results from cache
+                const cachedVizQueries = getCachedVizQueries();
+                if (cachedVizQueries.some((q) => !q)) {
                     showToastApiError({
-                        title: 'Dashboard save failed',
+                        title: 'Failed to save dashboard',
                         apiError: {
                             name: 'ValidationError',
                             message:
-                                'Visualization results not found in cache. Please preview the charts and try again.',
+                                "Some visualizations didn't run successfully. ",
                             statusCode: 400,
                             data: {},
-                        } as any,
+                        },
                     });
                     setCurrentStep(ModalStep.SelectDestination);
                     return;
                 }
-                const vizQueryResults = cached as any[];
 
+                const vizQueryResults = cachedVizQueries.filter(
+                    (c) => c !== undefined,
+                );
+
+                // Convert visualizations to chart data
                 const chartDataArray =
                     convertDashboardVisualizationsToChartData(
                         dashboardConfig,
                         vizQueryResults,
                         {
-                            dashboardUuid: dashboard.uuid,
-                            dashboardName: dashboard.name,
                             userId: user.data?.userUuid,
                         },
                     );
 
-                // Create all charts sequentially
-                const savedCharts: SavedChart[] = [];
-                for (let i = 0; i < chartDataArray.length; i++) {
-                    const chartData = chartDataArray[i];
-                    const savedChart = await createChart({
-                        ...chartData,
-                        name: dashboardConfig.visualizations[i].title,
-                    });
-                    savedCharts.push(savedChart);
-                }
+                // Map to CreateSavedChart format for the API
+                const charts = chartDataArray.map((chartData, index) => ({
+                    ...chartData,
+                    name: dashboardConfig.visualizations[index].title,
+                }));
 
-                const tilesAccumulator = createTwoColumnTiles(
-                    savedCharts,
-                    dashboard.tabs?.[0]?.uuid,
-                );
+                // Create dashboard with charts in one API call
+                const dashboard = await createDashboardWithCharts({
+                    name: values.dashboardName,
+                    description: values.dashboardDescription,
+                    spaceUuid: targetSpaceUuid!,
+                    charts,
+                });
 
-                const updateFields: DashboardVersionedFields = {
-                    filters: {
-                        dimensions: [],
-                        metrics: [],
-                        tableCalculations: [],
-                    },
-                    tiles: tilesAccumulator,
-                    tabs: [],
-                };
-
-                await patchDashboard({
-                    id: dashboard.uuid,
-                    data: updateFields,
+                // Update AI artifact with saved dashboard UUID
+                await updateArtifactVersion({
+                    savedDashboardUuid: dashboard.uuid,
                 });
 
                 showToastSuccess({
@@ -311,8 +273,7 @@ export const AiDashboardSaveModal: FC<Props> = ({
             }
         },
         [
-            createDashboard,
-            createChart,
+            createDashboardWithCharts,
             dashboardConfig,
             user.data?.userUuid,
             spaceManagement,
@@ -323,7 +284,6 @@ export const AiDashboardSaveModal: FC<Props> = ({
             showToastApiError,
             handleClose,
             getCachedVizQueries,
-            patchDashboard,
             updateArtifactVersion,
         ],
     );
