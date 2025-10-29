@@ -109,6 +109,7 @@ import {
 import {
     applyLimitToSqlQuery,
     replaceUserAttributesAsStrings,
+    injectClientIdUserAttributeFilter
 } from '../../utils/QueryBuilder/utils';
 import type { ICacheService } from '../CacheService/ICacheService';
 import { CreateCacheResult } from '../CacheService/types';
@@ -2767,9 +2768,14 @@ export class AsyncQueryService extends ProjectService {
         const { userAttributes, intrinsicUserAttributes } =
             await this.getUserAttributes({ account });
 
-        // Replace user attributes first
+        // INJECT CLIENT_ID FILTER FIRST (before user attribute replacement)
+        const sqlWithClientIdFilter = injectClientIdUserAttributeFilter({
+            sqlQuery: sql,
+        });
+
+        // Replace user attributes (including the ${lightdash.attribute.organizationUuid} we just injected)
         const sqlWithUserAttributes = replaceUserAttributesAsStrings(
-            sql,
+            sqlWithClientIdFilter,
             intrinsicUserAttributes,
             userAttributes,
             warehouseConnection.warehouseClient,

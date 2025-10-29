@@ -528,6 +528,91 @@ export const applyLimitToSqlQuery = ({
     return result;
 };
 
+/**
+ * Automatically injects client_id filter using user attribute into SQL queries
+ * The ${lightdash.attribute.organizationUuid} will be replaced later by replaceUserAttributesAsStrings
+ */
+export const injectClientIdUserAttributeFilter = ({
+    sqlQuery,
+}: {
+    sqlQuery: string;
+}): string => {
+    // Remove comments and trailing semicolons
+    let sql = removeComments(sqlQuery).trim();
+    sql = removeTrailingSemicolon(sql);
+
+    // Replace strings with placeholders to avoid matching WHERE inside strings
+    const { sqlWithoutStrings, placeholders } =
+        replaceStringsWithPlaceholders(sql);
+
+    // Check if the query already contains the client_id filter
+    // This prevents double-injection if user already added it
+    if (/client_id\s*=\s*\$\{lightdash\.attribute\.organizationUuid\}/i.test(sqlWithoutStrings)) {
+        // Already has the filter, return as-is
+        return sql;
+    }
+
+    // Check if there's already a WHERE clause (case-insensitive)
+    const whereRegex = /\bWHERE\b/i;
+    const hasWhereClause = whereRegex.test(sqlWithoutStrings);
+
+    let modifiedSql: string;
+    
+    if (hasWhereClause) {
+        // Find WHERE clause and the next major SQL keyword after it
+        const whereMatch = sqlWithoutStrings.match(whereRegex);
+        if (!whereMatch || whereMatch.index === undefined) {
+            // Fallback: add as a new WHERE clause
+            modifiedSql = `${sqlWithoutStrings} WHERE client_id = \${lightdash.attribute.organizationUuid}`;
+        } else {
+            const whereIndex = whereMatch.index + whereMatch[0].length;
+            const afterWhere = sqlWithoutStrings.substring(whereIndex);
+            
+            // Find the end of WHERE clause (before GROUP BY, ORDER BY, LIMIT, etc.)
+            const endOfWhereRegex = /\b(GROUP\s+BY|ORDER\s+BY|LIMIT|OFFSET|HAVING|UNION|INTERSECT|EXCEPT)\b/i;
+            const endMatch = afterWhere.match(endOfWhereRegex);
+            
+            const beforeWhere = sqlWithoutStrings.substring(0, whereIndex);
+            
+            if (endMatch && endMatch.index !== undefined) {
+                // WHERE clause has content and is followed by another keyword
+                const whereConditions = afterWhere.substring(0, endMatch.index).trim();
+                const restOfQuery = afterWhere.substring(endMatch.index);
+                
+                if (whereConditions.length > 0) {
+                    modifiedSql = `${beforeWhere} client_id = \${lightdash.attribute.organizationUuid} AND (${whereConditions}) ${restOfQuery}`;
+                } else {
+                    modifiedSql = `${beforeWhere} client_id = \${lightdash.attribute.organizationUuid} ${restOfQuery}`;
+                }
+            } else {
+                // WHERE clause is at the end of the query
+                const whereConditions = afterWhere.trim();
+                if (whereConditions.length > 0) {
+                    modifiedSql = `${beforeWhere} client_id = \${lightdash.attribute.organizationUuid} AND (${whereConditions})`;
+                } else {
+                    modifiedSql = `${beforeWhere} client_id = \${lightdash.attribute.organizationUuid}`;
+                }
+            }
+        }
+    } else {
+        // No WHERE clause exists, check for keywords that come after WHERE
+        const keywordRegex = /\b(GROUP\s+BY|ORDER\s+BY|LIMIT|OFFSET|HAVING|UNION|INTERSECT|EXCEPT)\b/i;
+        const keywordMatch = sqlWithoutStrings.match(keywordRegex);
+        
+        if (keywordMatch && keywordMatch.index !== undefined) {
+            const beforeKeyword = sqlWithoutStrings.substring(0, keywordMatch.index).trim();
+            const fromKeyword = sqlWithoutStrings.substring(keywordMatch.index);
+            modifiedSql = `${beforeKeyword} WHERE client_id = \${lightdash.attribute.organizationUuid} ${fromKeyword}`;
+        } else {
+            // No WHERE clause and no other keywords, just append
+            modifiedSql = `${sqlWithoutStrings} WHERE client_id = \${lightdash.attribute.organizationUuid}`;
+        }
+    }
+
+    // Restore strings from placeholders
+    return restoreStringsFromPlaceholders(modifiedSql, placeholders);
+};
+
 export const getCustomSqlDimensionSql = ({
     warehouseSqlBuilder,
     customDimensions,
