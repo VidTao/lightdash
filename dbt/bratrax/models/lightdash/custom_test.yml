@@ -1,7 +1,0 @@
-version: 2
-models:
-  - name: custom_test
-    description: SQL model for Custom test
-    meta:
-      label: Custom test
-    columns: []
