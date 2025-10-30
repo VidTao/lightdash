@@ -108,7 +108,7 @@ services:
       # - PGSSLROOTCERT=/usr/app/ssl/server.crt  # Use server cert as trusted CA
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
-      - "./dbt/bratrax/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
+      - "./credentials/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
       - "/data/postgres-ssl:/usr/app/ssl:ro"  # This mounts all certificates including postgres.crt
       - "./startup.sh:/usr/app/startup.sh:ro"
     ports:

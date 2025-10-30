@@ -1,0 +1,14 @@
+bratrax:
+  outputs:
+    dev:
+      dataset: production_tables
+      job_execution_timeout_seconds: 50
+      job_retries: 1
+      keyfile: /usr/app/bigquery-credentials.json
+      location: US
+      method: service-account
+      priority: interactive
+      project: bratrax-without-flattening
+      threads: 1
+      type: bigquery
+  target: dev
