@@ -4385,6 +4385,69 @@ export class ProjectService extends BaseService {
         if (!catalog) {
             throw new NotFoundError('Warehouse tables not found');
         }
+
+        // Filter catalog to only include schemas defined in dbt sources
+        try {
+            const { adapter, sshTunnel } = await this.buildAdapter(
+                projectUuid,
+                user,
+            );
+
+            try {
+                // Check if adapter is DbtBaseProjectAdapter (which has dbtClient)
+                if (adapter instanceof DbtBaseProjectAdapter) {
+                    // Get the dbt manifest which contains sources
+                    const { manifest } = await adapter.dbtClient.getDbtManifest();
+
+                    // Extract unique schemas from dbt sources
+                    // Note: sources exists in manifest.json but not in DbtManifest TypeScript interface
+                    const dbtSourceSchemas = new Set<string>();
+                    const manifestWithSources = manifest as AnyType;
+                    
+                    if (manifestWithSources.sources && typeof manifestWithSources.sources === 'object') {
+                        Object.values(manifestWithSources.sources).forEach((source: AnyType) => {
+                            if (source.schema) {
+                                // Normalize schema name to lowercase for comparison
+                                dbtSourceSchemas.add(source.schema.toLowerCase());
+                            }
+                        });
+                    }
+
+                    // Log the schemas found in dbt sources
+                    this.logger.info(`SQL Runner - dbt source schemas found for project: ${projectUuid}`);
+                    this.logger.info(`Schema count: ${dbtSourceSchemas.size}`);
+                    this.logger.info(`Schemas: ${Array.from(dbtSourceSchemas).join(', ')}`);
+
+                    // If there are dbt sources defined, filter the catalog
+                    if (dbtSourceSchemas.size > 0) {
+                        const filteredCatalog: WarehouseTablesCatalog = {};
+
+                        Object.entries(catalog).forEach(([database, schemas]) => {
+                            Object.entries(schemas).forEach(([schemaName, tables]) => {
+                                // Check if this schema is in the dbt sources
+                                if (dbtSourceSchemas.has(schemaName.toLowerCase())) {
+                                    if (!filteredCatalog[database]) {
+                                        filteredCatalog[database] = {};
+                                    }
+                                    filteredCatalog[database][schemaName] = tables;
+                                }
+                            });
+                        });
+
+                        catalog = filteredCatalog;
+                    }
+                }
+            } finally {
+                await sshTunnel.disconnect();
+            }
+        } catch (error) {
+            // If we can't get the manifest or sources, log the error but return the full catalog
+            // This ensures SQL Runner still works even if there's an issue with dbt sources
+            this.logger.warn(
+                `Could not filter warehouse tables by dbt sources: ${error}`,
+            );
+        }
+
         return catalog;
     }
 
