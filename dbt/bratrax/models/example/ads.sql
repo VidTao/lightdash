@@ -7,7 +7,7 @@
 ) }}
 
 SELECT
-    client_id, dasda
+    client_id,
     platform,
     channel,
     channel_category,
