@@ -1,0 +1,19 @@
+version: 2
+models:
+  - name: cod_test_2
+    description: SQL model for Cod test 2
+    meta:
+      label: Cod test 2
+    columns:
+      - name: ads_ad_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_name
+        meta:
+          dimension:
+            type: string
