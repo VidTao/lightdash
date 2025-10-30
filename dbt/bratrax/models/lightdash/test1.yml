@@ -1,7 +1,0 @@
-version: 2
-models:
-  - name: test1
-    description: SQL model for Test 1
-    meta:
-      label: Test 1
-    columns: []
