@@ -1,13 +1,14 @@
--- @block_type: explore
+
+
+  create or replace view `bratrax-without-flattening`.`production_tables`.`ads_view`
+  OPTIONS()
+  as -- @block_type: explore
 -- @model_type: table
 -- Ads model from bratrax-without-flattening.production_tables.ads
-{{ config(
-    materialized = 'view',
-    alias = 'ads_view'
-) }}
+
 
 SELECT
-    client_id, dasda
+    client_id,
     platform,
     channel,
     channel_category,
@@ -53,4 +54,5 @@ SELECT
     processed_at,
     last_processed_at,
     ads_processed_at
-FROM {{ source('production_tables_no_flat', 'ads') }} 
+FROM `bratrax-without-flattening`.`production_tables`.`ads`;
+
