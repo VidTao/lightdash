@@ -206,9 +206,16 @@ export class GithubAppService extends BaseService {
             throw new ForbiddenError('User is not part of an organization');
         }
 
-        // This endpoint is also used for developers on projects
-        // when using the sql runner, so we should allow access
-        // However github app is an organization property, so we can't check projects
+        // NEW: Check for global/shared installation first
+        const sharedInstallationId = process.env.GITHUB_INSTALLATION_ID;
+        const isSharedMode = process.env.GITHUB_SHARED_MODE === 'true';
+        
+        if (isSharedMode && sharedInstallationId) {
+            // All organizations use the same installation
+            return sharedInstallationId;
+        }
+
+        // Original per-organization logic (fallback)
         if (
             user.ability.cannot(
                 'view',

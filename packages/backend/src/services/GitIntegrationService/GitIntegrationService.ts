@@ -91,28 +91,56 @@ export class GitIntegrationService extends BaseService {
     }
 
     async getInstallationId(user: SessionUser) {
-        const installationId =
-            await this.githubAppInstallationsModel.getInstallationId(
-                user.organizationUuid!,
-            );
-        if (!installationId) {
-            throw new Error('Invalid Github installation id');
+        if (!isUserWithOrg(user)) {
+            throw new ForbiddenError('User is not part of an organization');
         }
-        return installationId;
+
+        // NEW: Check for global/shared installation first
+        const sharedInstallationId = process.env.GITHUB_INSTALLATION_ID;
+        const isSharedMode = process.env.GITHUB_SHARED_MODE === 'true';
+        
+        if (isSharedMode && sharedInstallationId) {
+            // All organizations use the same installation
+            return sharedInstallationId;
+        }
+
+        // Original per-organization logic (fallback)
+        if (
+            user.ability.cannot(
+                'view',
+                subject('Organization', {
+                    organizationUuid: user.organizationUuid,
+                }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+        return this.githubAppInstallationsModel.getInstallationId(
+            user.organizationUuid,
+        );
     }
 
-    async getConfiguration(
-        user: SessionUser,
-    ): Promise<GitIntegrationConfiguration> {
+    async getConfiguration(user: SessionUser): Promise<GitIntegrationConfiguration> {
         if (!isUserWithOrg(user)) {
-            throw new UnexpectedServerError(
-                'User is not part of an organization.',
-            );
+            throw new ForbiddenError('User is not part of an organization');
         }
-        const installationId =
-            await this.githubAppInstallationsModel.getInstallationId(
-                user.organizationUuid,
-            );
+
+        // NEW: Check shared mode
+        const isSharedMode = process.env.GITHUB_SHARED_MODE === 'true';
+        const sharedInstallationId = process.env.GITHUB_INSTALLATION_ID;
+        
+        if (isSharedMode && sharedInstallationId) {
+            return {
+                enabled: true,
+                installationId: sharedInstallationId,
+            };
+        }
+
+        // Original per-org logic
+        const installationId = await this.githubAppInstallationsModel.findInstallationId(
+            user.organizationUuid,
+        );
+        
         return {
             enabled: !!installationId,
             installationId,
@@ -444,17 +472,28 @@ Affected charts:
     private async getGitProps(
         user: SessionUser,
         projectUuid: string,
-        quoteChar: `"` | `'`,
-    ) {
+        quoteChar: `"` | `'` = '"',
+    ): Promise<GitProps> {
         const { owner, repo, branch, path, hostDomain, type } =
             await this.getProjectRepo(projectUuid);
         let token: string = '';
+        
+        // NEW: Use shared installation if available
+        const isSharedMode = process.env.GITHUB_SHARED_MODE === 'true';
+        const sharedInstallationId = process.env.GITHUB_INSTALLATION_ID;
+        
         let installationId: string | undefined;
+        
+        if (isSharedMode && sharedInstallationId) {
+            installationId = sharedInstallationId;
+        } else {
+            // Original per-org lookup
+            installationId = await this.getInstallationId(user);
+        }
 
         if (type === DbtProjectType.GITHUB) {
             // GitHub logic - try app installation first, fallback to PAT
             try {
-                installationId = await this.getInstallationId(user);
                 token = await this.getOrUpdateToken(user.organizationUuid!);
             } catch {
                 const project = await this.projectModel.getWithSensitiveFields(

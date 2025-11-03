@@ -475,7 +475,7 @@ const Settings: FC = () => {
 
                                 <RouterNavLink
                                     exact
-                                    to="/generalSettings"
+                                    to="/generalSettings/profile"
                                     label="Profile"
                                     icon={<MantineIcon icon={IconUserCircle} />}
                                 />
@@ -493,14 +493,14 @@ const Settings: FC = () => {
                                     />
                                 )}
 
-                                {/* <RouterNavLink
+                                <RouterNavLink
                                     label="My warehouse connections"
                                     exact
                                     to="/generalSettings/myWarehouseConnections"
                                     icon={
                                         <MantineIcon icon={IconDatabaseCog} />
                                     }
-                                /> */}
+                                />
                                 {user.ability.can(
                                     'manage',
                                     'PersonalAccessToken',
@@ -519,7 +519,7 @@ const Settings: FC = () => {
                                     Organization settings
                                 </Title>
 
-                                {/* {user.ability.can('manage', 'Organization') && (
+                                {user.ability.can('manage', 'Organization') && (
                                     <RouterNavLink
                                         label="General"
                                         to="/generalSettings/organization"
@@ -530,7 +530,7 @@ const Settings: FC = () => {
                                             />
                                         }
                                     />
-                                )} */}
+                                )}
                                 {isCustomRolesEnabled && (
                                     <Can I="manage" a="Organization">
                                         <RouterNavLink
@@ -703,7 +703,7 @@ const Settings: FC = () => {
                                         Current project ({project?.name})
                                     </Title>
 
-                                    {/* <RouterNavLink
+                                    <RouterNavLink
                                         label="Connection settings"
                                         exact
                                         to={`/generalSettings/projectManagement/${project.projectUuid}/settings`}
@@ -712,7 +712,7 @@ const Settings: FC = () => {
                                                 icon={IconDatabaseCog}
                                             />
                                         }
-                                    /> */}
+                                    />
 
                                     {/* <RouterNavLink
                                         label="Tables configuration"

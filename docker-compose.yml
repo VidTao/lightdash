@@ -103,9 +103,9 @@ services:
       - LIBRECHAT_API_KEY=${LIBRECHAT_API_KEY}
       - EMBEDDING_ENABLED=true
       
-      # PostgreSQL SSL Configuration
-      # - PGSSLMODE=${PGSSLMODE:-verify-ca}
-      # - PGSSLROOTCERT=/usr/app/ssl/server.crt  # Use server cert as trusted CA
+      # NEW: Global GitHub installation (shared across all orgs)
+      - GITHUB_INSTALLATION_ID=${GITHUB_INSTALLATION_ID}  # Add this
+      - GITHUB_SHARED_MODE=${GITHUB_SHARED_MODE:-true}  # Flag to enable shared mode
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
       - "./credentials/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
