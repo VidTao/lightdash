@@ -2423,10 +2423,11 @@ models:
               interval: DAY
           sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
           group_details:
-              "Budget Metrics": { order: 1 }
+              "Payment Metrics": { order: 1 }
               "Spend Metrics": { order: 2 }
               "Lead Metrics": { order: 3 }
-              "Campaign Metrics": { order: 4 }
+              "Budget Metrics": { order: 4 }
+              "Campaign Metrics": { order: 5 }
       columns:
           - name: client_id
             description: 'Client identifier'
@@ -2434,8 +2435,8 @@ models:
                 dimension:
                     type: string
 
-          - name: buyer_id
-            description: 'Buyer identifier'
+          - name: BID
+            description: 'Buyer ID'
             meta:
                 dimension:
                     type: string
@@ -2453,86 +2454,49 @@ models:
                     type: date
                     time_intervals: true
 
-          - name: total_budget
-            description: 'Total budget amount'
+          - name: payments_net_total_amount
+            description: 'Total net payment amount'
             meta:
                 metrics:
-                    sum_total_budget:
+                    sum_payments_net_total:
                         type: sum
-                        label: "Total Budget"
+                        label: "Total Net Payments"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
+                        groups: ["Payment Metrics"]
 
-          - name: total_processing_fee
+          - name: payments_gross_total_amount
+            description: 'Total gross payment amount'
+            meta:
+                metrics:
+                    sum_payments_gross_total:
+                        type: sum
+                        label: "Total Gross Payments"
+                        round: 2
+                        format: "usd"
+                        groups: ["Payment Metrics"]
+
+          - name: payments_processing_fee_total_amount
             description: 'Total processing fee amount'
             meta:
                 metrics:
-                    sum_total_processing_fee:
+                    sum_payments_processing_fee_total:
                         type: sum
-                        label: "Total Processing Fee"
+                        label: "Total Processing Fees"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
+                        groups: ["Payment Metrics"]
 
-          - name: total_fee_amount
+          - name: payments_fee_total_amount
             description: 'Total fee amount'
             meta:
                 metrics:
-                    sum_total_fee_amount:
+                    sum_payments_fee_total:
                         type: sum
-                        label: "Total Fee Amount"
+                        label: "Total Fees"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
-
-          - name: total_net_amount
-            description: 'Total net amount after fees'
-            meta:
-                metrics:
-                    sum_total_net_amount:
-                        type: sum
-                        label: "Total Net Amount"
-                        round: 2
-                        format: "usd"
-                        groups: ["Budget Metrics"]
-
-          - name: remaining_budget
-            description: 'Remaining budget amount'
-            meta:
-                metrics:
-                    sum_remaining_budget:
-                        type: sum
-                        label: "Remaining Budget"
-                        round: 2
-                        format: "usd"
-                        groups: ["Budget Metrics"]
-
-          - name: budget_utilization_percent
-            description: 'Budget utilization percentage'
-            meta:
-                metrics:
-                    avg_budget_utilization_percent:
-                        type: average
-                        label: "Avg Budget Utilization %"
-                        round: 2
-                        groups: ["Budget Metrics"]
-
-          - name: budget_remaining_percent
-            description: 'Budget remaining percentage'
-            meta:
-                metrics:
-                    avg_budget_remaining_percent:
-                        type: average
-                        label: "Avg Budget Remaining %"
-                        round: 2
-                        groups: ["Budget Metrics"]
-
-          - name: last_payment_date
-            description: 'Date of last payment'
-            meta:
-                dimension:
-                    type: date
+                        groups: ["Payment Metrics"]
 
           - name: payment_count
             description: 'Number of payments made'
@@ -2541,68 +2505,160 @@ models:
                     total_payment_count:
                         type: sum
                         label: "Total Payments"
-                        groups: ["Budget Metrics"]
+                        groups: ["Payment Metrics"]
 
-          - name: total_spend
-            description: 'Total advertising spend'
+          - name: payments_net_latest_amount
+            description: 'Latest net payment amount'
             meta:
                 metrics:
-                    sum_total_spend:
+                    sum_payments_net_latest:
                         type: sum
-                        label: "Total Spend"
+                        label: "Latest Net Payment"
+                        round: 2
+                        format: "usd"
+                        groups: ["Payment Metrics"]
+
+          - name: payments_gross_latest_amount
+            description: 'Latest gross payment amount'
+            meta:
+                metrics:
+                    sum_payments_gross_latest:
+                        type: sum
+                        label: "Latest Gross Payment"
+                        round: 2
+                        format: "usd"
+                        groups: ["Payment Metrics"]
+
+          - name: payments_processing_fee_latest_amount
+            description: 'Latest processing fee amount'
+            meta:
+                metrics:
+                    sum_payments_processing_fee_latest:
+                        type: sum
+                        label: "Latest Processing Fee"
+                        round: 2
+                        format: "usd"
+                        groups: ["Payment Metrics"]
+
+          - name: last_payment_date
+            description: 'Date of last payment'
+            meta:
+                dimension:
+                    type: date
+
+          - name: spend_lifetime_amount
+            description: 'Lifetime advertising spend'
+            meta:
+                metrics:
+                    sum_spend_lifetime:
+                        type: sum
+                        label: "Lifetime Spend"
                         round: 2
                         format: "usd"
                         groups: ["Spend Metrics"]
 
-          - name: facebook_spend
-            description: 'Facebook advertising spend'
+          - name: spend_lifetime_facebook_amount
+            description: 'Lifetime Facebook advertising spend'
             meta:
                 metrics:
-                    sum_facebook_spend:
+                    sum_spend_lifetime_facebook:
                         type: sum
-                        label: "Facebook Spend"
+                        label: "Lifetime Facebook Spend"
                         round: 2
                         format: "usd"
                         groups: ["Spend Metrics"]
 
-          - name: google_spend
-            description: 'Google advertising spend'
+          - name: spend_lifetime_google_amount
+            description: 'Lifetime Google advertising spend'
             meta:
                 metrics:
-                    sum_google_spend:
+                    sum_spend_lifetime_google:
                         type: sum
-                        label: "Google Spend"
+                        label: "Lifetime Google Spend"
                         round: 2
                         format: "usd"
                         groups: ["Spend Metrics"]
 
-          - name: lead_count
-            description: 'Number of leads generated'
+          - name: spend_since_latest_payment_amount
+            description: 'Spend since latest payment'
             meta:
                 metrics:
-                    total_lead_count:
+                    sum_spend_since_latest_payment:
                         type: sum
-                        label: "Total Leads"
+                        label: "Spend Since Latest Payment"
+                        round: 2
+                        format: "usd"
+                        groups: ["Spend Metrics"]
+
+          - name: spend_since_latest_payment_facebook_amount
+            description: 'Facebook spend since latest payment'
+            meta:
+                metrics:
+                    sum_spend_since_latest_payment_facebook:
+                        type: sum
+                        label: "Facebook Spend Since Latest Payment"
+                        round: 2
+                        format: "usd"
+                        groups: ["Spend Metrics"]
+
+          - name: spend_since_latest_payment_google_amount
+            description: 'Google spend since latest payment'
+            meta:
+                metrics:
+                    sum_spend_since_latest_payment_google:
+                        type: sum
+                        label: "Google Spend Since Latest Payment"
+                        round: 2
+                        format: "usd"
+                        groups: ["Spend Metrics"]
+
+          - name: lead_count_lifetime
+            description: 'Lifetime lead count'
+            meta:
+                metrics:
+                    total_lead_count_lifetime:
+                        type: sum
+                        label: "Lifetime Leads"
                         groups: ["Lead Metrics"]
 
-          - name: revenue
-            description: 'Revenue generated'
+          - name: revenue_lifetime_amount
+            description: 'Lifetime revenue'
             meta:
                 metrics:
-                    total_revenue:
+                    sum_revenue_lifetime:
                         type: sum
-                        label: "Total Revenue"
+                        label: "Lifetime Revenue"
                         round: 2
                         format: "usd"
                         groups: ["Lead Metrics"]
 
-          - name: cpl
-            description: 'Cost per lead'
+          - name: lead_count_since_latest_payment
+            description: 'Lead count since latest payment'
             meta:
                 metrics:
-                    avg_cpl:
+                    total_lead_count_since_latest_payment:
+                        type: sum
+                        label: "Leads Since Latest Payment"
+                        groups: ["Lead Metrics"]
+
+          - name: revenue_since_latest_payment_amount
+            description: 'Revenue since latest payment'
+            meta:
+                metrics:
+                    sum_revenue_since_latest_payment:
+                        type: sum
+                        label: "Revenue Since Latest Payment"
+                        round: 2
+                        format: "usd"
+                        groups: ["Lead Metrics"]
+
+          - name: cpl_lifetime_amount
+            description: 'Lifetime cost per lead'
+            meta:
+                metrics:
+                    avg_cpl_lifetime:
                         type: average
-                        label: "Avg Cost Per Lead"
+                        label: "Avg Lifetime CPL"
                         round: 2
                         format: "usd"
                         groups: ["Lead Metrics"]
@@ -2622,8 +2678,8 @@ models:
                 dimension:
                     type: date
 
-          - name: campaign_statuses
-            description: 'Campaign statuses'
+          - name: campaign_platforms
+            description: 'Campaign platforms used'
             meta:
                 dimension:
                     type: string
@@ -2637,7 +2693,7 @@ models:
                         label: "Active Campaigns"
                         groups: ["Campaign Metrics"]
 
-          - name: total_daily_budget
+          - name: total_daily_budget_amount
             description: 'Total daily budget across campaigns'
             meta:
                 metrics:
@@ -2646,7 +2702,38 @@ models:
                         label: "Total Daily Budget"
                         round: 2
                         format: "usd"
-                        groups: ["Campaign Metrics"]
+                        groups: ["Budget Metrics"]
+
+          - name: remaining_budget_amount
+            description: 'Remaining budget amount'
+            meta:
+                metrics:
+                    sum_remaining_budget:
+                        type: sum
+                        label: "Remaining Budget"
+                        round: 2
+                        format: "usd"
+                        groups: ["Budget Metrics"]
+
+          - name: budget_consumed_percent
+            description: 'Budget consumed percentage'
+            meta:
+                metrics:
+                    avg_budget_consumed_percent:
+                        type: average
+                        label: "Avg Budget Consumed %"
+                        round: 2
+                        groups: ["Budget Metrics"]
+
+          - name: budget_remaining_percent
+            description: 'Budget remaining percentage'
+            meta:
+                metrics:
+                    avg_budget_remaining_percent:
+                        type: average
+                        label: "Avg Budget Remaining %"
+                        round: 2
+                        groups: ["Budget Metrics"]
 
           - name: estimated_days_remaining
             description: 'Estimated days remaining for budget'
@@ -2658,23 +2745,12 @@ models:
                         round: 1
                         groups: ["Budget Metrics"]
 
-          - name: budget_health_status
-            description: 'Budget health status indicator'
-            meta:
-                dimension:
-                    type: string
-
-          - name: utilization_status
-            description: 'Budget utilization status'
-            meta:
-                dimension:
-                    type: string
-
           - name: last_processed_at
             description: 'Last processing timestamp'
             meta:
                 dimension:
                     type: timestamp
+                    time_intervals: true
 
     - name: cod_payments
       label: COD Payments
@@ -2884,3 +2960,336 @@ models:
             meta:
                 dimension:
                     type: string
+
+    - name: cod_leads
+      label: COD Leads
+      description: 'COD leads tracking and performance data'
+      meta:
+          default_time_dimension:
+              field: date
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+          group_details:
+              "Lead Info": { order: 1 }
+              "Performance Metrics": { order: 2 }
+              "Financial Metrics": { order: 3 }
+      columns:
+          - name: received_at_utc
+            description: 'Timestamp when lead was received'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: date
+            description: 'Lead date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: lead_id
+            description: 'Unique lead identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_email
+            description: 'Lead email address'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_fullname
+            description: 'Lead full name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_phone
+            description: 'Lead phone number'
+            meta:
+                dimension:
+                    type: string
+
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: country
+            description: 'Lead country'
+            meta:
+                dimension:
+                    type: string
+
+          - name: state
+            description: 'Lead state or region'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_id
+            description: 'Supplier identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_sid
+            description: 'Supplier secondary identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_name
+            description: 'Supplier name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_id
+            description: 'Buyer identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_bid
+            description: 'Buyer bid identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_name
+            description: 'Buyer name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: delivery_name
+            description: 'Delivery name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: leadbyte_campaign
+            description: 'Leadbyte campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: model_type
+            description: 'Business model type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_status
+            description: 'Lead status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_count
+            description: 'Number of leads'
+            meta:
+                metrics:
+                    total_lead_count:
+                        type: sum
+                        label: "Total Leads"
+                        groups: ["Performance Metrics"]
+
+          - name: revenue
+            description: 'Revenue generated from leads'
+            meta:
+                metrics:
+                    total_revenue:
+                        type: sum
+                        label: "Total Revenue"
+                        round: 2
+                        format: "usd"
+                        groups: ["Financial Metrics"]
+
+          - name: last_processed_at
+            description: 'Last processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+    - name: cod_campaigns_geo
+      label: COD Campaigns Geo
+      description: 'COD campaigns geographical performance and budget tracking'
+      meta:
+          default_time_dimension:
+              field: event_date
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+          group_details:
+              "Campaign Info": { order: 1 }
+              "Performance Metrics": { order: 2 }
+              "Budget Metrics": { order: 3 }
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: platform
+            description: 'Advertising platform'
+            meta:
+                dimension:
+                    type: string
+
+          - name: account_id
+            description: 'Account identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: account_name
+            description: 'Account name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: model_type
+            description: 'Business model type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: SID
+            description: 'Supplier ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: supplier_name
+            description: 'Supplier name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: BID
+            description: 'Buyer ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: buyer_name
+            description: 'Buyer name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_name
+            description: 'Campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_id
+            description: 'Campaign identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: country
+            description: 'Country code'
+            meta:
+                dimension:
+                    type: string
+
+          - name: state
+            description: 'State or region'
+            meta:
+                dimension:
+                    type: string
+
+          - name: clicks
+            description: 'Number of clicks'
+            meta:
+                metrics:
+                    total_clicks:
+                        type: sum
+                        label: "Total Clicks"
+                        groups: ["Performance Metrics"]
+
+          - name: impressions
+            description: 'Number of impressions'
+            meta:
+                metrics:
+                    total_impressions:
+                        type: sum
+                        label: "Total Impressions"
+                        groups: ["Performance Metrics"]
+
+          - name: reach
+            description: 'Unique reach count'
+            meta:
+                metrics:
+                    total_reach:
+                        type: sum
+                        label: "Total Reach"
+                        groups: ["Performance Metrics"]
+
+          - name: cost
+            description: 'Advertising cost'
+            meta:
+                metrics:
+                    total_cost:
+                        type: sum
+                        label: "Total Cost"
+                        round: 2
+                        format: "usd"
+                        groups: ["Budget Metrics"]
+
+          - name: ctr
+            description: 'Click-through rate'
+            meta:
+                metrics:
+                    avg_ctr:
+                        type: average
+                        label: "Avg CTR"
+                        round: 4
+                        groups: ["Performance Metrics"]
+
+          - name: currency
+            description: 'Currency code'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_total_daily_budget
+            description: 'Total daily budget for campaign'
+            meta:
+                metrics:
+                    sum_daily_budget:
+                        type: sum
+                        label: "Total Daily Budget"
+                        round: 2
+                        format: "usd"
+                        groups: ["Budget Metrics"]
+
+          - name: event_date
+            description: 'Event date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: processed_at
+            description: 'Processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: last_processed_at
+            description: 'Last processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true

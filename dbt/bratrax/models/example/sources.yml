@@ -57,4 +57,14 @@ sources:
             columns:
               - name: client_id
                 description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: cod_leads
+            description: 'COD leads data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: cod_campaigns_geo
+            description: 'COD campaigns geographical performance data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
             
