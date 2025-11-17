@@ -37,8 +37,5 @@ SELECT
     active_campaigns,
     total_daily_budget_amount,
     remaining_budget_amount,
-    budget_consumed_percent,
-    budget_remaining_percent,
-    estimated_days_remaining,
     last_processed_at
 FROM {{ source('production_tables_no_flat', 'cod_retainer') }}

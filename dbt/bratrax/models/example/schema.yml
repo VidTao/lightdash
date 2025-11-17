@@ -2715,36 +2715,6 @@ models:
                         format: "usd"
                         groups: ["Budget Metrics"]
 
-          - name: budget_consumed_percent
-            description: 'Budget consumed percentage'
-            meta:
-                metrics:
-                    avg_budget_consumed_percent:
-                        type: average
-                        label: "Avg Budget Consumed %"
-                        round: 2
-                        groups: ["Budget Metrics"]
-
-          - name: budget_remaining_percent
-            description: 'Budget remaining percentage'
-            meta:
-                metrics:
-                    avg_budget_remaining_percent:
-                        type: average
-                        label: "Avg Budget Remaining %"
-                        round: 2
-                        groups: ["Budget Metrics"]
-
-          - name: estimated_days_remaining
-            description: 'Estimated days remaining for budget'
-            meta:
-                metrics:
-                    avg_estimated_days_remaining:
-                        type: average
-                        label: "Avg Estimated Days Remaining"
-                        round: 1
-                        groups: ["Budget Metrics"]
-
           - name: last_processed_at
             description: 'Last processing timestamp'
             meta:
