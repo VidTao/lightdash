@@ -2419,18 +2419,29 @@ models:
       description: 'COD retainer budget tracking and campaign performance metrics'
       meta:
           default_time_dimension:
-              field: now_date
+              field: date
               interval: DAY
           sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
           group_details:
-              "Payment Metrics": { order: 1 }
-              "Spend Metrics": { order: 2 }
-              "Lead Metrics": { order: 3 }
-              "Budget Metrics": { order: 4 }
-              "Campaign Metrics": { order: 5 }
+              "Campaign Info": { order: 1 }
+              "Payment Metrics": { order: 2 }
+              "Performance Metrics": { order: 3 }
       columns:
           - name: client_id
             description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: date
+            description: 'Date of the record'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: buyer_name
+            description: 'Buyer name'
             meta:
                 dimension:
                     type: string
@@ -2441,279 +2452,82 @@ models:
                 dimension:
                     type: string
 
-          - name: buyer_name
-            description: 'Buyer name'
+          - name: platform
+            description: 'Advertising platform (e.g., Facebook, Google)'
             meta:
                 dimension:
                     type: string
 
-          - name: now_date
-            description: 'Current date of the report'
-            meta:
-                dimension:
-                    type: date
-                    time_intervals: true
-
-          - name: payments_net_total_amount
-            description: 'Total net payment amount'
-            meta:
-                metrics:
-                    sum_payments_net_total:
-                        type: sum
-                        label: "Total Net Payments"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: payments_gross_total_amount
-            description: 'Total gross payment amount'
-            meta:
-                metrics:
-                    sum_payments_gross_total:
-                        type: sum
-                        label: "Total Gross Payments"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: payments_processing_fee_total_amount
-            description: 'Total processing fee amount'
-            meta:
-                metrics:
-                    sum_payments_processing_fee_total:
-                        type: sum
-                        label: "Total Processing Fees"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: payments_fee_total_amount
-            description: 'Total fee amount'
-            meta:
-                metrics:
-                    sum_payments_fee_total:
-                        type: sum
-                        label: "Total Fees"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: payment_count
-            description: 'Number of payments made'
-            meta:
-                metrics:
-                    total_payment_count:
-                        type: sum
-                        label: "Total Payments"
-                        groups: ["Payment Metrics"]
-
-          - name: payments_net_latest_amount
-            description: 'Latest net payment amount'
-            meta:
-                metrics:
-                    sum_payments_net_latest:
-                        type: sum
-                        label: "Latest Net Payment"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: payments_gross_latest_amount
-            description: 'Latest gross payment amount'
-            meta:
-                metrics:
-                    sum_payments_gross_latest:
-                        type: sum
-                        label: "Latest Gross Payment"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: payments_processing_fee_latest_amount
-            description: 'Latest processing fee amount'
-            meta:
-                metrics:
-                    sum_payments_processing_fee_latest:
-                        type: sum
-                        label: "Latest Processing Fee"
-                        round: 2
-                        format: "usd"
-                        groups: ["Payment Metrics"]
-
-          - name: last_payment_date
-            description: 'Date of last payment'
-            meta:
-                dimension:
-                    type: date
-
-          - name: spend_lifetime_amount
-            description: 'Lifetime advertising spend'
-            meta:
-                metrics:
-                    sum_spend_lifetime:
-                        type: sum
-                        label: "Lifetime Spend"
-                        round: 2
-                        format: "usd"
-                        groups: ["Spend Metrics"]
-
-          - name: spend_lifetime_facebook_amount
-            description: 'Lifetime Facebook advertising spend'
-            meta:
-                metrics:
-                    sum_spend_lifetime_facebook:
-                        type: sum
-                        label: "Lifetime Facebook Spend"
-                        round: 2
-                        format: "usd"
-                        groups: ["Spend Metrics"]
-
-          - name: spend_lifetime_google_amount
-            description: 'Lifetime Google advertising spend'
-            meta:
-                metrics:
-                    sum_spend_lifetime_google:
-                        type: sum
-                        label: "Lifetime Google Spend"
-                        round: 2
-                        format: "usd"
-                        groups: ["Spend Metrics"]
-
-          - name: spend_since_latest_payment_amount
-            description: 'Spend since latest payment'
-            meta:
-                metrics:
-                    sum_spend_since_latest_payment:
-                        type: sum
-                        label: "Spend Since Latest Payment"
-                        round: 2
-                        format: "usd"
-                        groups: ["Spend Metrics"]
-
-          - name: spend_since_latest_payment_facebook_amount
-            description: 'Facebook spend since latest payment'
-            meta:
-                metrics:
-                    sum_spend_since_latest_payment_facebook:
-                        type: sum
-                        label: "Facebook Spend Since Latest Payment"
-                        round: 2
-                        format: "usd"
-                        groups: ["Spend Metrics"]
-
-          - name: spend_since_latest_payment_google_amount
-            description: 'Google spend since latest payment'
-            meta:
-                metrics:
-                    sum_spend_since_latest_payment_google:
-                        type: sum
-                        label: "Google Spend Since Latest Payment"
-                        round: 2
-                        format: "usd"
-                        groups: ["Spend Metrics"]
-
-          - name: lead_count_lifetime
-            description: 'Lifetime lead count'
-            meta:
-                metrics:
-                    total_lead_count_lifetime:
-                        type: sum
-                        label: "Lifetime Leads"
-                        groups: ["Lead Metrics"]
-
-          - name: revenue_lifetime_amount
-            description: 'Lifetime revenue'
-            meta:
-                metrics:
-                    sum_revenue_lifetime:
-                        type: sum
-                        label: "Lifetime Revenue"
-                        round: 2
-                        format: "usd"
-                        groups: ["Lead Metrics"]
-
-          - name: lead_count_since_latest_payment
-            description: 'Lead count since latest payment'
-            meta:
-                metrics:
-                    total_lead_count_since_latest_payment:
-                        type: sum
-                        label: "Leads Since Latest Payment"
-                        groups: ["Lead Metrics"]
-
-          - name: revenue_since_latest_payment_amount
-            description: 'Revenue since latest payment'
-            meta:
-                metrics:
-                    sum_revenue_since_latest_payment:
-                        type: sum
-                        label: "Revenue Since Latest Payment"
-                        round: 2
-                        format: "usd"
-                        groups: ["Lead Metrics"]
-
-          - name: cpl_lifetime_amount
-            description: 'Lifetime cost per lead'
-            meta:
-                metrics:
-                    avg_cpl_lifetime:
-                        type: average
-                        label: "Avg Lifetime CPL"
-                        round: 2
-                        format: "usd"
-                        groups: ["Lead Metrics"]
-
-          - name: active_days
-            description: 'Number of active days'
-            meta:
-                metrics:
-                    total_active_days:
-                        type: sum
-                        label: "Total Active Days"
-                        groups: ["Campaign Metrics"]
-
-          - name: last_activity_date
-            description: 'Date of last activity'
-            meta:
-                dimension:
-                    type: date
-
-          - name: campaign_platforms
-            description: 'Campaign platforms used'
+          - name: account_id
+            description: 'Ad account ID'
             meta:
                 dimension:
                     type: string
 
-          - name: active_campaigns
-            description: 'Number of active campaigns'
+          - name: campaign_name
+            description: 'Campaign name'
             meta:
-                metrics:
-                    total_active_campaigns:
-                        type: sum
-                        label: "Active Campaigns"
-                        groups: ["Campaign Metrics"]
+                dimension:
+                    type: string
 
-          - name: total_daily_budget_amount
-            description: 'Total daily budget across campaigns'
+          - name: state
+            description: 'Campaign state (active, paused, etc.)'
+            meta:
+                dimension:
+                    type: string
+
+          - name: payment_gross_amount
+            description: 'Gross payment amount'
             meta:
                 metrics:
-                    sum_total_daily_budget:
+                    sum_payment_gross_amount:
                         type: sum
-                        label: "Total Daily Budget"
+                        label: "Total Gross Payment"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
+                        groups: ["Payment Metrics"]
 
-          - name: remaining_budget_amount
-            description: 'Remaining budget amount'
+          - name: payment_adspend
+            description: 'Payment applied to ad spend'
             meta:
                 metrics:
-                    sum_remaining_budget:
+                    sum_payment_adspend:
                         type: sum
-                        label: "Remaining Budget"
+                        label: "Total Payment Ad Spend"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
+                        groups: ["Payment Metrics"]
+
+          - name: spend
+            description: 'Advertising spend amount'
+            meta:
+                metrics:
+                    sum_spend:
+                        type: sum
+                        label: "Total Spend"
+                        round: 2
+                        format: "usd"
+                        groups: ["Performance Metrics"]
+
+          - name: leads
+            description: 'Number of leads generated'
+            meta:
+                metrics:
+                    total_leads:
+                        type: sum
+                        label: "Total Leads"
+                        groups: ["Performance Metrics"]
+
+          - name: campaign_budget
+            description: 'Campaign budget amount'
+            meta:
+                metrics:
+                    sum_campaign_budget:
+                        type: sum
+                        label: "Total Campaign Budget"
+                        round: 2
+                        format: "usd"
+                        groups: ["Performance Metrics"]
 
           - name: last_processed_at
             description: 'Last processing timestamp'
@@ -3196,6 +3010,14 @@ models:
                         label: "Total Impressions"
                         groups: ["Performance Metrics"]
 
+          - name: lead_conversions
+            description: 'Number of lead conversions'
+            meta:
+                metrics:
+                    total_lead_conversions:
+                        type: sum
+                        label: "Total Lead Conversions"
+                        groups: ["Performance Metrics"]
           - name: reach
             description: 'Unique reach count'
             meta:

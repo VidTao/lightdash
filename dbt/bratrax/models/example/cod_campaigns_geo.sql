@@ -29,5 +29,6 @@ SELECT
     campaign_total_daily_budget,
     event_date,
     processed_at,
-    last_processed_at
+    last_processed_at,
+    lead_conversions
 FROM {{ source('production_tables_no_flat', 'cod_campaigns_geo') }}

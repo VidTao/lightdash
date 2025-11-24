@@ -569,7 +569,7 @@ export class OrganizationService extends BaseService {
             },
             warehouseConnection: {
                 type: WarehouseTypes.BIGQUERY,
-                project: 'bratrax',
+                project: 'bratrax-without-flattening',
                 dataset: 'production_tables',
                 keyfileContents: JSON.parse(
                     fs.readFileSync(
