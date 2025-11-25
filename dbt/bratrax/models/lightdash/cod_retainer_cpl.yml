@@ -1,0 +1,79 @@
+version: 2
+models:
+  - name: cod_retainer_cpl
+    description: SQL model for Cod retainer cpl
+    meta:
+      label: Cod retainer cpl
+    columns:
+      - name: BID
+        meta:
+          dimension:
+            type: string
+      - name: state
+        meta:
+          dimension:
+            type: string
+      - name: platform
+        meta:
+          dimension:
+            type: string
+      - name: account_id
+        meta:
+          dimension:
+            type: string
+      - name: buyer_name
+        meta:
+          dimension:
+            type: string
+      - name: cpl_all_time
+        meta:
+          dimension:
+            type: number
+      - name: campaign_name
+        meta:
+          dimension:
+            type: string
+      - name: leads_all_time
+        meta:
+          dimension:
+            type: number
+      - name: cpl_last_7_days
+        meta:
+          dimension:
+            type: number
+      - name: adspend_all_time
+        meta:
+          dimension:
+            type: number
+      - name: cpl_last_30_days
+        meta:
+          dimension:
+            type: number
+      - name: leads_last_7_days
+        meta:
+          dimension:
+            type: number
+      - name: leads_last_30_days
+        meta:
+          dimension:
+            type: number
+      - name: adspend_last_7_days
+        meta:
+          dimension:
+            type: number
+      - name: adspend_last_30_days
+        meta:
+          dimension:
+            type: number
+      - name: cpl_since_last_payment
+        meta:
+          dimension:
+            type: number
+      - name: leads_since_last_payment
+        meta:
+          dimension:
+            type: number
+      - name: adspend_since_last_payment
+        meta:
+          dimension:
+            type: number
