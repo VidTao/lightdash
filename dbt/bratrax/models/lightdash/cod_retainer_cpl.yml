@@ -9,7 +9,15 @@ models:
         meta:
           dimension:
             type: string
+      - name: state
+        meta:
+          dimension:
+            type: string
       - name: platform
+        meta:
+          dimension:
+            type: string
+      - name: account_id
         meta:
           dimension:
             type: string

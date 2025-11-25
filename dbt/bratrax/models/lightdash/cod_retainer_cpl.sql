@@ -21,6 +21,8 @@ campaign_metrics AS (
     cr.campaign_name,
     cr.BID,
     cr.platform,
+    cr.account_id,
+    cr.state,
     -- Last 7 Days
     SUM(CASE WHEN DATE_DIFF(CURRENT_DATE(), cr.date, DAY) <= 7 THEN cr.leads ELSE 0 END) AS leads_last_7_days,
     SUM(CASE WHEN DATE_DIFF(CURRENT_DATE(), cr.date, DAY) <= 7 THEN cr.spend ELSE 0 END) AS adspend_last_7_days,
@@ -38,7 +40,7 @@ campaign_metrics AS (
     ON cr.BID = lpd.BID
     AND cr.buyer_name = lpd.buyer_name
   WHERE cr.client_id = '95d31546-a5e4-47a8-bc89-741538113978'
-  GROUP BY cr.buyer_name, cr.campaign_name, cr.BID, cr.platform
+  GROUP BY cr.buyer_name, cr.campaign_name, cr.BID, cr.platform, cr.account_id, cr.state
 )
 
 SELECT
@@ -46,6 +48,8 @@ SELECT
   campaign_name,
   BID,
   platform,
+  account_id,
+  state,
   -- Last 7 Days
   leads_last_7_days,
   adspend_last_7_days,
@@ -54,7 +58,7 @@ SELECT
   leads_last_30_days,
   adspend_last_30_days,
   SAFE_DIVIDE(adspend_last_30_days, NULLIF(leads_last_30_days, 0)) AS cpl_last_30_days,
- -- Since Last Payment
+  -- Since Last Payment
   leads_since_last_payment,
   adspend_since_last_payment,
   SAFE_DIVIDE(adspend_since_last_payment, NULLIF(leads_since_last_payment, 0)) AS cpl_since_last_payment,
@@ -62,6 +66,5 @@ SELECT
   leads_all_time,
   adspend_all_time,
   SAFE_DIVIDE(adspend_all_time, NULLIF(leads_all_time, 0)) AS cpl_all_time
- 
 FROM campaign_metrics
-ORDER BY leads_all_time DESC
+ORDER BY adspend_last_7_days DESC
