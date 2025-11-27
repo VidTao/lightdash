@@ -1,0 +1,19 @@
+version: 2
+models:
+  - name: drasko_test_8
+    description: SQL model for Drasko test 8
+    meta:
+      label: Drasko test 8
+    columns:
+      - name: ads_ad_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_name
+        meta:
+          dimension:
+            type: string
