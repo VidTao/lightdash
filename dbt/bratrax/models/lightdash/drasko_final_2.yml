@@ -1,7 +1,0 @@
-version: 2
-models:
-  - name: drasko_final_2
-    description: SQL model for Drasko final 2
-    meta:
-      label: Drasko final 2
-    columns: []
