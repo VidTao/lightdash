@@ -1,0 +1,19 @@
+version: 2
+models:
+  - name: drasko_final_4
+    description: SQL model for Drasko final 4
+    meta:
+      label: Drasko final 4
+    columns:
+      - name: ads_ad_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_name
+        meta:
+          dimension:
+            type: string
