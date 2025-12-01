@@ -3671,6 +3671,19 @@ export class ProjectService extends BaseService {
                 userUuid: user.userUuid,
             };
             const explores = await adapter.compileAllExplores(trackingParams);
+            
+            // Run dbt to materialize models in the warehouse (create views/tables)
+            if (adapter.runDbt) {
+                this.logger.info('Running dbt to materialize models...');
+                try {
+                    await adapter.runDbt(); // No selector - runs all models
+                    this.logger.info('Successfully ran dbt models');
+                } catch (e) {
+                    this.logger.warn(`Failed to run dbt models: ${e instanceof Error ? e.message : e}`);
+                    // Don't throw - compilation succeeded, so continue even if run fails
+                }
+            }
+            
             this.analytics.track({
                 event: 'project.compiled',
                 userId: user.userUuid,

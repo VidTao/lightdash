@@ -192,7 +192,7 @@ describe('UserCompletionModal', () => {
 
         // uncheck subscription checkbox (unchecked by default)
         const subscriptionCheckbox = await screen.findByRole('checkbox', {
-            name: `Keep me updated on new Lightdash features`,
+            name: `Keep me updated on new Bratrax features`,
         });
         expect(subscriptionCheckbox).toBeInTheDocument();
         expect(subscriptionCheckbox).toBeChecked();

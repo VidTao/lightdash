@@ -564,8 +564,8 @@ export class OrganizationService extends BaseService {
             dbtConnection: {
                 type: DbtProjectType.DBT,
                 target: 'dev',
-                project_dir: '/usr/app/dbt/bratrax',
-                profiles_dir: '/usr/app/dbt/bratrax',
+                project_dir: '/usr/app/dbt',
+                profiles_dir: '/usr/app/dbt',
             },
             warehouseConnection: {
                 type: WarehouseTypes.BIGQUERY,
@@ -573,7 +573,7 @@ export class OrganizationService extends BaseService {
                 dataset: 'production_tables',
                 keyfileContents: JSON.parse(
                     fs.readFileSync(
-                        '/usr/app/dbt/bratrax/bratrax-78c5b6786fc2.json',
+                        '/usr/app/bigquery-credentials.json',
                         'utf8',
                     ),
                 ),

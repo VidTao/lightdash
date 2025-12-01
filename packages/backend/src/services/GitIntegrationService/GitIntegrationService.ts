@@ -492,20 +492,26 @@ Affected charts:
         }
 
         if (type === DbtProjectType.GITHUB) {
-            // GitHub logic - try app installation first, fallback to PAT
-            try {
-                token = await this.getOrUpdateToken(user.organizationUuid!);
-            } catch {
-                const project = await this.projectModel.getWithSensitiveFields(
-                    projectUuid,
-                );
-                const connection =
-                    project.dbtConnection as DbtGithubProjectConfig;
-                token = connection.personal_access_token || '';
-                if (!token) {
-                    throw new ParameterError(
-                        'Invalid personal access token for GitHub project',
+            // GitHub logic - use shared installation or org-specific installation
+            if (isSharedMode && sharedInstallationId) {
+                // In shared mode, generate a real OAuth token from the shared installation
+                token = await GithubClient.getInstallationToken(sharedInstallationId);
+            } else {
+                // Original per-org logic - try app installation first, fallback to PAT
+                try {
+                    token = await this.getOrUpdateToken(user.organizationUuid!);
+                } catch {
+                    const project = await this.projectModel.getWithSensitiveFields(
+                        projectUuid,
                     );
+                    const connection =
+                        project.dbtConnection as DbtGithubProjectConfig;
+                    token = connection.personal_access_token || '';
+                    if (!token) {
+                        throw new ParameterError(
+                            'Invalid personal access token for GitHub project',
+                        );
+                    }
                 }
             }
         } else if (type === DbtProjectType.GITLAB) {

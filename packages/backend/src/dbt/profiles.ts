@@ -33,12 +33,13 @@ const credentialsTarget = (
                     project: credentials.project,
                     dataset: credentials.dataset,
                     threads: DEFAULT_THREADS,
-                    timeout_seconds: credentials.timeoutSeconds,
+                    job_execution_timeout_seconds: credentials.timeoutSeconds,
                     priority: credentials.priority,
-                    retries: credentials.retries,
+                    job_retries: credentials.retries,
+                    location: credentials.location,  // ← ADD THIS LINE
                     maximum_bytes_billed:
                         credentials.maximumBytesBilled || undefined, // form allows empty string, converting to undefined here
-                    execution_project: credentials.executionProject,
+                    // execution_project: credentials.executionProject,
                 },
                 environment: {},
             };
@@ -47,18 +48,8 @@ const credentialsTarget = (
                 case BigqueryAuthenticationType.PRIVATE_KEY:
                 case BigqueryAuthenticationType.SSO:
                 case undefined:
-                    bqResult.target.method = 'service-account-json';
-                    bqResult.target.keyfile_json = Object.fromEntries(
-                        Object.keys(credentials.keyfileContents).map((key) => [
-                            key,
-                            envVarReference(key),
-                        ]),
-                    );
-                    bqResult.environment = Object.fromEntries(
-                        Object.entries(credentials.keyfileContents).map(
-                            ([key, value]) => [envVar(key), value],
-                        ),
-                    );
+                    bqResult.target.method = 'service-account';
+                    bqResult.target.keyfile = '/usr/app/bigquery-credentials.json';
                     return bqResult;
                 case BigqueryAuthenticationType.ADC:
                     // With oauth method and no keyfile contents, dbt will use the
@@ -241,6 +232,11 @@ export const profileFromCredentials = (
         credentials,
         profilesDir,
     );
+
+        // DEBUG: Log the generated profile target
+        console.log('=== GENERATED PROFILE TARGET ===');
+        console.log(JSON.stringify(target, null, 2));
+        console.log('=== END PROFILE TARGET ===');
 
     const profile = yaml.dump({
         [LIGHTDASH_PROFILE_NAME]: {

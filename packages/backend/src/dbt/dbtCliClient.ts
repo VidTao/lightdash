@@ -351,6 +351,25 @@ export class DbtCliClient implements DbtClient {
         }
     }
 
+    async run(selector?: string): Promise<void> {
+        return Sentry.startSpan(
+            {
+                op: 'dbt',
+                name: 'run',
+                attributes: {
+                    selector,
+                },
+            },
+            async () => {
+                const dbtCommand = ['run'];
+                if (selector) {
+                    dbtCommand.push('--select', selector);
+                }
+                await this._runDbtCommand(...dbtCommand);
+            },
+        );
+    }
+
     async test(): Promise<void> {
         return Sentry.startSpan(
             {

@@ -89,6 +89,15 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
         return undefined;
     }
 
+    public async runDbt(selector?: string): Promise<void> {
+        Logger.debug(`Running dbt models${selector ? ` with selector: ${selector}` : ''}`);
+        if (this.dbtClient.run) {
+            await this.dbtClient.run(selector);
+        } else {
+            Logger.warn('dbt run is not supported for this client type');
+        }
+    }
+
     public async getLightdashProjectConfig(
         trackingParams?: TrackingParams,
     ): Promise<LightdashProjectConfig> {

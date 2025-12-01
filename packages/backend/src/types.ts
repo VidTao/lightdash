@@ -25,6 +25,8 @@ export interface ProjectAdapter {
 
     getDbtPackages(): Promise<DbtPackages | undefined>;
 
+    runDbt?(selector?: string): Promise<void>;
+
     test(): Promise<void>;
 
     destroy(): Promise<void>;
@@ -42,6 +44,8 @@ export interface DbtClient {
     getDbtPackages?(): Promise<DbtPackages | undefined>;
 
     getSelector(): string | undefined;
+
+    run?(selector?: string): Promise<void>;
 
     test(): Promise<void>;
 }
