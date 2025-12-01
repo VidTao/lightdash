@@ -1,0 +1,19 @@
+version: 2
+models:
+  - name: draskoooo
+    description: SQL model for Draskoooo
+    meta:
+      label: Draskoooo
+    columns:
+      - name: ads_ad_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_id
+        meta:
+          dimension:
+            type: string
+      - name: ads_account_name
+        meta:
+          dimension:
+            type: string
