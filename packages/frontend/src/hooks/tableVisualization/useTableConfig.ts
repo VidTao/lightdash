@@ -21,7 +21,7 @@ import {
 } from '@lightdash/common';
 import { createWorkerFactory, useWorker } from '@shopify/react-web-worker';
 import uniq from 'lodash/uniq';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useEmbed from '../../ee/providers/Embed/useEmbed';
 import { useCalculateSubtotals } from '../useCalculateSubtotals';
 import { useCalculateTotal } from '../useCalculateTotal';
@@ -64,9 +64,7 @@ const useTableConfig = (
     >(tableChartConfig?.conditionalFormattings ?? []);
 
     const [showTableNames, setShowTableNames] = useState<boolean>(
-        tableChartConfig?.showTableNames === undefined
-            ? true
-            : tableChartConfig.showTableNames,
+        tableChartConfig?.showTableNames ?? false,
     );
     const [showResultsTotal, setShowResultsTotal] = useState<boolean>(
         tableChartConfig?.showResultsTotal ?? false,
@@ -269,6 +267,7 @@ const useTableConfig = (
             columnOrder,
             totals: totalCalculations,
             groupedSubtotals,
+            parameters,
         });
     }, [
         columnOrder,
@@ -281,6 +280,7 @@ const useTableConfig = (
         getFieldLabelOverride,
         totalCalculations,
         groupedSubtotals,
+        parameters,
     ]);
     const worker = useWorker(createWorker);
     const [pivotTableData, setPivotTableData] = useState<{
@@ -462,58 +462,133 @@ const useTableConfig = (
         [],
     );
 
+    const prevMinMaxQueryUuidRef = useRef<string | undefined>(undefined);
+    const prevMinMaxFieldsRef = useRef<string>('');
+    const cachedMinMaxMapRef = useRef<
+        ConditionalFormattingMinMaxMap | undefined
+    >(undefined);
+
     const minMaxMap = useMemo(() => {
         if (!itemsMap || !resultsData || resultsData.rows.length === 0) {
             return undefined;
         }
 
-        // Build set of fieldIds that need min/max calculation
+        // Step 1: Identify which fields need min/max calculation
         const fieldsNeedingMinMax = new Set<string>();
 
-        // Add fields with conditional formatting
         conditionalFormattings?.forEach((config) => {
             if (config.target) {
                 fieldsNeedingMinMax.add(config.target.fieldId);
             }
         });
 
-        // Add fields with bar chart display style
         Object.entries(columnProperties).forEach(([fieldId, props]) => {
             if (props.displayStyle === 'bar') {
                 fieldsNeedingMinMax.add(fieldId);
             }
         });
 
-        // If no fields need min/max, return undefined
         if (fieldsNeedingMinMax.size === 0) {
+            prevMinMaxQueryUuidRef.current = resultsData.queryUuid;
+            prevMinMaxFieldsRef.current = '';
+            cachedMinMaxMapRef.current = undefined;
             return undefined;
         }
 
-        return Object.entries(itemsMap)
-            .filter(([_, field]) => isNumericItem(field))
-            .filter(([fieldId]) => fieldsNeedingMinMax.has(fieldId))
-            .filter(([fieldId]) => isColumnVisible(fieldId))
-            .filter(([fieldId]) => fieldId in resultsData.rows[0])
-            .reduce<ConditionalFormattingMinMaxMap>((acc, [fieldId, field]) => {
-                const columnValues = resultsData.rows
-                    .map((row) => row[fieldId].value.raw)
-                    .filter(
-                        (value) =>
-                            value !== undefined &&
-                            value !== null &&
-                            value !== '',
-                    )
-                    .map((value) => Number(value))
-                    .map((value) => convertFormattedValue(value, field));
+        // Step 2: Check cache - avoid recalculation if query and fields haven't changed
+        const currentQueryUuid = resultsData.queryUuid;
+        const currentFieldsKey = Array.from(fieldsNeedingMinMax)
+            .sort()
+            .join(',');
 
-                return {
-                    ...acc,
-                    [fieldId]: {
-                        min: Math.min(...columnValues),
-                        max: Math.max(...columnValues),
-                    },
+        if (
+            currentQueryUuid &&
+            currentQueryUuid === prevMinMaxQueryUuidRef.current &&
+            currentFieldsKey === prevMinMaxFieldsRef.current &&
+            cachedMinMaxMapRef.current !== undefined
+        ) {
+            return cachedMinMaxMapRef.current;
+        }
+
+        // Step 3: Build field-to-columns mapping
+        // For SQL pivots: Maps base field (e.g., "revenue") to pivot columns (e.g., ["revenue_bank", "revenue_paypal"])
+        // For non-pivots: Direct 1:1 mapping (e.g., "revenue" → ["revenue"])
+        const fieldColumnMapping = new Map<string, string[]>();
+
+        for (const fieldId of fieldsNeedingMinMax) {
+            if (!isColumnVisible(fieldId)) continue;
+
+            const field = itemsMap[fieldId];
+            if (!field || !isNumericItem(field)) continue;
+
+            if (!resultsData.pivotDetails) {
+                fieldColumnMapping.set(fieldId, [fieldId]);
+            } else {
+                const pivotColumnNames = resultsData.pivotDetails.valuesColumns
+                    .filter((col) => col.referenceField === fieldId)
+                    .map((col) => col.pivotColumnName);
+                if (pivotColumnNames.length > 0) {
+                    fieldColumnMapping.set(fieldId, pivotColumnNames);
+                }
+            }
+        }
+
+        if (fieldColumnMapping.size === 0) {
+            prevMinMaxQueryUuidRef.current = currentQueryUuid;
+            prevMinMaxFieldsRef.current = currentFieldsKey;
+            cachedMinMaxMapRef.current = undefined;
+            return undefined;
+        }
+
+        // Step 4: Single-pass collection of all values
+        const fieldValues = new Map<string, number[]>();
+        for (const fieldId of fieldColumnMapping.keys()) {
+            fieldValues.set(fieldId, []);
+        }
+
+        for (const row of resultsData.rows) {
+            for (const [fieldId, columnNames] of fieldColumnMapping.entries()) {
+                const values = fieldValues.get(fieldId) ?? [];
+                const field = itemsMap[fieldId];
+
+                for (const columnName of columnNames) {
+                    const rawValue = row[columnName]?.value?.raw;
+                    if (
+                        rawValue !== undefined &&
+                        rawValue !== null &&
+                        rawValue !== ''
+                    ) {
+                        const numValue = Number(rawValue);
+                        if (!Number.isNaN(numValue)) {
+                            values.push(convertFormattedValue(numValue, field));
+                        }
+                    }
+                }
+
+                // Update the values for the field
+                fieldValues.set(fieldId, values);
+            }
+        }
+
+        // Step 5: Calculate min/max for each field
+        const result: ConditionalFormattingMinMaxMap = {};
+        for (const [fieldId, values] of fieldValues.entries()) {
+            if (values.length > 0) {
+                result[fieldId] = {
+                    min: Math.min(...values),
+                    max: Math.max(...values),
                 };
-            }, {});
+            }
+        }
+
+        const finalResult = Object.keys(result).length > 0 ? result : undefined;
+
+        // Step 6: Update cache
+        prevMinMaxQueryUuidRef.current = currentQueryUuid;
+        prevMinMaxFieldsRef.current = currentFieldsKey;
+        cachedMinMaxMapRef.current = finalResult;
+
+        return finalResult;
     }, [
         conditionalFormattings,
         columnProperties,

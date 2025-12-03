@@ -3,7 +3,6 @@ import {
     getFirstIndexColumns,
     getParameterReferences,
     isVizTableConfig,
-    MAX_PIVOT_COLUMN_LIMIT,
     MAX_SAFE_INTEGER,
     type VizTableConfig,
     type VizTableHeaderSortConfig,
@@ -27,7 +26,6 @@ import {
     IconChartHistogram,
     IconGripHorizontal,
 } from '@tabler/icons-react';
-import type { EChartsInstance } from 'echarts-for-react';
 import {
     useCallback,
     useEffect,
@@ -53,6 +51,7 @@ import {
 import { ChartDataTable } from '../../../components/DataViz/visualizations/ChartDataTable';
 import ChartView from '../../../components/DataViz/visualizations/ChartView';
 import { Table } from '../../../components/DataViz/visualizations/Table';
+import type { EChartsInstance } from '../../../components/EChartsReactWrapper';
 import RunSqlQueryButton from '../../../components/SqlRunner/RunSqlQueryButton';
 import { useOrganization } from '../../../hooks/organization/useOrganization';
 import useToaster from '../../../hooks/toaster/useToaster';
@@ -273,11 +272,16 @@ export const ContentPanel: FC = () => {
         selectPivotChartDataByKind(state, selectedChartType),
     );
 
+    const maxColumnLimit = useMemo(
+        () => health.data?.pivotTable.maxColumnLimit,
+        [health],
+    );
     const hasReachedPivotColumnLimit = useMemo(
         () =>
             pivotedChartInfo?.data?.columnCount &&
-            pivotedChartInfo?.data?.columnCount > MAX_PIVOT_COLUMN_LIMIT,
-        [pivotedChartInfo],
+            maxColumnLimit &&
+            pivotedChartInfo.data.columnCount > maxColumnLimit,
+        [pivotedChartInfo, maxColumnLimit],
     );
 
     useEffect(() => {
@@ -392,11 +396,10 @@ export const ContentPanel: FC = () => {
                     radius={0}
                     px="md"
                     py={6}
-                    bg="gray.1"
                     sx={(theme) => ({
                         borderWidth: '0 0 1px 1px',
                         borderStyle: 'solid',
-                        borderColor: theme.colors.gray[3],
+                        borderColor: theme.colors.ldGray[3],
                     })}
                 >
                     <Group position="apart">
@@ -415,7 +418,9 @@ export const ContentPanel: FC = () => {
                                     styles={(theme) => ({
                                         root: {
                                             backgroundColor:
-                                                theme.colors.gray[2],
+                                                theme.colorScheme === 'dark'
+                                                    ? theme.colors.ldDark[9]
+                                                    : theme.colors.ldGray[2],
                                         },
                                     })}
                                     size="sm"
@@ -452,7 +457,7 @@ export const ContentPanel: FC = () => {
                                                 >
                                                     <Group spacing={4} noWrap>
                                                         <MantineIcon
-                                                            color="gray.6"
+                                                            color="ldGray.6"
                                                             icon={
                                                                 IconChartHistogram
                                                             }
@@ -512,7 +517,7 @@ export const ContentPanel: FC = () => {
                             selectedChartType ? (
                                 <ChartDownload
                                     chartName={savedSqlChart?.name}
-                                    echartsInstance={activeEchartsInstance}
+                                    echartsInstance={activeEchartsInstance!}
                                     projectUuid={projectUuid}
                                     disabled={isLoadingSqlQuery}
                                     hideLimitSelection={true}
@@ -571,8 +576,12 @@ export const ContentPanel: FC = () => {
                             sx={(theme) => ({
                                 borderWidth: '0 0 0 1px',
                                 borderStyle: 'solid',
-                                borderColor: theme.colors.gray[3],
+                                borderColor: theme.colors.ldGray[3],
                                 overflow: 'auto',
+                                backgroundColor:
+                                    theme.colorScheme === 'dark'
+                                        ? theme.colors.dark[6]
+                                        : 'white',
                             })}
                         >
                             <Box
@@ -740,7 +749,6 @@ export const ContentPanel: FC = () => {
                     <Box
                         hidden={hideResultsPanel}
                         component={PanelResizeHandle}
-                        bg="gray.1"
                         h={15}
                         sx={(theme) => ({
                             transition: 'background-color 0.2s ease-in-out',
@@ -749,12 +757,12 @@ export const ContentPanel: FC = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             '&:hover': {
-                                backgroundColor: theme.colors.gray[2],
+                                backgroundColor: theme.colors.ldGray[2],
                             },
                             '&[data-resize-handle-state="drag"]': {
-                                backgroundColor: theme.colors.gray[3],
+                                backgroundColor: theme.colors.ldGray[3],
                             },
-                            borderLeft: `1px solid ${theme.colors.gray[3]}`,
+                            borderLeft: `1px solid ${theme.colors.ldGray[3]}`,
                             gap: 5,
                         })}
                     >
@@ -766,7 +774,7 @@ export const ContentPanel: FC = () => {
 
                         {showLimitText && (
                             <>
-                                <Text fz="xs" fw={400} c="gray.7">
+                                <Text fz="xs" fw={400} c="ldGray.7">
                                     Showing first {defaultQueryLimit} rows
                                 </Text>
                                 <MantineIcon
@@ -828,39 +836,41 @@ export const ContentPanel: FC = () => {
                                             pivotedChartInfo?.data
                                                 ?.tableData && (
                                                 <>
-                                                    {hasReachedPivotColumnLimit && (
-                                                        <Group
-                                                            position="center"
-                                                            spacing="xs"
-                                                        >
-                                                            <MantineIcon
-                                                                color="gray"
-                                                                icon={
-                                                                    IconAlertCircle
-                                                                }
-                                                            />
-                                                            <Text
-                                                                fz="xs"
-                                                                fw={400}
-                                                                c="gray.7"
-                                                                ta="center"
+                                                    {hasReachedPivotColumnLimit &&
+                                                        maxColumnLimit && (
+                                                            <Group
+                                                                position="center"
+                                                                spacing="xs"
                                                             >
-                                                                This query
-                                                                exceeds the
-                                                                maximum number
-                                                                of columns (
-                                                                {
-                                                                    MAX_PIVOT_COLUMN_LIMIT
-                                                                }
-                                                                ). Showing the
-                                                                first{' '}
-                                                                {
-                                                                    MAX_PIVOT_COLUMN_LIMIT
-                                                                }{' '}
-                                                                columns.
-                                                            </Text>
-                                                        </Group>
-                                                    )}
+                                                                <MantineIcon
+                                                                    color="gray"
+                                                                    icon={
+                                                                        IconAlertCircle
+                                                                    }
+                                                                />
+                                                                <Text
+                                                                    fz="xs"
+                                                                    fw={400}
+                                                                    c="ldGray.7"
+                                                                    ta="center"
+                                                                >
+                                                                    This query
+                                                                    exceeds the
+                                                                    maximum
+                                                                    number of
+                                                                    columns (
+                                                                    {
+                                                                        maxColumnLimit
+                                                                    }
+                                                                    ). Showing
+                                                                    the first{' '}
+                                                                    {
+                                                                        maxColumnLimit
+                                                                    }{' '}
+                                                                    columns.
+                                                                </Text>
+                                                            </Group>
+                                                        )}
                                                     <ChartDataTable
                                                         columnNames={
                                                             pivotedChartInfo

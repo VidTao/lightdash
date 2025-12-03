@@ -33,6 +33,7 @@ import debounce from 'lodash/debounce';
 import { useEffect, useMemo, useState, type FC } from 'react';
 import { Link } from 'react-router';
 import { z } from 'zod';
+import useHealth from '../../../hooks/health/useHealth';
 import {
     useDeleteSlack,
     useGetSlack,
@@ -42,7 +43,9 @@ import {
 import { useActiveProjectUuid } from '../../../hooks/useActiveProject';
 import { useFeatureFlag } from '../../../hooks/useFeatureFlagEnabled';
 import slackSvg from '../../../svgs/slack.svg';
-import MantineIcon from '../../common/MantineIcon';
+import { BetaBadge } from '../../common/BetaBadge';
+import { ComingSoonBadge } from '../../common/ComingSoonBadge';
+import { default as MantineIcon } from '../../common/MantineIcon';
 import { SettingsGridCard } from '../../common/Settings/SettingsCard';
 
 const SLACK_INSTALL_URL = `/api/v1/slack/install/`;
@@ -66,6 +69,7 @@ const formSchema = z.object({
     ),
     aiThreadAccessConsent: z.boolean().optional(),
     aiRequireOAuth: z.boolean().optional(),
+    aiMultiAgentChannelId: z.string().min(1).optional(),
 });
 
 const SlackSettingsPanel: FC = () => {
@@ -73,8 +77,12 @@ const SlackSettingsPanel: FC = () => {
     const { data: aiCopilotFlag } = useFeatureFlag(
         CommercialFeatureFlags.AiCopilot,
     );
+    const { data: health } = useHealth();
     const { data: slackInstallation, isInitialLoading } = useGetSlack();
     const organizationHasSlack = !!slackInstallation?.organizationUuid;
+
+    const isSlackMultiAgentChannelEnabled =
+        health?.slack?.multiAgentChannelEnabled ?? false;
 
     const [search, setSearch] = useState('');
 
@@ -102,6 +110,7 @@ const SlackSettingsPanel: FC = () => {
             slackChannelProjectMappings: [],
             aiThreadAccessConsent: false,
             aiRequireOAuth: false,
+            aiMultiAgentChannelId: undefined,
         },
         validate: zodResolver(formSchema),
     });
@@ -119,6 +128,8 @@ const SlackSettingsPanel: FC = () => {
             aiThreadAccessConsent:
                 slackInstallation.aiThreadAccessConsent ?? false,
             aiRequireOAuth: slackInstallation.aiRequireOAuth ?? false,
+            aiMultiAgentChannelId:
+                slackInstallation.aiMultiAgentChannelId ?? undefined,
         };
 
         if (form.initialized) {
@@ -246,7 +257,7 @@ const SlackSettingsPanel: FC = () => {
                                     size="lg"
                                     src={form.values?.appProfilePhotoUrl}
                                     radius="md"
-                                    bg="gray.1"
+                                    bg="ldGray.1"
                                 />
                                 <TextInput
                                     sx={{ flexGrow: 1 }}
@@ -339,6 +350,78 @@ const SlackSettingsPanel: FC = () => {
                                                 setFieldValue(
                                                     'aiRequireOAuth',
                                                     event.currentTarget.checked,
+                                                );
+                                            }}
+                                        />
+                                    </Stack>
+
+                                    <Stack spacing="xs">
+                                        <Group spacing="xs">
+                                            <Title order={6} fw={500}>
+                                                Multi-agent channel
+                                            </Title>
+
+                                            {isSlackMultiAgentChannelEnabled && (
+                                                <Tooltip
+                                                    multiline
+                                                    variant="xs"
+                                                    maw={250}
+                                                    label="Select a channel where users can interact with any AI agent (excluding from preview projects). When users start a thread in this channel, they'll see a dropdown to select which agent to use."
+                                                >
+                                                    <MantineIcon
+                                                        icon={IconHelpCircle}
+                                                    />
+                                                </Tooltip>
+                                            )}
+                                            {isSlackMultiAgentChannelEnabled ? (
+                                                <BetaBadge />
+                                            ) : (
+                                                <ComingSoonBadge />
+                                            )}
+                                        </Group>
+
+                                        <Text c="dimmed" fz="xs">
+                                            In this channel, users starting a
+                                            thread will see a dropdown to choose
+                                            which AI agent to chat with.
+                                        </Text>
+
+                                        <Select
+                                            size="xs"
+                                            placeholder={
+                                                isSlackMultiAgentChannelEnabled
+                                                    ? 'Select a channel (optional)'
+                                                    : 'Feature not available'
+                                            }
+                                            limit={500}
+                                            nothingFound="No channels found"
+                                            data={
+                                                isSlackMultiAgentChannelEnabled
+                                                    ? slackChannelOptions
+                                                    : []
+                                            }
+                                            disabled={
+                                                !isSlackMultiAgentChannelEnabled
+                                            }
+                                            rightSection={
+                                                isLoadingSlackChannels ? (
+                                                    <Loader size="xs" />
+                                                ) : null
+                                            }
+                                            {...form.getInputProps(
+                                                'aiMultiAgentChannelId',
+                                            )}
+                                            onSearchChange={(val) => {
+                                                if (
+                                                    responsiveChannelsSearchEnabled
+                                                ) {
+                                                    debounceSetSearch(val);
+                                                }
+                                            }}
+                                            onChange={(value) => {
+                                                setFieldValue(
+                                                    'aiMultiAgentChannelId',
+                                                    value ?? undefined,
                                                 );
                                             }}
                                         />

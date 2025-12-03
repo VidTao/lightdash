@@ -225,6 +225,9 @@ export const useGetReadyQueryResults = (
             useSqlPivotResults,
         ],
         keepPreviousData: true, // needed to keep the last metric query which could break cartesian chart config
+        staleTime: Infinity,
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
         queryFn: ({ signal }) => {
             return executeAsyncQuery(
                 data
@@ -283,6 +286,7 @@ export type InfiniteQueryResults = Partial<
         | 'totalResults'
         | 'initialQueryExecutionMs'
         | 'pivotDetails'
+        | 'columns'
     >
 > & {
     projectUuid?: string;
@@ -541,6 +545,7 @@ export const useInfiniteQueryResults = (
             totalResults: fetchedPages[0]?.totalResults,
             initialQueryExecutionMs: fetchedPages[0]?.initialQueryExecutionMs,
             pivotDetails: fetchedPages[0]?.pivotDetails,
+            columns: fetchedPages[0]?.columns,
             hasFetchedAllRows,
             rows: fetchedRows,
             isFetchingRows,
@@ -549,11 +554,9 @@ export const useInfiniteQueryResults = (
             totalClientFetchTimeMs,
             isInitialLoading: isInitialLoading || dependenciesChanged,
             isFetchingFirstPage:
-                !!queryUuid &&
-                (dependenciesChanged ||
-                    fetchedPages[0]?.totalResults === undefined ||
-                    (fetchedPages[0]?.totalResults > 0 &&
-                        fetchedRows.length === 0)),
+                dependenciesChanged ||
+                (!!queryUuid && !fetchedPages.length) ||
+                (!!queryUuid && fetchedPages[0]?.totalResults === undefined),
             isFetchingAllPages: !!queryUuid && fetchAll && !hasFetchedAllRows,
             fetchAll,
             error: nextPage.error,
@@ -561,6 +564,8 @@ export const useInfiniteQueryResults = (
         [
             projectUuid,
             queryUuid,
+            dependenciesChanged,
+            nextPageData?.status,
             fetchedPages,
             hasFetchedAllRows,
             fetchedRows,
@@ -568,10 +573,8 @@ export const useInfiniteQueryResults = (
             fetchMoreRows,
             totalClientFetchTimeMs,
             isInitialLoading,
-            fetchAll,
-            nextPageData,
             nextPage.error,
-            dependenciesChanged,
+            fetchAll,
         ],
     );
 };

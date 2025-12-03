@@ -1,5 +1,6 @@
 import { subject } from '@casl/ability';
 import {
+    ChartType,
     DashboardTileTypes,
     assertUnreachable,
     getDefaultChartTileSize,
@@ -254,6 +255,11 @@ export const SaveToSpaceOrDashboard: FC<Props> = ({
                         belongsToDashboard: true,
                         savedChartUuid: savedQuery.uuid,
                         chartName: values.name,
+                        // BigNumber charts default to hidden title for cleaner appearance
+                        hideTitle:
+                            savedData.chartConfig?.type === ChartType.BIG_NUMBER
+                                ? true
+                                : undefined,
                     },
                     ...getDefaultChartTileSize(savedData.chartConfig?.type),
                 };
@@ -437,7 +443,7 @@ export const SaveToSpaceOrDashboard: FC<Props> = ({
                 position="right"
                 w="100%"
                 sx={(theme) => ({
-                    borderTop: `1px solid ${theme.colors.gray[4]}`,
+                    borderTop: `1px solid ${theme.colors.ldGray[4]}`,
                     bottom: 0,
                     padding: theme.spacing.md,
                 })}

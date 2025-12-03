@@ -12,6 +12,7 @@ export type DbAiAgent = {
     tags: string[] | null;
     enable_data_access: boolean;
     enable_self_improvement: boolean;
+    enable_reasoning: boolean;
     version: number;
     created_at: Date;
     updated_at: Date;
@@ -119,5 +120,27 @@ export type AiAgentUserAccessTable = Knex.CompositeTableType<
     // update
     Partial<
         Omit<DbAiAgentUserAccess, 'user_uuid' | 'ai_agent_uuid' | 'created_at'>
+    >
+>;
+
+export const AiAgentSpaceAccessTableName = 'ai_agent_space_access';
+
+export type DbAiAgentSpaceAccess = {
+    ai_agent_uuid: string;
+    space_uuid: string;
+    created_at: Date;
+};
+
+export type AiAgentSpaceAccessTable = Knex.CompositeTableType<
+    // base
+    DbAiAgentSpaceAccess,
+    // insert
+    Omit<DbAiAgentSpaceAccess, 'created_at'>,
+    // update
+    Partial<
+        Omit<
+            DbAiAgentSpaceAccess,
+            'ai_agent_uuid' | 'space_uuid' | 'created_at'
+        >
     >
 >;

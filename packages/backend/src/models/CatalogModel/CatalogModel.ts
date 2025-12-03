@@ -57,6 +57,7 @@ import { wrapSentryTransaction } from '../../utils';
 import {
     getFullTextSearchQuery,
     getFullTextSearchRankCalcSql,
+    getWebSearchRankCalcSql,
 } from '../SearchModel/utils/search';
 import { convertExploresToCatalog } from './utils';
 import { parseCatalog } from './utils/parser';
@@ -604,7 +605,7 @@ export class CatalogModel {
         sortArgs,
         context,
         fullTextSearchOperator = 'AND',
-        filteredExplore,
+        filteredExplores,
         changeset,
     }: {
         projectUuid: string;
@@ -617,9 +618,14 @@ export class CatalogModel {
         sortArgs?: ApiSort;
         context: CatalogSearchContext;
         fullTextSearchOperator?: 'OR' | 'AND';
-        filteredExplore?: Explore;
+        filteredExplores?: Explore[];
         changeset?: ChangesetWithChanges;
     }): Promise<KnexPaginatedData<CatalogItem[]>> {
+        // Use websearch_to_tsquery for AI Agent queries for better natural language support
+        const useWebSearch =
+            context === CatalogSearchContext.AI_AGENT ||
+            context === CatalogSearchContext.MCP;
+
         let catalogItemsQuery = this.database(CatalogTableName)
             .column(
                 `${CatalogTableName}.catalog_search_uuid`,
@@ -631,16 +637,25 @@ export class CatalogModel {
                 `required_attributes`,
                 `chart_usage`,
                 `${CatalogTableName}.joined_tables`,
+                `${CatalogTableName}.table_name`,
                 `icon`,
                 {
-                    search_rank: getFullTextSearchRankCalcSql({
-                        database: this.database,
-                        variables: {
-                            searchVectorColumn: `${CatalogTableName}.search_vector`,
-                            searchQuery,
-                        },
-                        fullTextSearchOperator,
-                    }),
+                    search_rank: useWebSearch
+                        ? getWebSearchRankCalcSql({
+                              database: this.database,
+                              variables: {
+                                  searchVectorColumn: `${CatalogTableName}.search_vector`,
+                                  searchQuery,
+                              },
+                          })
+                        : getFullTextSearchRankCalcSql({
+                              database: this.database,
+                              variables: {
+                                  searchVectorColumn: `${CatalogTableName}.search_vector`,
+                                  searchQuery,
+                              },
+                              fullTextSearchOperator,
+                          }),
                 },
             )
             .leftJoin(
@@ -822,47 +837,101 @@ export class CatalogModel {
             );
         }
 
-        // Filter by fields available in filteredExplore (AI agent explore tag filtering)
-        if (filteredExplore && type === CatalogType.Field) {
-            catalogItemsQuery = catalogItemsQuery.andWhere(
-                function filteredExploreFieldsFiltering() {
-                    // Build list of allowed (table_name, field_name) tuples from filtered explore
-                    const allowedFields = Object.entries(
-                        filteredExplore.tables,
-                    ).flatMap(([tableName, table]) => [
-                        ...Object.keys(table.dimensions).map(
-                            (dimName): [string, string] => [tableName, dimName],
+        // Filter by filteredExplores (AI agent explore tag filtering)
+        if (filteredExplores) {
+            if (type === CatalogType.Table) {
+                // Filter tables by allowed explore names
+                const allowedExploreNames = filteredExplores.map((e) => e.name);
+                if (allowedExploreNames.length > 0) {
+                    catalogItemsQuery = catalogItemsQuery.andWhere(
+                        function allowedExploreNamesFiltering() {
+                            void this.whereIn(
+                                `${CatalogTableName}.name`,
+                                allowedExploreNames,
+                            );
+                        },
+                    );
+                } else {
+                    // No explores allowed, return no results
+                    catalogItemsQuery = catalogItemsQuery.andWhereRaw('false');
+                }
+            } else if (type === CatalogType.Field) {
+                // Filter fields by allowed (tableName, fieldName) tuples from ALL tables in filtered explores
+                // This includes fields from joined tables, which may be indexed under different cached_explore_uuids
+                const allowedFields = await wrapSentryTransaction(
+                    'CatalogModel.search.allowedFields',
+                    {
+                        filteredExplores: filteredExplores.map(
+                            (explore) => explore.name,
                         ),
-                        ...Object.keys(table.metrics).map(
-                            (metricName): [string, string] => [
-                                tableName,
-                                metricName,
-                            ],
-                        ),
-                    ]);
+                    },
+                    async () =>
+                        filteredExplores.flatMap((explore) =>
+                            Object.entries(explore.tables).flatMap(
+                                ([tableName, table]) => {
+                                    const dims = Object.keys(table.dimensions);
+                                    const mets = Object.keys(table.metrics);
 
-                    // Filter catalog to only include these fields using tuple comparison
-                    if (allowedFields.length > 0) {
-                        // Use PostgreSQL's row comparison: (table_name, name) IN (('orders', 'id'), ('users', 'email'), ...)
-                        void this.whereRaw(
-                            `(${CatalogTableName}.table_name, ${CatalogTableName}.name) IN (VALUES ${allowedFields
-                                .map(() => '(?, ?)')
-                                .join(', ')})`,
-                            allowedFields.flat(),
-                        );
-                    } else {
-                        // No fields allowed, return no results
-                        void this.whereRaw('false');
-                    }
-                },
-            );
+                                    return [
+                                        ...dims.map(
+                                            (dimName): [string, string] => [
+                                                tableName,
+                                                dimName,
+                                            ],
+                                        ),
+                                        ...mets.map(
+                                            (metricName): [string, string] => [
+                                                tableName,
+                                                metricName,
+                                            ],
+                                        ),
+                                    ];
+                                },
+                            ),
+                        ),
+                );
+
+                catalogItemsQuery = catalogItemsQuery.andWhere(
+                    function allowedFieldsFiltering() {
+                        if (allowedFields.length > 0) {
+                            // Use PostgreSQL's row comparison: (table_name, name) IN (VALUES ...)
+                            // This allows fields from joined tables to be found even if they're indexed
+                            // under a different cached_explore_uuid than the primary explore
+                            void this.whereRaw(
+                                `(${CatalogTableName}.table_name, ${CatalogTableName}.name) IN (VALUES ${allowedFields
+                                    .map(() => '(?, ?)')
+                                    .join(', ')})`,
+                                allowedFields.flat(),
+                            );
+                        } else {
+                            // No fields allowed, return no results
+                            void this.whereRaw('false');
+                        }
+                    },
+                );
+            }
         }
 
         if (excludeUnmatched && searchQuery) {
-            catalogItemsQuery = catalogItemsQuery.andWhereRaw(
-                `"${CatalogTableName}".search_vector @@ to_tsquery('lightdash_english_config', ?)`,
-                getFullTextSearchQuery(searchQuery, fullTextSearchOperator),
-            );
+            if (useWebSearch) {
+                const webSearchQuery = searchQuery
+                    .split(' ')
+                    .filter((word) => word.trim())
+                    .join(' OR ');
+                catalogItemsQuery = catalogItemsQuery.andWhereRaw(
+                    `"${CatalogTableName}".search_vector @@ websearch_to_tsquery('lightdash_english_config', ?)`,
+                    webSearchQuery,
+                );
+            } else {
+                const formattedQuery = getFullTextSearchQuery(
+                    searchQuery,
+                    fullTextSearchOperator,
+                );
+                catalogItemsQuery = catalogItemsQuery.andWhereRaw(
+                    `"${CatalogTableName}".search_vector @@ to_tsquery('lightdash_english_config', ?)`,
+                    formattedQuery,
+                );
+            }
         }
 
         catalogItemsQuery = catalogItemsQuery.orderBy('search_rank', 'desc');
@@ -891,6 +960,21 @@ export class CatalogModel {
             paginatedCatalogItems.data.map((item) => item.catalog_search_uuid),
         );
 
+        // When using filteredExplores, we need to match each field to the correct explore
+        // that contains it, since fields from joined tables may be indexed under different explores
+        const exploreByTableName: Map<string, Explore> | undefined =
+            filteredExplores
+                ? new Map(
+                      filteredExplores.flatMap((explore) => {
+                          const tables = Object.keys(explore.tables);
+                          return tables.map((tableName): [string, Explore] => [
+                              tableName,
+                              explore,
+                          ]);
+                      }),
+                  )
+                : undefined;
+
         const catalog = await wrapSentryTransaction(
             'CatalogModel.search.parse',
             {
@@ -898,12 +982,27 @@ export class CatalogModel {
             },
             async () =>
                 paginatedCatalogItems.data.map((item) => {
-                    let { explore } = item;
+                    // Use the explore from filteredExplores if available, otherwise use from DB
+                    let explore = exploreByTableName
+                        ? exploreByTableName.get(item.table_name)
+                        : undefined;
+
+                    if (!explore) {
+                        explore = item.explore;
+                    }
+
+                    if (!explore) {
+                        throw new Error(
+                            `Explore not found for field ${item.name} in table ${item.table_name}`,
+                        );
+                    }
+
                     if (changeset) {
                         const exploreWithChanges =
                             ChangesetUtils.applyChangeset(changeset, {
-                                [item.explore.name]: item.explore,
-                            })[item.explore.name] as Explore; // at this point we know the explore is valid
+                                // we need to clone the explore to avoid mutating the original explore object
+                                [explore.name]: structuredClone(explore),
+                            })[explore.name] as Explore; // at this point we know the explore is valid
                         explore = exploreWithChanges;
                     }
                     return parseCatalog({

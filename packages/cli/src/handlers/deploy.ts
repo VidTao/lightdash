@@ -2,6 +2,7 @@ import {
     AuthorizationError,
     Explore,
     ExploreError,
+    ParseError,
     Project,
     ProjectType,
     friendlyName,
@@ -20,7 +21,10 @@ import GlobalState from '../globalState';
 import { readAndLoadLightdashProjectConfig } from '../lightdash-config';
 import * as styles from '../styles';
 import { compile } from './compile';
-import { createProject } from './createProject';
+import {
+    createProject,
+    resolveOrganizationCredentialsName,
+} from './createProject';
 import { checkLightdashVersion, lightdashApi } from './dbt/apiClient';
 import { DbtCompileOptions } from './dbt/compile';
 import { getDbtVersion } from './dbt/getDbtVersion';
@@ -35,6 +39,7 @@ type DeployHandlerOptions = DbtCompileOptions & {
     ignoreErrors: boolean;
     startOfWeek?: number;
     warehouseCredentials?: boolean;
+    organizationCredentials?: string;
 };
 
 type DeployArgs = DeployHandlerOptions & {
@@ -127,16 +132,22 @@ const createNewProject = async (
 ): Promise<Project | undefined> => {
     console.error('');
     const absoluteProjectPath = path.resolve(options.projectDir);
-    const context = await getDbtContext({
-        projectDir: absoluteProjectPath,
-    });
-    const dbtName = friendlyName(context.projectName);
 
-    // default project name
-    const defaultProjectName = dbtName;
-    let projectName = defaultProjectName;
+    let defaultProjectName: string = 'My new Lightdash Project'; // TODO: improve
+    try {
+        const context = await getDbtContext({
+            projectDir: absoluteProjectPath,
+            targetPath: options.targetPath,
+        });
+        defaultProjectName = friendlyName(context.projectName);
+    } catch (e) {
+        if (e instanceof ParseError) {
+            // stick with default name
+        }
+    }
 
     // If interactive and no name provided, prompt for project name
+    let projectName = defaultProjectName;
     if (options.create === true && process.env.CI !== 'true') {
         const answers = await inquirer.prompt([
             {
@@ -164,7 +175,7 @@ const createNewProject = async (
         properties: {
             executionId,
             projectName,
-            isDefaultName: dbtName === projectName,
+            isDefaultName: defaultProjectName === projectName,
         },
     });
     try {
@@ -218,6 +229,23 @@ export const deployHandler = async (originalOptions: DeployHandlerOptions) => {
         options.skipDbtCompile = true;
         options.skipWarehouseCatalog = true;
     }
+
+    // Resolve organization credentials early before doing any heavy work
+    if (options.organizationCredentials) {
+        try {
+            await resolveOrganizationCredentialsName(
+                options.organizationCredentials,
+            );
+        } catch (error) {
+            console.error(
+                styles.error(
+                    error instanceof Error ? error.message : 'Unknown error',
+                ),
+            );
+            process.exit(1);
+        }
+    }
+
     const dbtVersion = await getDbtVersion();
     await checkLightdashVersion();
     const executionId = uuidv4();

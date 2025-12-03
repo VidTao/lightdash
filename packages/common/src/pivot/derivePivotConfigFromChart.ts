@@ -326,8 +326,10 @@ export function derivePivotConfigurationFromChart(
         case ChartType.PIE:
         case ChartType.FUNNEL:
         case ChartType.TREEMAP:
+        case ChartType.GAUGE:
         case ChartType.CUSTOM:
         case ChartType.BIG_NUMBER:
+        case ChartType.MAP:
             newConfig = undefined;
             break;
         default:

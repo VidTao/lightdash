@@ -35,6 +35,7 @@ import {
 } from '../../hooks/useRefreshServer';
 import useActiveJob from '../../providers/ActiveJob/useActiveJob';
 import MantineIcon from '../common/MantineIcon';
+import ProjectCompileLog from './ProjectCompileLog';
 
 dayjs.extend(duration);
 dayjs.extend(utc);
@@ -53,14 +54,14 @@ const statusInfo = (status: string, theme: MantineTheme) => {
             };
         case 'SKIPPED':
             return {
-                background: theme.colors.gray['1'],
-                color: theme.colors.gray['6'],
+                background: theme.colors.ldGray['1'],
+                color: theme.colors.ldGray['6'],
                 fontStyle: 'italic',
             };
         default:
             return {
-                background: theme.colors.gray['1'],
-                color: theme.colors.gray['9'],
+                background: theme.colors.ldGray['1'],
+                color: theme.colors.ldGray['9'],
             };
     }
 };
@@ -151,6 +152,8 @@ const JobDetailsDrawer: FC = () => {
     }
 
     const hasSteps = !!activeJob?.steps.length;
+    const isJobDone = activeJob.jobStatus === JobStatusType.DONE;
+
     return (
         <Drawer
             trapFocus
@@ -170,7 +173,7 @@ const JobDetailsDrawer: FC = () => {
                             {jobStatusLabel(activeJob.jobStatus)}
                         </Title>
                         {hasSteps && (
-                            <Text c="gray.6" fz="sm" fw={500}>{`${
+                            <Text c="ldGray.6" fz="sm" fw={500}>{`${
                                 runningStepsInfo(activeJob.steps)
                                     .completedStepsMessage
                             } steps complete - ${durationSince(
@@ -308,6 +311,12 @@ const JobDetailsDrawer: FC = () => {
                         </Stack>
                     </Group>
                 ))}
+                {isJobDone && activeJob.projectUuid && (
+                    <ProjectCompileLog
+                        projectUuid={activeJob.projectUuid}
+                        jobUuid={activeJob.jobUuid}
+                    />
+                )}
             </Stack>
         </Drawer>
     );

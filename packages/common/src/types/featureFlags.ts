@@ -5,9 +5,6 @@
  * If the feature flag is no longer in use, remove it from this enum.
  */
 export enum FeatureFlags {
-    /**/
-    ShowDbtCloudProjectOption = 'show-dbt-cloud-project-option',
-
     /* Show user groups */
     UserGroupsEnabled = 'user-groups-enabled',
 
@@ -59,19 +56,24 @@ export enum FeatureFlags {
     UseSqlPivotResults = 'use-sql-pivot-results',
 
     /**
+     * Enable map chart type visualization
+     */
+    Maps = 'maps',
+
+    /**
      * Enable the unused content dashboard showing least viewed charts and dashboards
      */
     UnusedContentDashboard = 'unused-content-dashboard',
 
     /**
-     * Enable experimental explorer improvements
+     * Enable period-over-period comparisons option
      */
-    ExperimentalExplorerImprovements = 'experimental-explorer-improvements',
+    PeriodOverPeriod = 'pop',
 
     /**
-     * Enable experimental virtualized side bar
+     * Dark mode
      */
-    ExperimentalVirtualizedSideBar = 'experimental-virtualized-side-bar',
+    DarkMode = 'dark-mode',
 }
 
 export type FeatureFlag = {

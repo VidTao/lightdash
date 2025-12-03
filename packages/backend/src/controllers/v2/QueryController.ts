@@ -12,6 +12,7 @@ import {
     ForbiddenError,
     isExecuteAsyncDashboardSqlChartByUuidParams,
     isExecuteAsyncSqlChartByUuidParams,
+    isJwtUser,
     QueryExecutionContext,
     type ApiDownloadAsyncQueryResults,
     type ApiDownloadAsyncQueryResultsAsCsv,
@@ -152,6 +153,7 @@ export class QueryController extends BaseController {
             customDimensions: body.query.customDimensions,
             timezone: body.query.timezone,
             metricOverrides: body.query.metricOverrides,
+            periodOverPeriod: body.query.periodOverPeriod,
         };
 
         const results = await this.services
@@ -191,9 +193,11 @@ export class QueryController extends BaseController {
 
         const context = body.context ?? getContextFromHeader(req);
 
-        if (req.account!.isJwtUser()) {
-            // we need more granular CASTL abilities before enabling this
-            throw new ForbiddenError('Feature not available for JWT users');
+        if (
+            isJwtUser(req.account!) &&
+            req.account!.access.content.type !== 'chart'
+        ) {
+            throw new ForbiddenError('Feature not available for this JWT');
         }
 
         const results = await this.services
@@ -245,6 +249,7 @@ export class QueryController extends BaseController {
                 account: req.account!,
                 projectUuid,
                 invalidateCache: body.invalidateCache,
+                tileUuid: body.tileUuid,
                 chartUuid: body.chartUuid,
                 dashboardUuid: body.dashboardUuid,
                 dashboardFilters: body.dashboardFilters,

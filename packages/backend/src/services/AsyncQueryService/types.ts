@@ -70,6 +70,7 @@ export type ExecuteAsyncSavedChartQueryArgs = CommonAsyncQueryArgs & {
 
 export type ExecuteAsyncDashboardChartQueryArgs = CommonAsyncQueryArgs & {
     chartUuid: string;
+    tileUuid: string;
     dashboardUuid: string;
     dashboardFilters: DashboardFilters;
     dashboardSorts: SortField[];
@@ -158,4 +159,9 @@ export type RunAsyncWarehouseQueryArgs = {
     };
     pivotConfiguration?: PivotConfiguration;
     originalColumns?: ResultColumns;
+    /**
+     * Set of metric field IDs that have period-over-period comparison enabled.
+     * Used to add popMetadata to the corresponding ResultColumns.
+     */
+    popEnabledMetrics?: Set<string>;
 };

@@ -10,6 +10,7 @@ import {
     Box,
     Button,
     Checkbox,
+    Code,
     Group,
     Highlight,
     Loader,
@@ -97,26 +98,37 @@ const FixValidationErrorModal: FC<{
                     e.fieldName === validationError?.fieldName,
             ).length;
         } else if (renameType === RenameType.MODEL) {
-            const tableName = savedQuery?.tableName;
+            const tableName = oldName ?? savedQuery?.tableName;
 
             return allValidationErrors.filter(
                 (e) =>
                     isChartValidationError(e) &&
-                    (e.fieldName || '').startsWith(tableName || ''),
+                    (e.fieldName || '').startsWith(tableName ?? ''),
             ).length;
         } else {
-            assertUnreachable(
+            return assertUnreachable(
                 renameType,
                 `Unexpected rename type ${renameType}`,
             );
         }
-    }, [validationError, allValidationErrors, renameType, savedQuery]);
+    }, [validationError, allValidationErrors, renameType, savedQuery, oldName]);
+
+    const fieldName = validationError?.fieldName;
+
+    // Check if the field belongs to the chart's base table
+    const fieldBaseTableNameCandidate = useMemo(() => {
+        if (!fieldName || !savedQuery?.tableName) return '';
+        if (fieldName.startsWith(savedQuery?.tableName ?? ''))
+            return savedQuery?.tableName;
+        return fieldName.split('_')[0];
+    }, [fieldName, savedQuery?.tableName]);
+
+    const isFieldFromBaseTable =
+        fieldBaseTableNameCandidate === savedQuery?.tableName;
 
     if (!validationError) {
         return null;
     }
-
-    const fieldName = validationError.fieldName;
 
     const handleClose = () => {
         setOldName(undefined);
@@ -175,7 +187,7 @@ const FixValidationErrorModal: FC<{
                 </Anchor>
             </Text>
 
-            <Text mt="xs" mb="xs" color="gray.7" size="xs">
+            <Text mt="xs" mb="xs" color="ldGray.7" size="xs">
                 You can rename the missing dimension by renaming the affected
                 field or model using the drop down below.
             </Text>
@@ -194,7 +206,7 @@ const FixValidationErrorModal: FC<{
                                 setOldName(fieldName);
                                 break;
                             case RenameType.MODEL:
-                                setOldName(savedQuery?.tableName);
+                                setOldName(fieldBaseTableNameCandidate);
                                 break;
                             default:
                                 assertUnreachable(
@@ -252,11 +264,25 @@ const FixValidationErrorModal: FC<{
                 ) : renameType === RenameType.MODEL ? (
                     <Stack>
                         <TextInput
-                            disabled
+                            disabled={isFieldFromBaseTable}
                             label="Old model"
-                            defaultValue={fieldName}
+                            placeholder={
+                                isFieldFromBaseTable
+                                    ? undefined
+                                    : 'Enter the table name (e.g., customers)'
+                            }
                             value={oldName}
+                            onChange={(e) => setOldName(e.currentTarget.value)}
                         />
+                        {!isFieldFromBaseTable && (
+                            <Text size="xs" c="dimmed">
+                                The field <Code>{fieldName}</Code> doesn't
+                                belong to the base model for chart:{' '}
+                                <Code>{savedQuery?.tableName}</Code>. Enter the
+                                correct old model name to point the field to the
+                                correct model.
+                            </Text>
+                        )}
                         <Select
                             searchValue={search}
                             onSearchChange={setSearch}
@@ -304,7 +330,7 @@ const FixValidationErrorModal: FC<{
                         </Group>
                     </Tooltip>
                 ) : (
-                    <Text mt="xs" size="xs" color="gray.7">
+                    <Text mt="xs" size="xs" color="ldGray.7">
                         This {renameType} is not used in any other charts.
                     </Text>
                 )}
@@ -358,10 +384,10 @@ export const SettingsValidator: FC<{ projectUuid: string }> = ({
                     sx={{
                         borderBottomWidth: 1,
                         borderBottomStyle: 'solid',
-                        borderBottomColor: theme.colors.gray[3],
+                        borderBottomColor: theme.colors.ldGray[3],
                     }}
                 >
-                    <Text fw={500} fz="xs" c="gray.6">
+                    <Text fw={500} fz="xs" c="ldGray.6">
                         {!!data?.length
                             ? `Last validated at: ${formatTime(
                                   data[0].createdAt,
@@ -413,7 +439,7 @@ export const SettingsValidator: FC<{ projectUuid: string }> = ({
                     ) : (
                         <Group position="center" spacing="xs" p="md">
                             <MantineIcon icon={IconCheck} color="green" />
-                            <Text fw={500} c="gray.7">
+                            <Text fw={500} c="ldGray.7">
                                 No validation errors found
                             </Text>
                         </Group>

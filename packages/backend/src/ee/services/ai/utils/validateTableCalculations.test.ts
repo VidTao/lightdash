@@ -1,125 +1,27 @@
 import {
-    DimensionType,
-    FieldType,
     MetricType,
-    SupportedDbtAdapter,
     WindowFunctionType,
     type CustomMetricBase,
-    type Explore,
     type TableCalcsSchema,
 } from '@lightdash/common';
+import { mockOrdersExplore } from './validationExplore.mock';
 import { validateTableCalculations } from './validators';
-
-const mockExplore: Explore = {
-    targetDatabase: SupportedDbtAdapter.POSTGRES,
-    name: 'test_explore',
-    label: 'Test Explore',
-    tags: [],
-    spotlight: {
-        visibility: 'show',
-        categories: [],
-    },
-    baseTable: 'orders',
-    joinedTables: [],
-    tables: {
-        orders: {
-            name: 'orders',
-            label: 'Orders',
-            database: 'test_db',
-            schema: 'public',
-            sqlTable: 'orders',
-            sqlWhere: undefined,
-            uncompiledSqlWhere: undefined,
-            dimensions: {
-                order_id: {
-                    fieldType: FieldType.DIMENSION,
-                    type: DimensionType.NUMBER,
-                    name: 'order_id',
-                    label: 'Order ID',
-                    table: 'orders',
-                    tableLabel: 'Orders',
-                    sql: '${TABLE}.order_id',
-                    hidden: false,
-                    source: undefined,
-                    compiledSql: 'orders.order_id',
-                    tablesReferences: ['orders'],
-                },
-                customer_name: {
-                    fieldType: FieldType.DIMENSION,
-                    type: DimensionType.STRING,
-                    name: 'customer_name',
-                    label: 'Customer Name',
-                    table: 'orders',
-                    tableLabel: 'Orders',
-                    sql: '${TABLE}.customer_name',
-                    hidden: false,
-                    source: undefined,
-                    compiledSql: 'orders.customer_name',
-                    tablesReferences: ['orders'],
-                },
-            },
-            metrics: {
-                total_revenue: {
-                    fieldType: FieldType.METRIC,
-                    type: MetricType.SUM,
-                    name: 'total_revenue',
-                    label: 'Total Revenue',
-                    table: 'orders',
-                    tableLabel: 'Orders',
-                    sql: 'SUM(${TABLE}.amount)',
-                    hidden: false,
-                    source: undefined,
-                    compiledSql: 'SUM(orders.amount)',
-                    tablesReferences: ['orders'],
-                },
-                order_count: {
-                    fieldType: FieldType.METRIC,
-                    type: MetricType.COUNT,
-                    name: 'order_count',
-                    label: 'Order Count',
-                    table: 'orders',
-                    tableLabel: 'Orders',
-                    sql: 'COUNT(*)',
-                    hidden: false,
-                    source: undefined,
-                    compiledSql: 'COUNT(*)',
-                    tablesReferences: ['orders'],
-                },
-                max_date: {
-                    fieldType: FieldType.METRIC,
-                    type: MetricType.MAX,
-                    name: 'max_date',
-                    label: 'Max Date',
-                    table: 'orders',
-                    tableLabel: 'Orders',
-                    sql: 'MAX(${TABLE}.created_at)',
-                    hidden: false,
-                    source: undefined,
-                    compiledSql: 'MAX(orders.created_at)',
-                    tablesReferences: ['orders'],
-                },
-            },
-            lineageGraph: {},
-            source: undefined,
-            groupLabel: undefined,
-        },
-    },
-    groupLabel: undefined,
-    warehouse: undefined,
-    sqlPath: undefined,
-    ymlPath: undefined,
-    databricksCompute: undefined,
-};
 
 describe('validateTableCalculations', () => {
     describe('Edge Cases', () => {
         it('should not throw for null or empty tableCalcs array', () => {
             expect(() =>
-                validateTableCalculations(mockExplore, null, [], null),
+                validateTableCalculations(
+                    mockOrdersExplore,
+                    null,
+                    [],
+                    [],
+                    null,
+                ),
             ).not.toThrow();
 
             expect(() =>
-                validateTableCalculations(mockExplore, [], [], null),
+                validateTableCalculations(mockOrdersExplore, [], [], [], null),
             ).not.toThrow();
         });
     });
@@ -139,8 +41,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -161,8 +64,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -196,8 +100,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     customMetrics,
                 ),
@@ -206,7 +111,7 @@ describe('validateTableCalculations', () => {
     });
 
     describe('Window Functions', () => {
-        it('should not throw for nillary window function without fieldId', () => {
+        it('should not throw for nullary window function without fieldId', () => {
             const tableCalcs: TableCalcsSchema = [
                 {
                     type: 'window_function',
@@ -226,8 +131,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -248,6 +154,7 @@ describe('validateTableCalculations', () => {
                 },
             ];
 
+            const selectedDimensions = ['orders_customer_name'];
             const selectedMetrics = [
                 'orders_total_revenue',
                 'orders_order_count',
@@ -255,8 +162,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    selectedDimensions,
                     selectedMetrics,
                     null,
                 ),
@@ -281,8 +189,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -314,8 +223,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -346,8 +256,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -374,8 +285,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -398,8 +310,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -420,8 +333,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -443,8 +357,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
@@ -466,12 +381,65 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),
             ).toThrow(/neither in the explore nor in the custom metrics/);
+        });
+
+        it('should throw when partitionBy field is not selected in query', () => {
+            const tableCalcs: TableCalcsSchema = [
+                {
+                    type: 'percent_of_column_total',
+                    name: 'percent_of_total',
+                    displayName: 'Percent of Total',
+                    fieldId: 'orders_total_revenue',
+                    partitionBy: ['orders_customer_name'],
+                },
+            ];
+
+            const selectedMetrics = ['orders_total_revenue'];
+
+            expect(() =>
+                validateTableCalculations(
+                    mockOrdersExplore,
+                    tableCalcs,
+                    [], // orders_customer_name is not selected
+                    selectedMetrics,
+                    null,
+                ),
+            ).toThrow(
+                /uses partitionBy field "orders_customer_name" which is not selected in the query/,
+            );
+        });
+
+        it('should throw when orderBy field is not selected in query', () => {
+            const tableCalcs: TableCalcsSchema = [
+                {
+                    type: 'percent_change_from_previous',
+                    name: 'percent_change',
+                    displayName: 'Percent Change',
+                    fieldId: 'orders_total_revenue',
+                    orderBy: [{ fieldId: 'orders_order_count', order: 'asc' }],
+                },
+            ];
+
+            const selectedMetrics = ['orders_total_revenue']; // orders_order_count is not selected
+
+            expect(() =>
+                validateTableCalculations(
+                    mockOrdersExplore,
+                    tableCalcs,
+                    [],
+                    selectedMetrics,
+                    null,
+                ),
+            ).toThrow(
+                /uses orderBy field "orders_order_count" which is not selected in the query/,
+            );
         });
     });
 
@@ -491,8 +459,9 @@ describe('validateTableCalculations', () => {
 
             expect(() =>
                 validateTableCalculations(
-                    mockExplore,
+                    mockOrdersExplore,
                     tableCalcs,
+                    [],
                     selectedMetrics,
                     null,
                 ),

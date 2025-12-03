@@ -20,6 +20,7 @@ import {
     NavLink,
     Text,
     Tooltip,
+    useMantineTheme,
 } from '@mantine/core';
 import {
     IconAlertTriangle,
@@ -57,7 +58,7 @@ const NavItemIcon = ({
     item: Item | AdditionalMetric;
 }) => {
     return isMissing ? (
-        <MantineIcon icon={IconAlertTriangle} color="gray.7" />
+        <MantineIcon icon={IconAlertTriangle} color="ldGray.7" />
     ) : (
         <FieldIcon item={item} color={getFieldIconColor(item)} size="md" />
     );
@@ -70,6 +71,7 @@ type Props = {
 };
 
 const TreeSingleNodeComponent: FC<Props> = ({ node }) => {
+    const theme = useMantineTheme();
     const itemsMap = useTableTree((context) => {
         return context.itemsMap;
     });
@@ -153,7 +155,7 @@ const TreeSingleNodeComponent: FC<Props> = ({ node }) => {
         return false;
     }, [description, isMissing, item, metricInfo]);
 
-    const bgColor = getItemBgColor(item);
+    const bgColor = getItemBgColor(item, theme);
     const alerts = itemsAlerts?.[getItemId(item)];
     const isFiltered = isField(item) && isFieldFiltered;
     const showFilterAction =
@@ -271,7 +273,8 @@ const TreeSingleNodeComponent: FC<Props> = ({ node }) => {
     // Non-virtualized mode uses NavLink's built-in nesting with childrenOffset
     const pl = useMemo(() => {
         if (isVirtualized) {
-            return depth ? `${(depth + 1) * 24}px` : '24px';
+            // Base padding is 12px, each nesting level adds 20px
+            return `${12 + (depth ?? 0) * 20}px`;
         }
         return undefined;
     }, [depth, isVirtualized]);
@@ -348,7 +351,6 @@ const TreeSingleNodeComponent: FC<Props> = ({ node }) => {
                             <ActionIcon onClick={handleFilterClick}>
                                 <MantineIcon
                                     icon={IconFilter}
-                                    color="gray.7"
                                     style={{ flexShrink: 0 }}
                                 />
                             </ActionIcon>

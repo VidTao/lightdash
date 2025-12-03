@@ -33,7 +33,9 @@ import {
     aiCopilotConfigSchema,
     AiCopilotConfigSchemaType,
     DEFAULT_ANTHROPIC_MODEL_NAME,
+    DEFAULT_BEDROCK_MODEL_NAME,
     DEFAULT_DEFAULT_AI_PROVIDER,
+    DEFAULT_OPENAI_EMBEDDING_MODEL,
     DEFAULT_OPENAI_MODEL_NAME,
     DEFAULT_OPENROUTER_MODEL_NAME,
 } from './aiConfigSchema';
@@ -496,6 +498,12 @@ export const parseBaseS3Config = (): LightdashConfig['s3'] => {
         process.env.S3_EXPIRATION_TIME || '259200', // 3 days in seconds
         10,
     );
+    const useCredentialsFromRaw = getArrayFromCommaSeparatedList(
+        'S3_USE_CREDENTIALS_FROM',
+    );
+    const useCredentialsFrom = useCredentialsFromRaw
+        .map((v) => v.trim().toLowerCase())
+        .filter((v) => v.length > 0);
 
     if (!endpoint || !bucket || !region) {
         return undefined;
@@ -509,6 +517,9 @@ export const parseBaseS3Config = (): LightdashConfig['s3'] => {
         secretKey,
         expirationTime,
         forcePathStyle,
+        useCredentialsFrom: useCredentialsFrom.length
+            ? useCredentialsFrom
+            : undefined,
     };
 };
 
@@ -526,6 +537,7 @@ export const parseResultsS3Config = (): LightdashConfig['results']['s3'] => {
         accessKey: baseAccessKey,
         secretKey: baseSecretKey,
         forcePathStyle: baseForcePathStyle,
+        useCredentialsFrom: baseUseCredentialsFrom,
     } = baseS3Config;
 
     const bucket =
@@ -552,6 +564,7 @@ export const parseResultsS3Config = (): LightdashConfig['results']['s3'] => {
         region,
         accessKey,
         secretKey,
+        useCredentialsFrom: baseUseCredentialsFrom,
     };
 };
 
@@ -623,6 +636,103 @@ const parseAndSanitizeSchedulerTasks = (): Array<SchedulerTaskName> => {
 
     return ALL_TASK_NAMES;
 };
+
+export const getAiConfig = () => ({
+    enabled: process.env.AI_COPILOT_ENABLED === 'true',
+    debugLoggingEnabled:
+        process.env.AI_COPILOT_DEBUG_LOGGING_ENABLED === 'true',
+    telemetryEnabled: process.env.AI_COPILOT_TELEMETRY_ENABLED === 'true',
+    requiresFeatureFlag:
+        process.env.AI_COPILOT_REQUIRES_FEATURE_FLAG === 'true',
+    askAiButtonEnabled: process.env.ASK_AI_BUTTON_ENABLED === 'true',
+    embeddingEnabled: process.env.AI_EMBEDDING_ENABLED === 'true',
+    defaultProvider:
+        process.env.AI_DEFAULT_PROVIDER || DEFAULT_DEFAULT_AI_PROVIDER,
+    defaultEmbeddingModelProvider: process.env.AI_DEFAULT_EMBEDDING_PROVIDER,
+    providers: {
+        azure: process.env.AZURE_AI_API_KEY
+            ? {
+                  endpoint: process.env.AZURE_AI_ENDPOINT,
+                  apiKey: process.env.AZURE_AI_API_KEY,
+                  apiVersion: process.env.AZURE_AI_API_VERSION,
+                  deploymentName: process.env.AZURE_AI_DEPLOYMENT_NAME,
+                  temperature: getFloatFromEnvironmentVariable(
+                      'AZURE_AI_TEMPERATURE',
+                  ),
+              }
+            : undefined,
+        openai: process.env.OPENAI_API_KEY
+            ? {
+                  apiKey: process.env.OPENAI_API_KEY,
+                  modelName:
+                      process.env.OPENAI_MODEL_NAME ||
+                      DEFAULT_OPENAI_MODEL_NAME,
+                  embeddingModelName:
+                      process.env.OPENAI_EMBEDDING_MODEL ||
+                      DEFAULT_OPENAI_EMBEDDING_MODEL,
+                  baseUrl: process.env.OPENAI_BASE_URL,
+                  temperature:
+                      getFloatFromEnvironmentVariable('OPENAI_TEMPERATURE'),
+                  responsesApi: process.env.OPENAI_RESPONSES_API === 'true',
+                  reasoning: {
+                      enabled: process.env.OPENAI_REASONING_ENABLED === 'true',
+                      reasoningSummary: process.env.OPENAI_REASONING_SUMMARY,
+                      reasoningEffort: process.env.OPENAI_REASONING_EFFORT,
+                  },
+              }
+            : undefined,
+        anthropic: process.env.ANTHROPIC_API_KEY
+            ? {
+                  apiKey: process.env.ANTHROPIC_API_KEY,
+                  modelName:
+                      process.env.ANTHROPIC_MODEL_NAME ||
+                      DEFAULT_ANTHROPIC_MODEL_NAME,
+                  temperature: getFloatFromEnvironmentVariable(
+                      'ANTHROPIC_TEMPERATURE',
+                  ),
+              }
+            : undefined,
+        openrouter: process.env.OPENROUTER_API_KEY
+            ? {
+                  apiKey: process.env.OPENROUTER_API_KEY,
+                  modelName:
+                      process.env.OPENROUTER_MODEL_NAME ||
+                      DEFAULT_OPENROUTER_MODEL_NAME,
+                  sortOrder: process.env.OPENROUTER_SORT_ORDER,
+                  allowedProviders: getArrayFromCommaSeparatedList(
+                      'OPENROUTER_ALLOWED_PROVIDERS',
+                  ),
+                  temperature: getFloatFromEnvironmentVariable(
+                      'OPENROUTER_TEMPERATURE',
+                  ),
+              }
+            : undefined,
+        bedrock:
+            process.env.BEDROCK_API_KEY || process.env.BEDROCK_ACCESS_KEY_ID
+                ? {
+                      apiKey: process.env.BEDROCK_API_KEY,
+                      region: process.env.BEDROCK_REGION,
+                      accessKeyId: process.env.BEDROCK_ACCESS_KEY_ID,
+                      secretAccessKey: process.env.BEDROCK_SECRET_ACCESS_KEY,
+                      sessionToken: process.env.BEDROCK_SESSION_TOKEN,
+                      modelName:
+                          process.env.BEDROCK_MODEL_NAME ||
+                          DEFAULT_BEDROCK_MODEL_NAME,
+                      embeddingModelName: process.env.BEDROCK_EMBEDDING_MODEL,
+                      temperature: getFloatFromEnvironmentVariable(
+                          'BEDROCK_TEMPERATURE',
+                      ),
+                  }
+                : undefined,
+    },
+    maxQueryLimit:
+        getIntegerFromEnvironmentVariable('AI_COPILOT_MAX_QUERY_LIMIT') ||
+        AI_DEFAULT_MAX_QUERY_LIMIT,
+    verifiedAnswerSimilarityThreshold:
+        getFloatFromEnvironmentVariable(
+            'AI_VERIFIED_ANSWER_SIMILARITY_THRESHOLD',
+        ) ?? 0.6,
+});
 
 export type LoggingConfig = {
     level: LoggingLevel;
@@ -707,6 +817,7 @@ export type LightdashConfig = {
         };
     };
     // This is the override color palette for the organization
+    // TODO: allow override for dark theme
     appearance: {
         overrideColorPalette?: string[];
         overrideColorPaletteName?: string;
@@ -751,6 +862,10 @@ export type LightdashConfig = {
     };
     embedding: {
         enabled: boolean;
+        allowAll: {
+            dashboards: boolean;
+            charts: boolean;
+        };
         events?: {
             enabled: boolean;
             rateLimiting: {
@@ -849,9 +964,11 @@ export type LightdashConfig = {
         enabled: boolean;
     };
     analyticsEmbedSecret?: string;
-    experimentalExplorerImprovements: boolean;
-    experimentalVirtualizedSideBar: boolean;
+
     dashboardComments: {
+        enabled: boolean;
+    };
+    echarts6: {
         enabled: boolean;
     };
 };
@@ -866,6 +983,7 @@ export type SlackConfig = {
     socketMode?: boolean;
     channelsCachedTime: number;
     supportUrl: string;
+    multiAgentChannelEnabled: boolean;
 };
 export type HeadlessBrowserConfig = {
     host?: string;
@@ -881,6 +999,11 @@ export type S3Config = {
     accessKey?: string;
     secretKey?: string;
     forcePathStyle?: boolean;
+    /**
+     * Ordered list of credential sources to use for AWS SDK credential resolution.
+     * Comma-separated env var S3_USE_CREDENTIALS_FROM -> ["env","token_file","ini","container_metadata","instance_metadata"], etc.
+     */
+    useCredentialsFrom?: string[];
 };
 export type IntercomConfig = {
     appId: string;
@@ -984,6 +1107,15 @@ type AuthSnowflakeConfig = {
     loginPath: string;
 };
 
+type AuthDatabricksConfig = {
+    clientId: string | undefined;
+    clientSecret: string | undefined;
+    authorizationEndpoint: string | undefined;
+    tokenEndpoint: string | undefined;
+    callbackPath: string;
+    loginPath: string;
+};
+
 export type AuthConfig = {
     disablePasswordAuthentication: boolean;
     /**
@@ -998,6 +1130,7 @@ export type AuthConfig = {
     azuread: AuthAzureADConfig;
     oidc: AuthOidcConfig;
     snowflake: AuthSnowflakeConfig;
+    databricks: AuthDatabricksConfig;
     pat: {
         enabled: boolean;
         allowedOrgRoles: OrganizationMemberRole[];
@@ -1079,72 +1212,7 @@ export const parseConfig = (): LightdashConfig => {
         );
     }
 
-    const rawCopilotConfig = {
-        enabled: process.env.AI_COPILOT_ENABLED === 'true',
-        debugLoggingEnabled:
-            process.env.AI_COPILOT_DEBUG_LOGGING_ENABLED === 'true',
-        telemetryEnabled: process.env.AI_COPILOT_TELEMETRY_ENABLED === 'true',
-        requiresFeatureFlag:
-            process.env.AI_COPILOT_REQUIRES_FEATURE_FLAG === 'true',
-        askAiButtonEnabled: process.env.ASK_AI_BUTTON_ENABLED === 'true',
-        defaultProvider:
-            process.env.AI_DEFAULT_PROVIDER || DEFAULT_DEFAULT_AI_PROVIDER,
-        providers: {
-            azure: process.env.AZURE_AI_API_KEY
-                ? {
-                      endpoint: process.env.AZURE_AI_ENDPOINT,
-                      apiKey: process.env.AZURE_AI_API_KEY,
-                      apiVersion: process.env.AZURE_AI_API_VERSION,
-                      deploymentName: process.env.AZURE_AI_DEPLOYMENT_NAME,
-                      temperature: getFloatFromEnvironmentVariable(
-                          'AZURE_AI_TEMPERATURE',
-                      ),
-                  }
-                : undefined,
-            openai: process.env.OPENAI_API_KEY
-                ? {
-                      apiKey: process.env.OPENAI_API_KEY,
-                      modelName:
-                          process.env.OPENAI_MODEL_NAME ||
-                          DEFAULT_OPENAI_MODEL_NAME,
-                      baseUrl: process.env.OPENAI_BASE_URL,
-                      temperature:
-                          getFloatFromEnvironmentVariable('OPENAI_TEMPERATURE'),
-                      responsesApi: process.env.OPENAI_RESPONSES_API === 'true',
-                  }
-                : undefined,
-            anthropic: process.env.ANTHROPIC_API_KEY
-                ? {
-                      apiKey: process.env.ANTHROPIC_API_KEY,
-                      modelName:
-                          process.env.ANTHROPIC_MODEL_NAME ||
-                          DEFAULT_ANTHROPIC_MODEL_NAME,
-                      temperature: getFloatFromEnvironmentVariable(
-                          'ANTHROPIC_TEMPERATURE',
-                      ),
-                  }
-                : undefined,
-            openrouter: process.env.OPENROUTER_API_KEY
-                ? {
-                      apiKey: process.env.OPENROUTER_API_KEY,
-                      modelName:
-                          process.env.OPENROUTER_MODEL_NAME ||
-                          DEFAULT_OPENROUTER_MODEL_NAME,
-                      sortOrder: process.env.OPENROUTER_SORT_ORDER,
-                      allowedProviders: getArrayFromCommaSeparatedList(
-                          'OPENROUTER_ALLOWED_PROVIDERS',
-                      ),
-                      temperature: getFloatFromEnvironmentVariable(
-                          'OPENROUTER_TEMPERATURE',
-                      ),
-                  }
-                : undefined,
-        },
-        maxQueryLimit:
-            getIntegerFromEnvironmentVariable('AI_COPILOT_MAX_QUERY_LIMIT') ||
-            AI_DEFAULT_MAX_QUERY_LIMIT,
-    };
-
+    const rawCopilotConfig = getAiConfig();
     const copilotConfigParse =
         aiCopilotConfigSchema.safeParse(rawCopilotConfig);
 
@@ -1362,6 +1430,15 @@ export const parseConfig = (): LightdashConfig => {
                 loginPath: '/login/snowflake',
                 callbackPath: '/oauth/redirect/snowflake',
             },
+            databricks: {
+                clientId: process.env.DATABRICKS_OAUTH_CLIENT_ID,
+                clientSecret: process.env.DATABRICKS_OAUTH_CLIENT_SECRET,
+                authorizationEndpoint:
+                    process.env.DATABRICKS_OAUTH_AUTHORIZATION_ENDPOINT,
+                tokenEndpoint: process.env.DATABRICKS_OAUTH_TOKEN_ENDPOINT,
+                loginPath: '/login/databricks',
+                callbackPath: '/oauth/redirect/databricks',
+            },
             oauthServer: {
                 accessTokenLifetime:
                     getIntegerFromEnvironmentVariable(
@@ -1446,7 +1523,7 @@ export const parseConfig = (): LightdashConfig => {
             maxColumnLimit:
                 getIntegerFromEnvironmentVariable(
                     'LIGHTDASH_PIVOT_TABLE_MAX_COLUMN_LIMIT',
-                ) || 60,
+                ) || 200,
         },
         headlessBrowser: {
             port: process.env.HEADLESS_BROWSER_PORT,
@@ -1479,6 +1556,8 @@ export const parseConfig = (): LightdashConfig => {
                 10,
             ), // 10 minutes
             supportUrl: process.env.SLACK_SUPPORT_URL || '',
+            multiAgentChannelEnabled:
+                process.env.SLACK_MULTI_AGENT_CHANNEL_ENABLED === 'true',
         },
         scheduler: {
             enabled: process.env.SCHEDULER_ENABLED !== 'false',
@@ -1565,6 +1644,13 @@ export const parseConfig = (): LightdashConfig => {
         },
         embedding: {
             enabled: process.env.EMBEDDING_ENABLED === 'true',
+            allowAll: {
+                dashboards:
+                    process.env.EMBED_ALLOW_ALL_DASHBOARDS_BY_DEFAULT ===
+                    'true',
+                charts:
+                    process.env.EMBED_ALLOW_ALL_CHARTS_BY_DEFAULT === 'true',
+            },
             events: {
                 enabled: process.env.EMBED_EVENT_SYSTEM_ENABLED === 'true',
                 rateLimiting: {
@@ -1634,12 +1720,11 @@ export const parseConfig = (): LightdashConfig => {
             enabled: process.env.CUSTOM_ROLES_ENABLED === 'true',
         },
         analyticsEmbedSecret: process.env.ANALYTICS_EMBED_SECRET,
-        experimentalExplorerImprovements:
-            process.env.EXPERIMENTAL_EXPLORER_IMPROVEMENTS === 'true',
-        experimentalVirtualizedSideBar:
-            process.env.EXPERIMENTAL_VIRTUALIZED_SIDE_BAR === 'true',
         dashboardComments: {
             enabled: process.env.DISABLE_DASHBOARD_COMMENTS !== 'true',
+        },
+        echarts6: {
+            enabled: process.env.ECHARTS_V6_ENABLED === 'true',
         },
     };
 };

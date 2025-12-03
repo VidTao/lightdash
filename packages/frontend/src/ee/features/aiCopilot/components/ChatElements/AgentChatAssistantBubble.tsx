@@ -1,29 +1,28 @@
 import {
-    ChartKind,
     type AiAgentMessageAssistant,
     type ToolProposeChangeArgs,
 } from '@lightdash/common';
 import {
     ActionIcon,
     Alert,
-    Anchor,
     Button,
     CopyButton,
     Group,
     Loader,
     Paper,
+    Popover,
     Stack,
     Text,
+    Textarea,
     Tooltip,
 } from '@mantine-8/core';
 import { useDisclosure } from '@mantine-8/hooks';
 import {
-    IconArrowRight,
     IconBug,
     IconCheck,
     IconCopy,
     IconExclamationCircle,
-    IconLayoutDashboard,
+    IconMessageX,
     IconRefresh,
     IconTestPipe,
     IconThumbDown,
@@ -32,21 +31,22 @@ import {
     IconThumbUpFilled,
 } from '@tabler/icons-react';
 import MDEditor from '@uiw/react-md-editor';
-import { memo, useCallback, type FC } from 'react';
+import { memo, useCallback, useState, type FC } from 'react';
 import MantineIcon from '../../../../../components/common/MantineIcon';
-import { getChartIcon } from '../../../../../components/common/ResourceIcon/utils';
 import {
     mdEditorComponents,
     rehypeRemoveHeaderLinks,
     useMdEditorStyle,
 } from '../../../../../utils/markdownUtils';
-import { useUpdatePromptFeedbackMutation } from '../../hooks/useProjectAiAgents';
+import {
+    useRetryAiAgentThreadMessageMutation,
+    useUpdatePromptFeedbackMutation,
+} from '../../hooks/useProjectAiAgents';
 import { setArtifact } from '../../store/aiArtifactSlice';
 import {
     useAiAgentStoreDispatch,
     useAiAgentStoreSelector,
 } from '../../store/hooks';
-import { useAiAgentThreadStreamMutation } from '../../streaming/useAiAgentThreadStreamMutation';
 import {
     useAiAgentThreadMessageStreaming,
     useAiAgentThreadStreamQuery,
@@ -55,9 +55,11 @@ import styles from './AgentChatAssistantBubble.module.css';
 import AgentChatDebugDrawer from './AgentChatDebugDrawer';
 import { AiArtifactInline } from './AiArtifactInline';
 import { AiArtifactButton } from './ArtifactButton/AiArtifactButton';
+import { ContentLink } from './ContentLink';
 import { rehypeAiAgentContentLinks } from './rehypeContentLinks';
 import { AiChartToolCalls } from './ToolCalls/AiChartToolCalls';
 import { AiProposeChangeToolCall } from './ToolCalls/AiProposeChangeToolCall';
+import { AiReasoning } from './ToolCalls/AiReasoning';
 
 const AssistantBubbleContent: FC<{
     message: AiAgentMessageAssistant;
@@ -69,33 +71,32 @@ const AssistantBubbleContent: FC<{
         message.threadUuid,
         message.uuid,
     );
-    const { streamMessage } = useAiAgentThreadStreamMutation();
+    const { mutate: handleRetry } = useRetryAiAgentThreadMessageMutation();
     const mdStyle = useMdEditorStyle();
 
-    const hasStreamingError =
-        streamingState?.error && streamingState?.messageUuid === message.uuid;
-    const hasNoResponse = !isStreaming && !message.message;
-    const shouldShowRetry = hasStreamingError || hasNoResponse;
+    const isPending = message.status === 'pending';
+    const hasNoResponse = !isStreaming && !message.message && !isPending;
+    const shouldShowRetry = hasNoResponse;
 
-    const messageContent =
+    const baseMessageContent =
         isStreaming && streamingState
             ? streamingState.content
-            : message.message ?? 'No response...';
+            : message.message ?? '';
 
-    const handleRetry = useCallback(() => {
-        void streamMessage({
-            projectUuid,
-            agentUuid,
-            threadUuid: message.threadUuid,
-            messageUuid: message.uuid,
-        });
-    }, [
-        streamMessage,
-        agentUuid,
-        message.threadUuid,
-        message.uuid,
-        projectUuid,
-    ]);
+    const referencedArtifactsMarkdown =
+        !isStreaming &&
+        !isPending &&
+        message.referencedArtifacts &&
+        message.referencedArtifacts.length > 0
+            ? `\n\nReferenced answers: ${message.referencedArtifacts
+                  .map(
+                      (artifact) =>
+                          `[${artifact.title}](#artifact-link#artifact-uuid-${artifact.artifactUuid}#version-uuid-${artifact.versionUuid}#artifact-type-${artifact.artifactType})`,
+                  )
+                  .join(', ')}`
+            : '';
+
+    const messageContent = baseMessageContent + referencedArtifactsMarkdown;
 
     const proposeChangeToolCall = isStreaming
         ? (streamingState?.toolCalls.find((t) => t.toolName === 'proposeChange')
@@ -107,6 +108,10 @@ const AssistantBubbleContent: FC<{
         (result) => result.toolName === 'proposeChange',
     );
 
+    const toolCalls = isStreaming
+        ? streamingState?.toolCalls ?? []
+        : message.toolCalls;
+
     return (
         <>
             {shouldShowRetry && (
@@ -115,7 +120,7 @@ const AssistantBubbleContent: FC<{
                     radius="md"
                     pr="md"
                     shadow="none"
-                    bg="gray.0"
+                    bg="ldGray.0"
                     style={{
                         borderStyle: 'dashed',
                     }}
@@ -129,7 +134,7 @@ const AssistantBubbleContent: FC<{
                                     size="md"
                                 />
                             }
-                            color="gray.0"
+                            color="ldGray.0"
                             variant="outline"
                         >
                             <Stack gap={4}>
@@ -145,15 +150,22 @@ const AssistantBubbleContent: FC<{
                         <Button
                             size="xs"
                             variant="default"
-                            color="dark.5"
+                            color="ldDark.5"
                             leftSection={
                                 <MantineIcon
                                     icon={IconRefresh}
                                     size="sm"
-                                    color="gray.7"
+                                    color="ldGray.7"
                                 />
                             }
-                            onClick={handleRetry}
+                            onClick={() =>
+                                handleRetry({
+                                    projectUuid,
+                                    agentUuid,
+                                    threadUuid: message.threadUuid,
+                                    messageUuid: message.uuid,
+                                })
+                            }
                         >
                             Try again
                         </Button>
@@ -161,26 +173,25 @@ const AssistantBubbleContent: FC<{
                 </Paper>
             )}
 
-            {isStreaming && (
-                <AiChartToolCalls
-                    toolCalls={streamingState?.toolCalls}
+            {isStreaming && streamingState?.reasoning && (
+                <AiReasoning
+                    reasoning={streamingState.reasoning}
                     type="streaming"
-                    projectUuid={projectUuid}
-                    agentUuid={agentUuid}
-                    threadUuid={message.threadUuid}
-                    promptUuid={message.uuid}
                 />
             )}
-            {!isStreaming && message.toolCalls.length > 0 && (
+            {!isStreaming && message.reasoning.length > 0 && (
+                <AiReasoning reasoning={message.reasoning} type="persisted" />
+            )}
+            {toolCalls.length > 0 ? (
                 <AiChartToolCalls
-                    toolCalls={message.toolCalls}
-                    type="persisted"
+                    toolCalls={toolCalls}
+                    type={isStreaming || isPending ? 'streaming' : 'persisted'}
                     projectUuid={projectUuid}
                     agentUuid={agentUuid}
                     threadUuid={message.threadUuid}
                     promptUuid={message.uuid}
                 />
-            )}
+            ) : null}
             {messageContent.length > 0 ? (
                 <MDEditor.Markdown
                     rehypeRewrite={rehypeRemoveHeaderLinks}
@@ -195,103 +206,25 @@ const AssistantBubbleContent: FC<{
                                 typeof props['data-content-type'] === 'string'
                                     ? props['data-content-type']
                                     : undefined;
-                            const chartType =
-                                'data-chart-type' in props &&
-                                typeof props['data-chart-type'] === 'string'
-                                    ? props['data-chart-type']
-                                    : undefined;
 
-                            if (contentType === 'dashboard-link') {
-                                return (
-                                    <Anchor
-                                        {...props}
-                                        target="_blank"
-                                        fz="sm"
-                                        fw={500}
-                                        bg="gray.0"
-                                        c="gray.7"
-                                        td="none"
-                                        classNames={{
-                                            root: styles.contentLink,
-                                        }}
-                                    >
-                                        <MantineIcon
-                                            icon={IconLayoutDashboard}
-                                            size="md"
-                                            color="green.7"
-                                            fill="green.6"
-                                            fillOpacity={0.2}
-                                            strokeWidth={1.9}
-                                        />
-
-                                        {/* margin is added by md package */}
-                                        <Text fz="sm" fw={500} m={0}>
-                                            {children}
-                                        </Text>
-
-                                        <MantineIcon
-                                            icon={IconArrowRight}
-                                            color="gray.7"
-                                            size="sm"
-                                            strokeWidth={2.0}
-                                        />
-                                    </Anchor>
-                                );
-                            } else if (contentType === 'chart-link') {
-                                const chartTypeKind =
-                                    chartType &&
-                                    Object.values(ChartKind).includes(
-                                        chartType as ChartKind,
-                                    )
-                                        ? (chartType as ChartKind)
-                                        : undefined;
-                                return (
-                                    <Anchor
-                                        {...props}
-                                        target="_blank"
-                                        fz="sm"
-                                        fw={500}
-                                        bg="gray.0"
-                                        c="gray.7"
-                                        td="none"
-                                        classNames={{
-                                            root: styles.contentLink,
-                                        }}
-                                    >
-                                        {chartTypeKind && (
-                                            <MantineIcon
-                                                icon={getChartIcon(
-                                                    chartTypeKind,
-                                                )}
-                                                size="md"
-                                                color="blue.7"
-                                                fill="blue.4"
-                                                fillOpacity={0.2}
-                                                strokeWidth={1.9}
-                                            />
-                                        )}
-
-                                        {/* margin is added by md package */}
-                                        <Text fz="sm" fw={500} m={0}>
-                                            {children}
-                                        </Text>
-
-                                        <MantineIcon
-                                            icon={IconArrowRight}
-                                            color="gray.7"
-                                            size="sm"
-                                            strokeWidth={2.0}
-                                        />
-                                    </Anchor>
-                                );
-                            }
-
-                            return <a {...props}>{children}</a>;
+                            return (
+                                <ContentLink
+                                    contentType={contentType}
+                                    props={props}
+                                    message={message}
+                                    projectUuid={projectUuid}
+                                    agentUuid={agentUuid}
+                                >
+                                    {children}
+                                </ContentLink>
+                            );
                         },
                     }}
                 />
             ) : null}
-            {isStreaming ? <Loader type="dots" color="gray" /> : null}
+            {isStreaming || isPending ? (
+                <Loader type="dots" color="gray" />
+            ) : null}
             {proposeChangeToolCall && (
                 <AiProposeChangeToolCall
                     change={proposeChangeToolCall.change}
@@ -337,10 +270,6 @@ export const AssistantBubble: FC<Props> = memo(
         if (!projectUuid) throw new Error(`Project Uuid not found`);
         if (!agentUuid) throw new Error(`Agent Uuid not found`);
 
-        const isArtifactAvailable = !!(
-            message.artifacts && message.artifacts.length > 0
-        );
-
         const [isDrawerOpen, { open: openDrawer, close: closeDrawer }] =
             useDisclosure(debug);
 
@@ -354,33 +283,65 @@ export const AssistantBubble: FC<Props> = memo(
         const downVoted = message.humanScore === -1;
         const hasRating = upVoted || downVoted;
 
+        const [popoverOpened, { open: openPopover, close: closePopover }] =
+            useDisclosure(false);
+        const [feedbackText, setFeedbackText] = useState('');
+
         const handleUpvote = useCallback(() => {
-            if (hasRating) return;
             updateFeedbackMutation.mutate({
                 messageUuid: message.uuid,
-                humanScore: 1,
+                humanScore: upVoted ? 0 : 1,
             });
-        }, [hasRating, updateFeedbackMutation, message.uuid]);
+        }, [updateFeedbackMutation, message.uuid, upVoted]);
 
         const handleDownvote = useCallback(() => {
-            if (hasRating) return;
-            updateFeedbackMutation.mutate({
-                messageUuid: message.uuid,
-                humanScore: -1,
-            });
-        }, [hasRating, updateFeedbackMutation, message.uuid]);
+            if (downVoted) {
+                updateFeedbackMutation.mutate({
+                    messageUuid: message.uuid,
+                    humanScore: 0,
+                });
+            } else {
+                updateFeedbackMutation.mutate({
+                    messageUuid: message.uuid,
+                    humanScore: -1,
+                });
+                openPopover();
+            }
+        }, [updateFeedbackMutation, message.uuid, downVoted, openPopover]);
 
-        const isLoading = useAiAgentThreadMessageStreaming(
-            message.threadUuid,
-            message.uuid,
-        );
+        const handleSubmitFeedback = useCallback(() => {
+            if (feedbackText.trim().length !== 0) {
+                updateFeedbackMutation.mutate({
+                    messageUuid: message.uuid,
+                    humanScore: -1,
+                    humanFeedback: feedbackText.trim(),
+                });
+            }
+            closePopover();
+            setFeedbackText('');
+        }, [updateFeedbackMutation, message.uuid, feedbackText, closePopover]);
+
+        const handleCancelFeedback = useCallback(() => {
+            closePopover();
+            setFeedbackText('');
+        }, [closePopover]);
+
+        const isPending = message.status === 'pending';
+        const isLoading =
+            useAiAgentThreadMessageStreaming(
+                message.threadUuid,
+                message.uuid,
+            ) || isPending;
+
+        const isArtifactAvailable =
+            !!(message.artifacts && message.artifacts.length > 0) && !isPending;
 
         return (
             <Stack
                 pos="relative"
                 w="100%"
                 gap="xs"
-                bg={isActive ? 'gray.0' : 'transparent'}
+                bg={isActive ? 'ldGray.0' : 'transparent'}
                 style={{
                     overflow: 'unset',
                     borderStartStartRadius: '0px',
@@ -424,7 +385,9 @@ export const AssistantBubble: FC<Props> = memo(
                                                       messageArtifact.artifactUuid,
                                                   versionUuid:
                                                       messageArtifact.versionUuid,
-                                                  message: message,
+                                                  messageUuid: message.uuid,
+                                                  threadUuid:
+                                                      message.threadUuid,
                                                   projectUuid: projectUuid,
                                                   agentUuid: agentUuid,
                                               }),
@@ -441,101 +404,181 @@ export const AssistantBubble: FC<Props> = memo(
                               ))}
                     </Stack>
                 )}
-                <Group gap={0}>
-                    <CopyButton value={message.message ?? ''}>
-                        {({ copied, copy }) => (
+                {!popoverOpened && downVoted && message.humanFeedback && (
+                    <Paper p="xs" mt="xs" radius="md" withBorder>
+                        <Stack gap="xs">
+                            <Group gap="xs">
+                                <MantineIcon
+                                    icon={IconMessageX}
+                                    size={16}
+                                    color="ldGray.7"
+                                />
+                                <Text size="xs" c="dimmed" fw={600}>
+                                    User feedback
+                                </Text>
+                            </Group>
+                            <Text size="sm" c="dimmed" fw={500}>
+                                {message.humanFeedback}
+                            </Text>
+                        </Stack>
+                    </Paper>
+                )}
+                {isLoading ? null : (
+                    <Group gap={0}>
+                        <CopyButton value={message.message ?? ''}>
+                            {({ copied, copy }) => (
+                                <ActionIcon
+                                    variant="subtle"
+                                    color="gray"
+                                    aria-label="copy"
+                                    onClick={copy}
+                                >
+                                    <MantineIcon
+                                        icon={copied ? IconCheck : IconCopy}
+                                    />
+                                </ActionIcon>
+                            )}
+                        </CopyButton>
+
+                        {(!hasRating || upVoted) && (
                             <ActionIcon
                                 variant="subtle"
                                 color="gray"
-                                aria-label="copy"
-                                onClick={copy}
-                                style={{
-                                    display: isLoading ? 'none' : 'block',
-                                }}
+                                aria-label="upvote"
+                                onClick={handleUpvote}
                             >
-                                <MantineIcon
-                                    icon={copied ? IconCheck : IconCopy}
-                                />
+                                <Tooltip
+                                    label="Feedback sent"
+                                    position="top"
+                                    withinPortal
+                                    withArrow
+                                    // Hack to only render tooltip (on hover) when `hasRating` is false
+                                    opened={hasRating ? undefined : false}
+                                >
+                                    <MantineIcon
+                                        icon={
+                                            upVoted
+                                                ? IconThumbUpFilled
+                                                : IconThumbUp
+                                        }
+                                    />
+                                </Tooltip>
                             </ActionIcon>
                         )}
-                    </CopyButton>
 
-                    {(!hasRating || upVoted) && (
-                        <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label="upvote"
-                            onClick={handleUpvote}
-                            display={isLoading ? 'none' : 'block'}
-                        >
-                            <Tooltip
-                                label="Feedback sent"
-                                position="top"
-                                withinPortal
+                        {(!hasRating || downVoted) && (
+                            <Popover
+                                width={500}
+                                position="top-start"
+                                trapFocus
+                                opened={popoverOpened}
+                                onChange={() => {
+                                    closePopover();
+                                    setFeedbackText('');
+                                }}
                                 withArrow
-                                // Hack to only render tooltip (on hover) when `hasRating` is false
-                                opened={hasRating ? undefined : false}
                             >
-                                <MantineIcon
-                                    icon={
-                                        upVoted
-                                            ? IconThumbUpFilled
-                                            : IconThumbUp
-                                    }
-                                />
+                                <Popover.Target>
+                                    <ActionIcon
+                                        variant="subtle"
+                                        color="gray"
+                                        aria-label="downvote"
+                                        onClick={handleDownvote}
+                                    >
+                                        <MantineIcon
+                                            icon={
+                                                downVoted
+                                                    ? IconThumbDownFilled
+                                                    : IconThumbDown
+                                            }
+                                        />
+                                    </ActionIcon>
+                                </Popover.Target>
+                                <Popover.Dropdown>
+                                    <form
+                                        onSubmit={(e) => {
+                                            e.preventDefault();
+                                            handleSubmitFeedback();
+                                        }}
+                                    >
+                                        <Stack gap="xs">
+                                            <Textarea
+                                                autoFocus
+                                                classNames={{
+                                                    input: styles.feedbackInput,
+                                                }}
+                                                placeholder="Tell us what went wrong, feedback will be added to agent context (optional)"
+                                                value={feedbackText}
+                                                onChange={(e) =>
+                                                    setFeedbackText(
+                                                        e.currentTarget.value,
+                                                    )
+                                                }
+                                                minRows={3}
+                                                maxRows={5}
+                                                radius="md"
+                                                resize="vertical"
+                                            />
+                                            <Group gap="xs">
+                                                <Button
+                                                    type="submit"
+                                                    size="xs"
+                                                    color="ldDark.5"
+                                                >
+                                                    Submit
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="xs"
+                                                    variant="subtle"
+                                                    onClick={
+                                                        handleCancelFeedback
+                                                    }
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </Group>
+                                        </Stack>
+                                    </form>
+                                </Popover.Dropdown>
+                            </Popover>
+                        )}
+
+                        {showAddToEvalsButton && onAddToEvals && (
+                            <Tooltip label="Add this response to evals">
+                                <ActionIcon
+                                    variant="subtle"
+                                    color="gray"
+                                    aria-label="Add to evaluation set"
+                                    onClick={() => onAddToEvals(message.uuid)}
+                                >
+                                    <MantineIcon
+                                        icon={IconTestPipe}
+                                        color="gray"
+                                    />
+                                </ActionIcon>
                             </Tooltip>
-                        </ActionIcon>
-                    )}
+                        )}
 
-                    {(!hasRating || downVoted) && (
-                        <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label="downvote"
-                            onClick={handleDownvote}
-                            display={isLoading ? 'none' : 'block'}
-                        >
-                            <MantineIcon
-                                icon={
-                                    downVoted
-                                        ? IconThumbDownFilled
-                                        : IconThumbDown
-                                }
-                            />
-                        </ActionIcon>
-                    )}
-
-                    {showAddToEvalsButton && onAddToEvals && (
-                        <Tooltip label="Add this response to evals">
+                        {isArtifactAvailable && (
                             <ActionIcon
                                 variant="subtle"
                                 color="gray"
-                                aria-label="Add to evaluation set"
-                                onClick={() => onAddToEvals(message.uuid)}
-                                display={isLoading ? 'none' : 'block'}
+                                aria-label="Debug information"
+                                onClick={openDrawer}
                             >
-                                <MantineIcon icon={IconTestPipe} color="gray" />
+                                <MantineIcon icon={IconBug} color="gray" />
                             </ActionIcon>
-                        </Tooltip>
-                    )}
-
-                    {isArtifactAvailable && (
-                        <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label="Debug information"
-                            onClick={openDrawer}
-                        >
-                            <MantineIcon icon={IconBug} color="gray" />
-                        </ActionIcon>
-                    )}
-                </Group>
+                        )}
+                    </Group>
+                )}
 
                 <AgentChatDebugDrawer
                     agentUuid={agentUuid}
                     projectUuid={projectUuid}
                     artifacts={message.artifacts}
                     toolCalls={message.toolCalls}
+                    toolResults={message.toolResults}
                     isVisualizationAvailable={isArtifactAvailable}
                     isDrawerOpen={isDrawerOpen}
                     onClose={closeDrawer}

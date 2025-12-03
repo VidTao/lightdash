@@ -8,7 +8,7 @@ import type {
 import { type AnyType } from './any';
 import { CompileError } from './errors';
 import { type MetricFilterRule } from './filter';
-import { type TimeFrames } from './timeFrames';
+import type { TimeFrames } from './timeFrames';
 
 export enum Compact {
     THOUSANDS = 'thousands',
@@ -325,7 +325,7 @@ export enum WindowFunctionType {
     MAX = 'max',
 }
 
-export const nillaryWindowFunctions: WindowFunctionType[] = [
+export const nullaryWindowFunctions: WindowFunctionType[] = [
     WindowFunctionType.ROW_NUMBER,
     WindowFunctionType.PERCENT_RANK,
     WindowFunctionType.CUME_DIST,
@@ -566,6 +566,12 @@ export interface Dimension extends Field {
     colors?: Record<string, string>;
     isIntervalBase?: boolean;
     aiHint?: string | string[];
+    image?: {
+        url: string;
+        width?: number;
+        height?: number;
+        fit?: string;
+    };
 }
 
 type CompiledProperties = {

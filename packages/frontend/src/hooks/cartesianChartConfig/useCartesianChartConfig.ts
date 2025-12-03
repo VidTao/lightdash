@@ -157,7 +157,9 @@ function getXAxisSortConfig(
 
 export const EMPTY_CARTESIAN_CHART_CONFIG: CartesianChart = {
     layout: {},
-    eChartsConfig: {},
+    eChartsConfig: {
+        showAxisTicks: false, // New charts default to hiding tick lines
+    },
 };
 
 const useCartesianChartConfig = ({
@@ -180,7 +182,14 @@ const useCartesianChartConfig = ({
 
     const [dirtyEchartsConfig, setDirtyEchartsConfig] = useState<
         Partial<CartesianChart['eChartsConfig']> | undefined
-    >(initialChartConfig?.eChartsConfig);
+    >(
+        initialChartConfig?.eChartsConfig
+            ? {
+                  ...EMPTY_CARTESIAN_CHART_CONFIG.eChartsConfig,
+                  ...initialChartConfig.eChartsConfig,
+              }
+            : initialChartConfig?.eChartsConfig,
+    );
     const isInitiallyStacked = (dirtyEchartsConfig?.series || []).some(
         (series: Series) => series.stack !== undefined,
     );
@@ -372,6 +381,13 @@ const useCartesianChartConfig = ({
             showYAxis: hide,
         }));
     }, []);
+    const setShowAxisTicks = useCallback((show: boolean) => {
+        setDirtyEchartsConfig((prev) => ({
+            ...prev,
+            showAxisTicks: show,
+        }));
+    }, []);
+
     const setXAxisSort = useCallback((sort: XAxisSort) => {
         setDirtyEchartsConfig((prevState) => {
             const [firstAxis, ...axes] = prevState?.xAxis || [];
@@ -388,6 +404,15 @@ const useCartesianChartConfig = ({
             return {
                 ...prevState,
                 xAxis: [{ ...firstAxis, rotate: rotation }, ...axes],
+            };
+        });
+    }, []);
+    const setScrollableChart = useCallback((enableDataZoom: boolean) => {
+        setDirtyEchartsConfig((prevState) => {
+            const [firstAxis, ...axes] = prevState?.xAxis || [];
+            return {
+                ...prevState,
+                xAxis: [{ ...firstAxis, enableDataZoom }, ...axes],
             };
         });
     }, []);
@@ -838,9 +863,26 @@ const useCartesianChartConfig = ({
                     newYFields = [availableDimensions[1]];
                 }
 
-                // don't fallback pivot dimensions if we are using sql pivot results
-                if (itemsMap !== undefined && !useSqlPivotResults?.enabled)
+                // Only add pivot dimensions when:
+                // 1. We have a suggestion (newPivotFields is non-empty)
+                // 2. Not using sql pivot results
+                // 3. No existing pivot is set
+                // 4. We have itemsMap (fields are loaded)
+                if (
+                    newPivotFields.length > 0 &&
+                    itemsMap !== undefined &&
+                    !useSqlPivotResults?.enabled &&
+                    !pivotKeys
+                ) {
                     setPivotDimensions(newPivotFields);
+                }
+
+                // Don't update if we don't have a valid configuration
+                // This prevents infinite loops when insufficient fields are selected
+                if (!newXField || newYFields.length === 0) {
+                    return prev;
+                }
+
                 return {
                     ...prev,
                     xField: newXField,
@@ -852,6 +894,7 @@ const useCartesianChartConfig = ({
         availableDimensions,
         availableFields,
         availableMetrics,
+        pivotKeys,
         getXField,
         getYFields,
         isFieldValidTableCalculation,
@@ -931,6 +974,7 @@ const useCartesianChartConfig = ({
                 const newSeries = mergeExistingAndExpectedSeries({
                     expectedSeriesMap,
                     existingSeries: prev?.series || [],
+                    resultsColumns: resultsData.columns,
                 });
 
                 const seriesWithReferenceLines = applyReferenceLines(
@@ -1029,8 +1073,10 @@ const useCartesianChartConfig = ({
         setShowGridY,
         setShowXAxis,
         setShowYAxis,
+        setShowAxisTicks,
         setXAxisSort,
         setXAxisLabelRotation,
+        setScrollableChart,
         updateSeries,
         referenceLines,
         setReferenceLines,

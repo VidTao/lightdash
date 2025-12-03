@@ -117,7 +117,6 @@ export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArgument
                     asyncQueryService: repository.getAsyncQueryService(),
                     userAttributesModel: models.getUserAttributesModel(),
                     searchModel: models.getSearchModel(),
-                    spaceModel: models.getSpaceModel(),
                     slackAuthenticationModel:
                         models.getSlackAuthenticationModel() as CommercialSlackAuthenticationModel,
                     schedulerClient:
@@ -127,6 +126,7 @@ export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArgument
                     projectModel: models.getProjectModel(),
                     aiOrganizationSettingsService:
                         repository.getAiOrganizationSettingsService(),
+                    shareService: repository.getShareService(),
                     prometheusMetrics,
                 }),
             aiAgentAdminService: ({ models, context }) =>
@@ -155,6 +155,7 @@ export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArgument
                     commercialFeatureFlagModel:
                         models.getFeatureFlagModel() as CommercialFeatureFlagModel,
                     rolesModel: models.getRolesModel(),
+                    projectModel: models.getProjectModel(),
                 }),
             serviceAccountService: ({ models, context }) =>
                 new ServiceAccountService({
@@ -289,7 +290,7 @@ export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArgument
                     downloadAuditModel: models.getDownloadAuditModel(),
                     cacheService: repository.getCacheService(),
                     savedSqlModel: models.getSavedSqlModel(),
-                    storageClient: clients.getResultsFileStorageClient(),
+                    resultsStorageClient: clients.getResultsFileStorageClient(),
                     featureFlagModel: models.getFeatureFlagModel(),
                     projectParametersModel: models.getProjectParametersModel(),
                     organizationWarehouseCredentialsModel:
@@ -313,7 +314,6 @@ export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArgument
                     projectService: repository.getProjectService(),
                     userAttributesModel: models.getUserAttributesModel(),
                     searchModel: models.getSearchModel(),
-                    spaceModel: models.getSpaceModel(),
                     spaceService: repository.getSpaceService(),
                     mcpContextModel: models.getMcpContextModel(),
                     projectModel: models.getProjectModel(),
@@ -327,7 +327,8 @@ export async function getEnterpriseAppArguments(): Promise<EnterpriseAppArgument
                 }),
         },
         modelProviders: {
-            aiAgentModel: ({ database }) => new AiAgentModel({ database }),
+            aiAgentModel: ({ database }) =>
+                new AiAgentModel({ database, lightdashConfig }),
             aiOrganizationSettingsModel: ({ database }) =>
                 new AiOrganizationSettingsModel({ database }),
             embedModel: ({ database }) => new EmbedModel({ database }),

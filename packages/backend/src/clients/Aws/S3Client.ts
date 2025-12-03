@@ -3,14 +3,15 @@ import {
     PutObjectCommandInput,
     S3,
     S3ServiceException,
-    type S3ClientConfig,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
+    DownloadFileType,
     getErrorMessage,
     MissingConfigError,
     S3Error,
+    type WarehouseResults,
 } from '@lightdash/common';
 import * as Sentry from '@sentry/node';
 import { ReadStream } from 'fs';
@@ -18,49 +19,25 @@ import { PassThrough, Readable } from 'stream';
 import { LightdashConfig } from '../../config/parseConfig';
 import Logger from '../../logging/logger';
 import { createContentDispositionHeader } from '../../utils/FileDownloadUtils/FileDownloadUtils';
+import getContentTypeFromFileType from './getContentTypeFromFileType';
+import { S3BaseClient } from './S3BaseClient';
 
 type S3ClientArguments = {
     lightdashConfig: LightdashConfig;
 };
 
-export class S3Client {
+export class S3Client extends S3BaseClient {
     lightdashConfig: LightdashConfig;
 
-    private readonly s3?: S3;
-
     constructor({ lightdashConfig }: S3ClientArguments) {
+        super(lightdashConfig.s3);
         this.lightdashConfig = lightdashConfig;
-
-        if (lightdashConfig.s3?.endpoint && lightdashConfig.s3.region) {
-            const s3Config: S3ClientConfig = {
-                region: lightdashConfig.s3.region,
-                apiVersion: '2006-03-01',
-                endpoint: lightdashConfig.s3.endpoint,
-                forcePathStyle: lightdashConfig.s3.forcePathStyle,
-            };
-
-            if (lightdashConfig.s3?.accessKey && lightdashConfig.s3.secretKey) {
-                Object.assign(s3Config, {
-                    credentials: {
-                        accessKeyId: lightdashConfig.s3.accessKey,
-                        secretAccessKey: lightdashConfig.s3.secretKey,
-                    },
-                });
-                Logger.debug('Using S3 storage with access key credentials');
-            } else {
-                Logger.debug('Using S3 storage with IAM role credentials');
-            }
-
-            this.s3 = new S3(s3Config);
-        } else {
-            Logger.debug('Missing S3 bucket configuration');
-        }
     }
 
     private async uploadFile(
         fileId: string,
         file: PutObjectCommandInput['Body'],
-        contentType: string,
+        fileOpts: { contentType: string; attachmentDownloadName?: string },
         urlOptions?: { expiresIn: number },
     ): Promise<string> {
         if (!this.lightdashConfig.s3?.bucket || this.s3 === undefined) {
@@ -74,9 +51,11 @@ export class S3Client {
                 Bucket: this.lightdashConfig.s3.bucket,
                 Key: fileId,
                 Body: file,
-                ContentType: contentType,
+                ContentType: fileOpts.contentType,
                 ACL: 'private',
-                ContentDisposition: createContentDispositionHeader(fileId),
+                ContentDisposition: createContentDispositionHeader(
+                    fileOpts.attachmentDownloadName || fileId,
+                ),
             },
         });
         try {
@@ -131,27 +110,48 @@ export class S3Client {
         url: string;
     }> {
         const fileName = `${id}.pdf`;
-        const url = await this.uploadFile(fileName, pdf, 'application/pdf');
+        const url = await this.uploadFile(fileName, pdf, {
+            contentType: 'application/pdf',
+        });
         return { fileName, url };
     }
 
     async uploadTxt(txt: Buffer, id: string): Promise<string> {
-        return this.uploadFile(`${id}.txt`, txt, 'text/plain');
+        return this.uploadFile(`${id}.txt`, txt, { contentType: 'text/plain' });
     }
 
     async uploadImage(image: Buffer, imageId: string): Promise<string> {
-        return this.uploadFile(`${imageId}.png`, image, 'image/png');
+        return this.uploadFile(`${imageId}.png`, image, {
+            contentType: 'image/png',
+        });
     }
 
     async uploadCsv(
         csv: PutObjectCommandInput['Body'],
         csvName: string,
+        attachmentDownloadName?: string,
     ): Promise<string> {
-        return this.uploadFile(csvName, csv, 'text/csv');
+        return this.uploadFile(csvName, csv, {
+            contentType: 'text/csv',
+            attachmentDownloadName,
+        });
     }
 
     async uploadZip(zip: ReadStream, zipName: string): Promise<string> {
-        return this.uploadFile(zipName, zip, 'application/zip');
+        return this.uploadFile(zipName, zip, {
+            contentType: 'application/zip',
+        });
+    }
+
+    async uploadExcel(
+        excel: ReadStream,
+        excelName: string,
+        attachmentDownloadName?: string,
+    ): Promise<string> {
+        return this.uploadFile(excelName, excel, {
+            contentType: getContentTypeFromFileType(DownloadFileType.XLSX),
+            attachmentDownloadName,
+        });
     }
 
     /*
@@ -254,6 +254,115 @@ export class S3Client {
 
             throw error;
         }
+    }
+
+    /**
+     * Creates an upload stream for writing data directly to S3
+     * This is same as createUploadStream from S3ResultsFileStorageClient but for the exports bucket
+     * @param fileName - Name of the file to upload
+     * @param opts - Upload options including content type
+     * @param attachmentDownloadName - Optional download name for Content-Disposition header
+     * @returns Object with write function, close function, and the PassThrough stream
+     */
+    createResultsExportUploadStream(
+        fileName: string,
+        opts: {
+            contentType: string;
+        },
+        attachmentDownloadName?: string,
+    ) {
+        if (!this.lightdashConfig.s3 || !this.s3) {
+            throw new MissingConfigError('S3 configuration is not set');
+        }
+
+        const passThrough = new PassThrough();
+
+        const contentDisposition = createContentDispositionHeader(
+            attachmentDownloadName || fileName,
+        );
+
+        Logger.debug(
+            `Creating upload stream for ${this.lightdashConfig.s3.bucket}/${fileName} with content disposition: ${contentDisposition} and contentType: ${opts.contentType}`,
+        );
+
+        const upload = new Upload({
+            client: this.s3,
+            params: {
+                Bucket: this.lightdashConfig.s3.bucket,
+                Key: fileName,
+                Body: passThrough,
+                ContentType: opts.contentType,
+                ContentDisposition: contentDisposition,
+            },
+        });
+
+        let isClosed = false;
+        const close = async () => {
+            if (!this.lightdashConfig.s3) {
+                throw new MissingConfigError('S3 configuration is not set');
+            }
+
+            if (isClosed) return;
+            isClosed = true;
+            try {
+                passThrough.end(); // signal EOF
+                await upload.done(); // wait for upload to finish
+                Logger.debug(
+                    `Successfully closed upload stream to ${this.lightdashConfig.s3.bucket}/${fileName}`,
+                );
+            } catch (error) {
+                Logger.error(
+                    `Error closing upload stream to ${
+                        this.lightdashConfig.s3.bucket
+                    }/${fileName}: ${getErrorMessage(error)}`,
+                );
+                Logger.debug(`Full error: ${JSON.stringify(error)}`);
+                throw error;
+            }
+        };
+
+        // Create a function that can be used as a streamQuery callback
+        const write = (rows: WarehouseResults['rows']) => {
+            try {
+                rows.forEach((row) =>
+                    passThrough.push(`${JSON.stringify(row)}\n`),
+                );
+            } catch (error) {
+                Logger.error(
+                    `Failed to write rows to fileName ${fileName}: ${getErrorMessage(
+                        error,
+                    )}`,
+                );
+                throw error;
+            }
+        };
+
+        return { write, close, writeStream: passThrough };
+    }
+
+    /**
+     * Get a pre-signed URL for a file in S3
+     * @param fileName - Name of the file
+     * @returns Pre-signed URL for downloading the file
+     */
+    async getFileUrl(fileName: string) {
+        if (!this.lightdashConfig.s3?.bucket || this.s3 === undefined) {
+            throw new MissingConfigError('S3 configuration is not set');
+        }
+
+        // Get the S3 URL
+        const url = await getSignedUrl(
+            this.s3,
+            new GetObjectCommand({
+                Bucket: this.lightdashConfig.s3.bucket,
+                Key: fileName,
+            }),
+            {
+                expiresIn: this.lightdashConfig.s3.expirationTime,
+            },
+        );
+
+        return url;
     }
 
     isEnabled(): boolean {

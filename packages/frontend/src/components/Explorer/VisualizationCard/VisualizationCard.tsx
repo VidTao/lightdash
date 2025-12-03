@@ -5,8 +5,13 @@ import {
     getPivotConfig,
     NotFoundError,
     type ApiErrorDetail,
+    type ChartConfig,
+    type ChartType,
+    type EChartsSeries,
+    type FieldId,
 } from '@lightdash/common';
-import { Button } from '@mantine/core';
+import { Button, useMantineColorScheme } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 import {
     IconLayoutSidebarLeftCollapse,
     IconLayoutSidebarLeftExpand,
@@ -23,16 +28,15 @@ import { createPortal } from 'react-dom';
 import ErrorBoundary from '../../../features/errorBoundary/ErrorBoundary';
 import {
     explorerActions,
-    selectColumnOrder,
     selectIsEditMode,
     selectIsVisualizationConfigOpen,
     selectIsVisualizationExpanded,
-    selectMetricQuery,
-    selectTableName,
+    selectSavedChart,
+    selectTableCalculationsMetadata,
+    selectUnsavedChartVersion,
     useExplorerDispatch,
     useExplorerSelector,
 } from '../../../features/explorer/store';
-import { type EChartSeries } from '../../../hooks/echarts/useEchartsCartesianConfig';
 import { uploadGsheet } from '../../../hooks/gdrive/useGdrive';
 import { useOrganization } from '../../../hooks/organization/useOrganization';
 import { useExplore } from '../../../hooks/useExplore';
@@ -40,23 +44,22 @@ import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { Can } from '../../../providers/Ability';
 import useApp from '../../../providers/App/useApp';
 import { ExplorerSection } from '../../../providers/Explorer/types';
-import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import ChartDownloadMenu from '../../common/ChartDownload/ChartDownloadMenu';
 import CollapsableCard from '../../common/CollapsableCard/CollapsableCard';
 import { COLLAPSABLE_CARD_BUTTON_PROPS } from '../../common/CollapsableCard/constants';
 import MantineIcon from '../../common/MantineIcon';
 import LightdashVisualization from '../../LightdashVisualization';
 import VisualizationProvider from '../../LightdashVisualization/VisualizationProvider';
-import { type EchartSeriesClickEvent } from '../../SimpleChart';
+import { type EchartsSeriesClickEvent } from '../../SimpleChart';
 import { VisualizationConfigPortalId } from '../ExplorePanel/constants';
 import VisualizationConfig from '../VisualizationCard/VisualizationConfig';
 import { SeriesContextMenu } from './SeriesContextMenu';
 import VisualizationWarning from './VisualizationWarning';
 
 export type EchartsClickEvent = {
-    event: EchartSeriesClickEvent;
+    event: EchartsSeriesClickEvent;
     dimensions: string[];
-    series: EChartSeries[];
+    series: EChartsSeries[];
 };
 
 type Props = {
@@ -66,10 +69,18 @@ type Props = {
 const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     const { health } = useApp();
     const { data: org } = useOrganization();
+    const { colorScheme } = useMantineColorScheme();
+    const dispatch = useExplorerDispatch();
 
-    const savedChart = useExplorerContext(
-        (context) => context.state.savedChart,
-    );
+    const colorPalette = useMemo(() => {
+        if (colorScheme === 'dark' && org?.chartDarkColors) {
+            return org.chartDarkColors;
+        }
+        return org?.chartColors ?? ECHARTS_DEFAULT_COLORS;
+    }, [colorScheme, org?.chartColors, org?.chartDarkColors]);
+
+    // Get savedChart from Redux
+    const savedChart = useExplorerSelector(selectSavedChart);
 
     const { query, queryResults, isLoading, getDownloadQueryUuid } =
         useExplorerQuery();
@@ -84,14 +95,29 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
         [query.data, queryResults],
     );
 
-    const setPivotFields = useExplorerContext(
-        (context) => context.actions.setPivotFields,
+    const handleSetPivotFields = useCallback(
+        (fields: FieldId[] = []) => {
+            dispatch(explorerActions.setPivotConfig({ columns: fields }));
+        },
+        [dispatch],
     );
-    const setChartType = useExplorerContext(
-        (context) => context.actions.setChartType,
+
+    const handleSetChartType = useCallback(
+        (chartType: ChartType) => {
+            dispatch(explorerActions.setChartType({ chartType }));
+        },
+        [dispatch],
     );
-    const setChartConfig = useExplorerContext(
-        (context) => context.actions.setChartConfig,
+
+    const handleSetChartConfig = useCallback(
+        (chartConfig: ChartConfig) => {
+            dispatch(
+                explorerActions.setChartConfig({
+                    chartConfig,
+                }),
+            );
+        },
+        [dispatch],
     );
 
     const isOpen = useExplorerSelector(selectIsVisualizationExpanded);
@@ -99,8 +125,6 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     const isVisualizationConfigOpen = useExplorerSelector(
         selectIsVisualizationConfigOpen,
     );
-    const dispatch = useExplorerDispatch();
-
     const toggleExpandedSection = useCallback(
         (section: ExplorerSection) => {
             dispatch(explorerActions.toggleExpandedSection(section));
@@ -108,40 +132,18 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
         [dispatch],
     );
 
-    const tableName = useExplorerSelector(selectTableName);
-    const metricQuery = useExplorerSelector(selectMetricQuery);
-    const columnOrder = useExplorerSelector(selectColumnOrder);
+    const unsavedChartVersion = useExplorerSelector(selectUnsavedChartVersion);
 
-    // Read chartConfig and pivotConfig from Context (not synced to Redux)
-    const chartConfig = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.chartConfig,
-    );
-    const pivotConfig = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.pivotConfig,
-    );
-
-    const unsavedChartVersion = useMemo(
-        () => ({
-            tableName,
-            metricQuery,
-            tableConfig: { columnOrder },
-            chartConfig,
-            pivotConfig,
-        }),
-        [tableName, metricQuery, columnOrder, chartConfig, pivotConfig],
-    );
-
-    const tableCalculationsMetadata = useExplorerContext(
-        (context) => context.state.metadata?.tableCalculations,
+    const tableCalculationsMetadata = useExplorerSelector(
+        selectTableCalculationsMetadata,
     );
 
     const toggleSection = useCallback(
         () => toggleExpandedSection(ExplorerSection.VISUALIZATION),
         [toggleExpandedSection],
     );
-    const projectUuid = useExplorerContext(
-        (context) => context.state.savedChart?.projectUuid || fallBackUUid,
-    );
+
+    const projectUuid = savedChart?.projectUuid || fallBackUUid;
 
     const { data: explore } = useExplore(unsavedChartVersion.tableName);
 
@@ -158,6 +160,12 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     );
 
     const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+    const {
+        ref: measureRef,
+        width: containerWidth,
+        height: containerHeight,
+    } = useElementSize();
 
     useLayoutEffect(() => {
         if (isVisualizationConfigOpen) {
@@ -181,7 +189,7 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     }, [closeVisualizationConfig, isOpen]);
 
     const onSeriesContextMenu = useCallback(
-        (e: EchartSeriesClickEvent, series: EChartSeries[]) => {
+        (e: EchartsSeriesClickEvent, series: EChartsSeries[]) => {
             setEchartsClickEvent({
                 event: e,
                 dimensions: unsavedChartVersion.metricQuery.dimensions,
@@ -245,6 +253,7 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
     return (
         <ErrorBoundary>
             <VisualizationProvider
+                key={savedChart?.uuid}
                 chartConfig={unsavedChartVersion.chartConfig}
                 initialPivotDimensions={
                     unsavedChartVersion.pivotConfig?.columns
@@ -257,12 +266,15 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
                 onSeriesContextMenu={onSeriesContextMenu}
                 pivotTableMaxColumnLimit={health.data.pivotTable.maxColumnLimit}
                 savedChartUuid={isEditMode ? undefined : savedChart?.uuid}
-                onChartConfigChange={setChartConfig}
-                onChartTypeChange={setChartType}
-                onPivotDimensionsChange={setPivotFields}
-                colorPalette={org?.chartColors ?? ECHARTS_DEFAULT_COLORS}
+                onChartConfigChange={handleSetChartConfig}
+                onChartTypeChange={handleSetChartType}
+                onPivotDimensionsChange={handleSetPivotFields}
+                colorPalette={colorPalette}
                 tableCalculationsMetadata={tableCalculationsMetadata}
                 parameters={query.data?.usedParametersValues}
+                containerWidth={containerWidth}
+                containerHeight={containerHeight}
+                isDashboard={false}
             >
                 <CollapsableCard
                     title="Chart"
@@ -278,6 +290,9 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
                                 chartConfig={unsavedChartVersion.chartConfig}
                                 resultsData={resultsData}
                                 isLoading={isLoadingQueryResults}
+                                maxColumnLimit={
+                                    health.data?.pivotTable?.maxColumnLimit
+                                }
                             />
                         )
                     }
@@ -347,11 +362,12 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
                     }
                 >
                     <LightdashVisualization
+                        ref={measureRef}
                         className="sentry-block ph-no-capture"
                         data-testid="visualization"
                     />
                     <SeriesContextMenu
-                        echartSeriesClickEvent={echartsClickEvent?.event}
+                        echartsSeriesClickEvent={echartsClickEvent?.event}
                         dimensions={echartsClickEvent?.dimensions}
                         series={echartsClickEvent?.series}
                         explore={explore}

@@ -1,18 +1,26 @@
 import {
     convertFieldRefToFieldId,
+    deepEqual,
     getAllReferences,
     getItemId,
     getTotalFilterRules,
     getVisibleFields,
     isCustomBinDimension,
     isCustomSqlDimension,
+    removeEmptyProperties,
     type AdditionalMetric,
     type CustomDimension,
     type Explore,
+    type MetricOverrides,
+    type ParametersValuesMap,
 } from '@lightdash/common';
 import { createSelector } from '@reduxjs/toolkit';
 import type { ExplorerStoreState } from '.';
 import { ExplorerSection } from '../../../providers/Explorer/types';
+import { cleanConfig } from '../../../providers/Explorer/utils';
+
+const EMPTY_METRIC_OVERRIDES: MetricOverrides = {};
+const EMPTY_PARAMETERS: ParametersValuesMap = {};
 
 // Base selectors
 const selectExplorerState = (state: ExplorerStoreState) => state.explorer;
@@ -127,13 +135,13 @@ export const selectMetrics = createSelector(
 
 export const selectMetricOverrides = createSelector(
     [selectMetricQuery],
-    (metricQuery) => metricQuery.metricOverrides || {},
+    (metricQuery) => metricQuery.metricOverrides || EMPTY_METRIC_OVERRIDES,
 );
 
 // Parameter selectors
 export const selectParameters = createSelector(
     [selectUnsavedChartVersion],
-    (unsavedChartVersion) => unsavedChartVersion.parameters || {},
+    (unsavedChartVersion) => unsavedChartVersion.parameters || EMPTY_PARAMETERS,
 );
 
 export const selectParameterDefinitions = createSelector(
@@ -144,32 +152,6 @@ export const selectParameterDefinitions = createSelector(
 export const selectParameterReferences = createSelector(
     [selectExplorerState],
     (explorer) => explorer.parameterReferences,
-);
-
-// TODO: REDUX-MIGRATION - Add missingRequiredParameters as a computed selector once all dependencies are in Redux
-// Currently missingRequiredParameters is computed state in Context, not stored in Redux
-
-// ResultsCard specific selectors
-export const selectSorts = createSelector(
-    [selectMetricQuery],
-    (metricQuery) => metricQuery.sorts,
-);
-
-export const selectColumnOrder = createSelector(
-    [selectUnsavedChartVersion],
-    (unsavedChartVersion) => unsavedChartVersion.tableConfig.columnOrder,
-);
-
-// Query limit selector
-export const selectQueryLimit = createSelector(
-    [selectMetricQuery],
-    (metricQuery) => metricQuery.limit,
-);
-
-// Timezone selector
-export const selectTimezone = createSelector(
-    [selectMetricQuery],
-    (metricQuery) => metricQuery.timezone,
 );
 
 // Query execution selectors
@@ -198,10 +180,79 @@ export const selectUnpivotedQueryUuidHistory = createSelector(
     (queryExecution) => queryExecution.unpivotedQueryUuidHistory,
 );
 
+export const selectPendingFetch = createSelector(
+    [selectQueryExecution],
+    (queryExecution) => queryExecution.pendingFetch,
+);
+
+// TODO: REDUX-MIGRATION - Add missingRequiredParameters as a computed selector once all dependencies are in Redux
+// Currently missingRequiredParameters is computed state in Context, not stored in Redux
+
+// ResultsCard specific selectors
+export const selectSorts = createSelector(
+    [selectMetricQuery],
+    (metricQuery) => metricQuery.sorts,
+);
+
+export const selectColumnOrder = createSelector(
+    [selectUnsavedChartVersion, selectQueryExecution],
+    (unsavedChartVersion, queryExecution) =>
+        queryExecution.completeColumnOrder.length > 0
+            ? queryExecution.completeColumnOrder
+            : unsavedChartVersion.tableConfig.columnOrder,
+);
+
+// Query limit selector
+export const selectQueryLimit = createSelector(
+    [selectMetricQuery],
+    (metricQuery) => metricQuery.limit,
+);
+
+// Timezone selector
+export const selectTimezone = createSelector(
+    [selectMetricQuery],
+    (metricQuery) => metricQuery.timezone,
+);
+
+// Period over period selector
+export const selectPeriodOverPeriod = createSelector(
+    [selectMetricQuery],
+    (metricQuery) => metricQuery.periodOverPeriod,
+);
+
+// Chart config selector
+export const selectChartConfig = createSelector(
+    [selectUnsavedChartVersion],
+    (unsavedChartVersion) => unsavedChartVersion.chartConfig,
+);
+
+// Pivot config selector
+export const selectPivotConfig = createSelector(
+    [selectUnsavedChartVersion],
+    (unsavedChartVersion) => unsavedChartVersion.pivotConfig,
+);
+
 // Navigation context selectors
 export const selectFromDashboard = createSelector(
     [selectExplorerState],
     (explorer) => explorer.fromDashboard,
+);
+
+// Saved chart selector
+export const selectSavedChart = createSelector(
+    [selectExplorerState],
+    (explorer) => explorer.savedChart,
+);
+
+// Metadata selectors
+export const selectTableCalculationsMetadata = createSelector(
+    [selectExplorerState],
+    (explorer) => explorer.metadata?.tableCalculations,
+);
+
+export const selectIsExploreFromHere = createSelector(
+    [selectExplorerState],
+    (explorer) => explorer.isExploreFromHere,
 );
 
 // Stable empty Set to prevent unnecessary re-renders
@@ -365,4 +416,36 @@ export const selectFormatModal = createSelector(
 export const selectAdditionalMetricModal = createSelector(
     [selectModals],
     (modals) => modals?.additionalMetric ?? { isOpen: false },
+);
+
+// Selector to check if unsaved chart has changes compared to saved chart
+// Returns true if there are unsaved changes, false otherwise
+export const selectHasUnsavedChanges = createSelector(
+    [selectUnsavedChartVersion, selectSavedChart],
+    (unsavedChartVersion, savedChart) => {
+        if (!savedChart) {
+            // No saved chart means this is a new chart - no "unsaved changes"
+            return false;
+        }
+
+        // Compare normalized versions of saved and unsaved
+        return !deepEqual(
+            removeEmptyProperties({
+                tableName: savedChart.tableName,
+                chartConfig: cleanConfig(savedChart.chartConfig),
+                metricQuery: savedChart.metricQuery,
+                tableConfig: savedChart.tableConfig,
+                pivotConfig: savedChart.pivotConfig,
+                parameters: savedChart.parameters,
+            }),
+            removeEmptyProperties({
+                tableName: unsavedChartVersion.tableName,
+                chartConfig: cleanConfig(unsavedChartVersion.chartConfig),
+                metricQuery: unsavedChartVersion.metricQuery,
+                tableConfig: unsavedChartVersion.tableConfig,
+                pivotConfig: unsavedChartVersion.pivotConfig,
+                parameters: unsavedChartVersion.parameters,
+            }),
+        );
+    },
 );

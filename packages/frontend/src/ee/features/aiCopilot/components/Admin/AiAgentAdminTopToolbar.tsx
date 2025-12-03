@@ -157,8 +157,8 @@ export const AiAgentAdminTopToolbar: FC<AiAgentAdminTopToolbarProps> = memo(
                     {/* Results count */}
                     <Group gap="xs">
                         <Box
-                            bg="#F8F9FC"
-                            c="#363F72"
+                            bg="ldGray.1"
+                            c="ldGray.9"
                             style={{
                                 borderRadius: 6,
                                 padding: `${theme.spacing.sm} ${theme.spacing.xs}`,
@@ -177,7 +177,7 @@ export const AiAgentAdminTopToolbar: FC<AiAgentAdminTopToolbarProps> = memo(
                         </Box>
                     </Group>
                 </Group>
-                <Divider color="gray.2" />
+                <Divider color="ldGray.2" />
             </Box>
         );
     },

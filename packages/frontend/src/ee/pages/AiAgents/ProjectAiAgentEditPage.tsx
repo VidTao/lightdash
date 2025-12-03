@@ -15,6 +15,7 @@ import {
     IconAdjustmentsAlt,
     IconArrowLeft,
     IconBook2,
+    IconCircleCheck,
     IconMessageCircleShare,
 } from '@tabler/icons-react';
 import { useEffect, type FC } from 'react';
@@ -28,6 +29,8 @@ import {
 } from '../../../components/common/Page/constants';
 import { useProjects } from '../../../hooks/useProjects';
 import useApp from '../../../providers/App/useApp';
+import { VerifiedArtifactDetail } from '../../features/aiCopilot/components/Admin/VerifiedArtifactDetail';
+import { VerifiedArtifactsLayout } from '../../features/aiCopilot/components/Admin/VerifiedArtifactsLayout';
 import { AiAgentFormSetup } from '../../features/aiCopilot/components/AiAgentFormSetup';
 import { EvalDetail } from '../../features/aiCopilot/components/Evals/EvalDetail';
 import { EvalRunDetails } from '../../features/aiCopilot/components/Evals/EvalRunDetails';
@@ -42,6 +45,7 @@ import { EvalsSetup } from './EvalsSetup';
 
 const formSchema = z.object({
     name: z.string().min(1),
+    description: z.string().nullable(),
     integrations: z.array(
         z.object({
             type: z.literal('slack'),
@@ -53,8 +57,10 @@ const formSchema = z.object({
     imageUrl: z.string().url().nullable(),
     groupAccess: z.array(z.string()),
     userAccess: z.array(z.string()),
+    spaceAccess: z.array(z.string()),
     enableDataAccess: z.boolean(),
     enableSelfImprovement: z.boolean(),
+    enableReasoning: z.boolean(),
     version: z.number(),
 });
 
@@ -64,12 +70,14 @@ type Props = {
 
 const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     const navigate = useNavigate();
-    const { agentUuid, projectUuid, evalUuid, runUuid } = useParams<{
-        agentUuid: string;
-        projectUuid: string;
-        evalUuid?: string;
-        runUuid?: string;
-    }>();
+    const { agentUuid, projectUuid, evalUuid, runUuid, artifactUuid } =
+        useParams<{
+            agentUuid: string;
+            projectUuid: string;
+            evalUuid?: string;
+            runUuid?: string;
+            artifactUuid?: string;
+        }>();
     const location = useLocation();
     const canManageAgents = useAiAgentPermission({
         action: 'manage',
@@ -92,15 +100,18 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     const form = useForm<z.infer<typeof formSchema>>({
         initialValues: {
             name: '',
+            description: null,
             integrations: [],
             tags: null,
             instruction: null,
             imageUrl: null,
             groupAccess: [],
             userAccess: [],
+            spaceAccess: [],
             enableDataAccess: false,
             enableSelfImprovement: false,
-            version: 1, // TODO: Update to 2 when v2 is ready or allow version to be passed in
+            enableReasoning: false,
+            version: 2, // INFO: Default to v2 for now
         },
         validate: zodResolver(formSchema),
     });
@@ -113,15 +124,18 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
         if (!form.initialized) {
             const values = {
                 name: agent.name,
+                description: agent.description,
                 integrations: agent.integrations,
                 tags: agent.tags && agent.tags.length > 0 ? agent.tags : null,
                 instruction: agent.instruction,
                 imageUrl: agent.imageUrl,
                 groupAccess: agent.groupAccess ?? [],
                 userAccess: agent.userAccess ?? [],
+                spaceAccess: agent.spaceAccess ?? [],
                 enableDataAccess: agent.enableDataAccess ?? false,
                 enableSelfImprovement: agent.enableSelfImprovement ?? false,
-                version: agent.version ?? 1, // TODO: Update to 2 when v2 is ready or allow version to be passed in
+                enableReasoning: agent.enableReasoning ?? false,
+                version: agent.version ?? 2, // INFO: Default to v2 for now
             };
             form.setValues(values);
             form.resetDirty(values);
@@ -130,7 +144,11 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     }, [agent, isCreateMode]);
 
     // Derive activeTab from current pathname
-    const activeTab = location.pathname.includes('/evals') ? 'evals' : 'setup';
+    const activeTab = location.pathname.includes('/evals')
+        ? 'evals'
+        : location.pathname.includes('/verified-artifacts')
+        ? 'verified-artifacts'
+        : 'setup';
 
     const { mutateAsync: createAgent } = useProjectCreateAiAgentMutation(
         projectUuid!,
@@ -212,6 +230,7 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
                 width: 300,
                 breakpoint: 'sm',
             }}
+            bg="#fcfcfc"
         >
             <AppShell.Navbar p="md">
                 <Stack gap="lg">
@@ -219,7 +238,7 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
                         <Group justify="space-between" w="100%">
                             <Button
                                 variant="subtle"
-                                color="gray.4"
+                                color="ldGray.4"
                                 size="xs"
                                 leftSection={
                                     <MantineIcon icon={IconArrowLeft} />
@@ -303,6 +322,27 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
                         )}
                         {!isCreateMode && (
                             <Button
+                                variant={
+                                    activeTab === 'verified-artifacts'
+                                        ? 'light'
+                                        : 'subtle'
+                                }
+                                fullWidth
+                                justify="flex-start"
+                                leftSection={
+                                    <MantineIcon icon={IconCircleCheck} />
+                                }
+                                onClick={() => {
+                                    void navigate(
+                                        `/projects/${projectUuid}/ai-agents/${actualAgentUuid}/edit/verified-artifacts`,
+                                    );
+                                }}
+                            >
+                                Verified Answers
+                            </Button>
+                        )}
+                        {!isCreateMode && (
+                            <Button
                                 fullWidth
                                 variant="subtle"
                                 justify="flex-start"
@@ -325,6 +365,7 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
                 pr={0}
                 pb={0}
                 mih={`calc(100vh - ${navbarHeight}px)`}
+                bg="ldGray.0"
             >
                 <Box>
                     {activeTab === 'setup' && (
@@ -360,6 +401,16 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
                                 />
                             )}
                         </EvalSectionLayout>
+                    )}
+
+                    {activeTab === 'verified-artifacts' && (
+                        <>
+                            {artifactUuid ? (
+                                <VerifiedArtifactDetail />
+                            ) : (
+                                <VerifiedArtifactsLayout />
+                            )}
+                        </>
                     )}
                 </Box>
             </AppShell.Main>

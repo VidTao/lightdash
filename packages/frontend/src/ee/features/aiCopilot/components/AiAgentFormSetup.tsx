@@ -60,9 +60,11 @@ import {
     InstructionsGuidelines,
     InstructionsTemplates,
 } from './InstructionsSupport';
+import { SpaceAccessSelect } from './SpaceAccessSelect';
 
 const formSchema = z.object({
     name: z.string().min(1),
+    description: z.string().nullable(),
     integrations: z.array(
         z.object({
             type: z.literal('slack'),
@@ -74,8 +76,10 @@ const formSchema = z.object({
     imageUrl: z.string().url().nullable(),
     groupAccess: z.array(z.string()),
     userAccess: z.array(z.string()),
+    spaceAccess: z.array(z.string()),
     enableDataAccess: z.boolean(),
     enableSelfImprovement: z.boolean(),
+    enableReasoning: z.boolean(),
     version: z.number(),
 });
 
@@ -145,13 +149,13 @@ export const AiAgentFormSetup = ({
         userGroupsFeatureFlagQuery.isSuccess &&
         userGroupsFeatureFlagQuery.data.enabled;
 
-    const agentV2FeatureFlagQuery = useFeatureFlag(
-        CommercialFeatureFlags.AgentV2,
+    const agentReasoningFeatureFlagQuery = useFeatureFlag(
+        CommercialFeatureFlags.AgentReasoning,
     );
 
-    const isAgentV2Enabled =
-        agentV2FeatureFlagQuery.isSuccess &&
-        agentV2FeatureFlagQuery.data.enabled;
+    const isAgentReasoningEnabled =
+        agentReasoningFeatureFlagQuery.isSuccess &&
+        agentReasoningFeatureFlagQuery.data.enabled;
 
     const { data: groups, isLoading: isLoadingGroups } = useOrganizationGroups(
         {
@@ -212,7 +216,7 @@ export const AiAgentFormSetup = ({
                                     size="md"
                                 />
                             </Paper>
-                            <Title order={5} c="gray.9" fw={700}>
+                            <Title order={5} c="ldGray.9" fw={700}>
                                 Basic information
                             </Title>
                         </Group>
@@ -225,7 +229,7 @@ export const AiAgentFormSetup = ({
                                     style={{ flexGrow: 1 }}
                                     variant="subtle"
                                 />
-                                <Tooltip label="Agents can only be created in the context the current project">
+                                <Tooltip label="Agents can only be created within the context of the current project.">
                                     <TextInput
                                         label="Project"
                                         placeholder="Enter a project"
@@ -236,6 +240,22 @@ export const AiAgentFormSetup = ({
                                     />
                                 </Tooltip>
                             </Group>
+                            <Textarea
+                                variant="subtle"
+                                label="Description"
+                                description="A brief description of what this agent does and its purpose."
+                                placeholder="Describe what this agent specializes in..."
+                                minRows={3}
+                                maxRows={6}
+                                {...form.getInputProps('description')}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    form.setFieldValue(
+                                        'description',
+                                        value ? value : null,
+                                    );
+                                }}
+                            />
                             <TextInput
                                 style={{ flexGrow: 1 }}
                                 miw={200}
@@ -262,7 +282,7 @@ export const AiAgentFormSetup = ({
                                 <Paper p="xxs" withBorder radius="sm">
                                     <MantineIcon icon={IconBook2} size="md" />
                                 </Paper>
-                                <Title order={5} c="gray.9" fw={700}>
+                                <Title order={5} c="ldGray.9" fw={700}>
                                     Knowledge & expertise
                                 </Title>
                             </Group>
@@ -284,7 +304,12 @@ export const AiAgentFormSetup = ({
                                 </Text>
                             </Stack>
                             <Stack gap="sm">
-                                <Title order={6} c="gray.7" size="sm" fw={500}>
+                                <Title
+                                    order={6}
+                                    c="ldGray.7"
+                                    size="sm"
+                                    fw={500}
+                                >
                                     Quick Templates
                                 </Title>
 
@@ -303,7 +328,7 @@ export const AiAgentFormSetup = ({
                                 <Box>
                                     <Title
                                         order={6}
-                                        c="gray.7"
+                                        c="ldGray.7"
                                         size="sm"
                                         fw={500}
                                     >
@@ -425,16 +450,16 @@ export const AiAgentFormSetup = ({
                                     },
                                 )}
                             />
-                            {isAgentV2Enabled && (
+                            {isAgentReasoningEnabled && (
                                 <Switch
                                     variant="subtle"
                                     label={
                                         <Group gap="xs">
                                             <Text fz="sm" fw={500}>
-                                                Enable Agent V2
+                                                Enable Reasoning
                                             </Text>
                                             <Tooltip
-                                                label="Agent V2 provides enhanced charting capabilities including pie charts, scatter plots, and funnel visualizations for more diverse data representation."
+                                                label="When enabled, the AI agent will show its reasoning process while generating responses, helping you understand how it arrives at conclusions."
                                                 withArrow
                                                 withinPortal
                                                 multiline
@@ -462,19 +487,16 @@ export const AiAgentFormSetup = ({
                                     }
                                     description={
                                         <>
-                                            Enables more charting options
-                                            including pie, scatter, and funnel
-                                            charts for richer data
-                                            visualization.{' '}
+                                            Displays the agent's reasoning
+                                            process while generating responses,
+                                            helping you understand how it thinks
+                                            through problems and reaches
+                                            conclusions.
                                         </>
                                     }
-                                    checked={form.values.version === 2}
-                                    onChange={(event) => {
-                                        form.setFieldValue(
-                                            'version',
-                                            event.currentTarget.checked ? 2 : 1,
-                                        );
-                                    }}
+                                    {...form.getInputProps('enableReasoning', {
+                                        type: 'checkbox',
+                                    })}
                                 />
                             )}
                         </Stack>
@@ -485,7 +507,7 @@ export const AiAgentFormSetup = ({
                             <Paper p="xxs" withBorder radius="sm">
                                 <MantineIcon icon={IconLock} size="md" />
                             </Paper>
-                            <Title order={5} c="gray.9" fw={700}>
+                            <Title order={5} c="ldGray.9" fw={700}>
                                 Access control
                             </Title>
                         </Group>
@@ -556,6 +578,14 @@ export const AiAgentFormSetup = ({
                                     />
                                 </Stack>
                             )}
+
+                            <SpaceAccessSelect
+                                projectUuid={projectUuid}
+                                value={form.values.spaceAccess}
+                                onChange={(value) => {
+                                    form.setFieldValue('spaceAccess', value);
+                                }}
+                            />
 
                             <Box>
                                 <TagsInput
@@ -665,7 +695,7 @@ export const AiAgentFormSetup = ({
                             <Paper p="xxs" withBorder radius="sm">
                                 <MantineIcon icon={IconPlug} size="md" />
                             </Paper>
-                            <Title order={5} c="gray.9" fw={700}>
+                            <Title order={5} c="ldGray.9" fw={700}>
                                 Integrations
                             </Title>
                         </Group>
@@ -829,7 +859,7 @@ export const AiAgentFormSetup = ({
                                         size="md"
                                     />
                                 </Paper>
-                                <Title order={5} c="gray.9" fw={700}>
+                                <Title order={5} c="ldGray.9" fw={700}>
                                     Danger zone
                                 </Title>
                             </Group>
@@ -841,7 +871,7 @@ export const AiAgentFormSetup = ({
                                 <Box>
                                     <Title
                                         order={6}
-                                        c="gray.7"
+                                        c="ldGray.7"
                                         size="sm"
                                         fw={500}
                                     >

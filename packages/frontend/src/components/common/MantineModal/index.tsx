@@ -19,6 +19,7 @@ const modalSizes = {
     sm: 380,
     lg: 480,
     xl: 600,
+    full: '100%',
 } as const;
 
 export type MantineModalProps = {
@@ -70,7 +71,7 @@ const MantineModal: React.FC<MantineModalProps> = ({
             >
                 <Modal.Header
                     sx={(theme) => ({
-                        borderBottom: `1px solid ${theme.colors.gray[2]}`,
+                        borderBottom: `1px solid ${theme.colors.ldGray[2]}`,
                     })}
                     px="xl"
                     py="md"
@@ -82,7 +83,7 @@ const MantineModal: React.FC<MantineModalProps> = ({
                                 <MantineIcon icon={icon} size="md" />
                             </Paper>
                         ) : null}
-                        <Text color="gray.9" fw={700} fz="md">
+                        <Text color="ldGray.9" fw={700} fz="md">
                             {title}
                         </Text>
                     </Group>
@@ -91,10 +92,10 @@ const MantineModal: React.FC<MantineModalProps> = ({
 
                 <Modal.Body
                     p={0}
-                    sx={() => ({
+                    sx={{
                         overflow: 'auto',
-                        maxHeight: 'calc(80vh - 130px)',
-                    })}
+                        maxHeight: 'calc(80vh - 80px)',
+                    }}
                     {...modalBodyProps}
                 >
                     <Stack
@@ -110,13 +111,12 @@ const MantineModal: React.FC<MantineModalProps> = ({
                 {actions ? (
                     <Flex
                         sx={(theme) => ({
-                            borderTop: `1px solid ${theme.colors.gray[2]}`,
+                            borderTop: `1px solid ${theme.colors.ldGray[2]}`,
                             position: 'sticky',
                             bottom: 0,
                             width: '100%',
                             zIndex: 10,
                         })}
-                        bg="white"
                         px="xl"
                         py="md"
                         justify="flex-end"

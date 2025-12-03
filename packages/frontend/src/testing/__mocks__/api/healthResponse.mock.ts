@@ -46,6 +46,9 @@ export default function mockHealthResponse(
             maxColumnLimit: 100,
         },
         hasSlack: false,
+        slack: {
+            multiAgentChannelEnabled: false,
+        },
         auth: {
             disablePasswordAuthentication: false,
             google: {
@@ -77,6 +80,9 @@ export default function mockHealthResponse(
             snowflake: {
                 enabled: false,
             },
+            databricks: {
+                enabled: false,
+            },
         },
         hasEmailClient: false,
         hasHeadlessBrowser: false,
@@ -99,6 +105,9 @@ export default function mockHealthResponse(
         ai: {
             analyticsProjectUuid: undefined,
             analyticsDashboardUuid: undefined,
+        },
+        echarts6: {
+            enabled: false,
         },
         ...overrides,
     };
