@@ -2529,6 +2529,23 @@ models:
                         format: "usd"
                         groups: ["Performance Metrics"]
 
+          - name: campaign_limit
+            description: 'Campaign spending limit'
+            meta:
+                metrics:
+                    sum_campaign_limit:
+                        type: sum
+                        label: "Total Campaign Limit"
+                        round: 2
+                        format: "usd"
+                        groups: ["Performance Metrics"]
+
+          - name: cod_campaigns_geo
+            description: 'COD campaigns geo reference or identifier'
+            meta:
+                dimension:
+                    type: string
+
           - name: last_processed_at
             description: 'Last processing timestamp'
             meta:
