@@ -8,6 +8,7 @@ import {
     Stack,
     Text,
     Title,
+    Image,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { type FC } from 'react';

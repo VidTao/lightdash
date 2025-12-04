@@ -19,6 +19,7 @@ import {
     Divider,
     PasswordInput,
     Stack,
+    Image,
     Text,
     TextInput,
     Title,

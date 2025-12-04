@@ -24,7 +24,7 @@ import {
     isMetric,
     isTableCalculation,
     MetricType,
-    nillaryWindowFunctions,
+    nullaryWindowFunctions,
     numberFilterSchema,
     renderFilterRuleSql,
     renderFilterRuleSqlFromField,
@@ -813,7 +813,7 @@ export function validateTableCalculations(
         const { type, name } = tableCalc;
 
         if (type === 'window_function') {
-            const needsFieldId = !nillaryWindowFunctions.includes(
+            const needsFieldId = !nullaryWindowFunctions.includes(
                 tableCalc.windowFunction,
             );
 

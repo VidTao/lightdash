@@ -14,6 +14,7 @@ import {
     Stack,
     Text,
     Title,
+    Image,
 } from '@mantine/core';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useState, type FC } from 'react';

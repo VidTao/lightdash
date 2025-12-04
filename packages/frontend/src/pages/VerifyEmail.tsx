@@ -4,6 +4,7 @@ import {
     Button,
     Card,
     Modal,
+    Image,
     Stack,
     Text,
     Title,

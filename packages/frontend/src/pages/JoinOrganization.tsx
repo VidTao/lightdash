@@ -9,6 +9,7 @@ import {
     Stack,
     Text,
     Title,
+    Image,
 } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useEffect, type FC } from 'react';
