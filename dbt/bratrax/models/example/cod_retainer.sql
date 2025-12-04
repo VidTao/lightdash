@@ -21,6 +21,5 @@ SELECT
     leads,
     campaign_budget,
     campaign_limit,
-    cod_campaigns_geo,
     last_processed_at
 FROM {{ source('production_tables_no_flat', 'cod_retainer') }}
