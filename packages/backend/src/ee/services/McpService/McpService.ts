@@ -418,7 +418,7 @@ export class McpService extends BaseService {
                 description: toolFindContentArgsSchema.description,
                 inputSchema: this.getMcpCompatibleSchema(
                     toolFindContentArgsSchema.omit({ type: true }),
-                ),
+                ) as AnyType,
             },
             async (_args, context) => {
                 const args = _args as Omit<ToolFindContentArgs, 'type'>;

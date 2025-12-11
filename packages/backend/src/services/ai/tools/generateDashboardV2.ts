@@ -1,71 +1,37 @@
 import {
-    AiResultType,
-    assertUnreachable,
-    Explore,
-    toolDashboardArgsSchema,
-    toolDashboardArgsSchemaTransformed,
-    ToolDashboardArgsTransformed,
-    toolDashboardOutputSchema,
+    toolDashboardV2ArgsSchema,
+    toolDashboardV2ArgsSchemaTransformed,
+    toolDashboardV2OutputSchema,
+    type ToolDashboardV2ArgsTransformed,
 } from '@lightdash/common';
 import { tool } from 'ai';
 import type {
     CreateOrUpdateArtifactFn,
     GetPromptFn,
-    RunMiniMetricQueryFn,
-    SendFileFn,
-    UpdateProgressFn,
-    UpdatePromptFn,
 } from '../types/aiAgentDependencies';
 import { AgentContext } from '../utils/AgentContext';
 import { toModelOutput } from '../utils/toModelOutput';
 import { toolErrorHandler } from '../utils/toolErrorHandler';
-import { validateBarVizConfig } from '../utils/validateBarVizConfig';
-import { validateTableVizConfig } from '../utils/validateTableVizConfig';
-import { validateTimeSeriesVizConfig } from '../utils/validateTimeSeriesVizConfig';
+import { validateRunQueryTool } from './runQuery';
 
 type Dependencies = {
-    updateProgress: UpdateProgressFn;
-    runMiniMetricQuery: RunMiniMetricQueryFn;
     getPrompt: GetPromptFn;
-    updatePrompt: UpdatePromptFn;
-    sendFile: SendFileFn;
     createOrUpdateArtifact: CreateOrUpdateArtifactFn;
-    maxLimit: number;
 };
 
-export const getGenerateDashboard = ({
+export const getGenerateDashboardV2 = ({
     getPrompt,
     createOrUpdateArtifact,
-}: Dependencies) => {
-    const validateVisualization = (
-        visualization: ToolDashboardArgsTransformed['visualizations'][0],
-        explore: Explore,
-    ) => {
-        switch (visualization.type) {
-            case AiResultType.TABLE_RESULT: {
-                validateTableVizConfig(visualization, explore);
-                break;
-            }
-            case AiResultType.VERTICAL_BAR_RESULT:
-                validateBarVizConfig(visualization, explore);
-                break;
-            case AiResultType.TIME_SERIES_RESULT:
-                validateTimeSeriesVizConfig(visualization, explore);
-                break;
-            default:
-                assertUnreachable(visualization, 'Invalid visualization type');
-        }
-    };
-
-    return tool({
-        description: toolDashboardArgsSchema.description,
-        inputSchema: toolDashboardArgsSchema,
-        outputSchema: toolDashboardOutputSchema,
+}: Dependencies) =>
+    tool({
+        description: toolDashboardV2ArgsSchema.description,
+        inputSchema: toolDashboardV2ArgsSchema,
+        outputSchema: toolDashboardV2OutputSchema,
         execute: async (toolArgs, { experimental_context: context }) => {
             try {
                 const ctx = AgentContext.from(context);
                 const transformedToolArgs =
-                    toolDashboardArgsSchemaTransformed.parse(toolArgs);
+                    toolDashboardV2ArgsSchemaTransformed.parse(toolArgs);
 
                 const errors: string[] = [];
                 const failedVisualizations: string[] = [];
@@ -75,10 +41,10 @@ export const getGenerateDashboard = ({
                     async (viz, index) => {
                         try {
                             const explore = ctx.getExplore(
-                                viz.vizConfig.exploreName,
+                                viz.queryConfig.exploreName,
                             );
 
-                            validateVisualization(viz, explore);
+                            validateRunQueryTool(viz, explore);
                             validIndices.add(index);
                             return viz;
                         } catch (error) {
@@ -101,7 +67,7 @@ export const getGenerateDashboard = ({
                 const validVisualizations = validatedVisualizations.filter(
                     (
                         viz,
-                    ): viz is ToolDashboardArgsTransformed['visualizations'][number] =>
+                    ): viz is ToolDashboardV2ArgsTransformed['visualizations'][number] =>
                         viz !== null,
                 );
 
@@ -122,6 +88,8 @@ export const getGenerateDashboard = ({
                 // Create dashboard with valid visualizations only
                 const prompt = await getPrompt();
 
+                // Store the original (untransformed) toolArgs, not the transformed version
+                // This is important because when reading from DB, we parse with the base schema
                 await createOrUpdateArtifact({
                     threadUuid: prompt.threadUuid,
                     promptUuid: prompt.promptUuid,
@@ -169,4 +137,3 @@ export const getGenerateDashboard = ({
         },
         toModelOutput: (output) => toModelOutput(output),
     });
-};
