@@ -21,5 +21,6 @@ SELECT
     leads,
     campaign_budget,
     campaign_limit,
+    campaign_status,
     last_processed_at
 FROM {{ source('production_tables_no_flat', 'cod_retainer') }}
