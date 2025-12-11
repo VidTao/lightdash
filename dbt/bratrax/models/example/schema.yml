@@ -2546,11 +2546,6 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-          - name: campaign_status
-            description: 'Campaign status'
-            meta:
-                dimension:
-                    type: string
 
     - name: cod_payments
       label: COD Payments
@@ -3112,9 +3107,5 @@ models:
                         round: 2
                         format: "usd"
                         groups: ["Performance Metrics"]
-          - name: campaign_status
-            description: 'Campaign status'
-            meta:
-                dimension:
-                    type: string
+
                     
