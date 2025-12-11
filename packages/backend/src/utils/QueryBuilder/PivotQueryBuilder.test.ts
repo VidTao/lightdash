@@ -1,9 +1,15 @@
 import {
+    DimensionType,
+    FieldType,
     ParameterError,
     SortByDirection,
     SupportedDbtAdapter,
+    TimeFrames,
     VizAggregationOptions,
     VizIndexType,
+    WeekDay,
+    type CompiledDimension,
+    type ItemsMap,
     type WarehouseSqlBuilder,
 } from '@lightdash/common';
 import { PivotQueryBuilder } from './PivotQueryBuilder';
@@ -12,6 +18,7 @@ import { PivotQueryBuilder } from './PivotQueryBuilder';
 const mockWarehouseSqlBuilder = {
     getFieldQuoteChar: () => '"',
     getAdapterType: () => SupportedDbtAdapter.POSTGRES,
+    getStartOfWeek: () => WeekDay.MONDAY,
 } as unknown as WarehouseSqlBuilder;
 
 const replaceWhitespace = (str: string) => str.replace(/\s+/g, ' ').trim();
@@ -134,7 +141,7 @@ describe('PivotQueryBuilder', () => {
                 100,
             );
 
-            const result = builder.toSql();
+            const result = builder.toSql({ columnLimit: 100 });
 
             // Should contain all CTEs
             expect(result).toContain(
@@ -219,10 +226,38 @@ describe('PivotQueryBuilder', () => {
                 mockWarehouseSqlBuilder,
             );
 
-            const result = builder.toSql();
+            const result = builder.toSql({ columnLimit: 100 });
 
             // With 3 value columns: (100-1)/3 = 33 max columns per value column
             expect(result).toContain('"column_index" <= 33');
+        });
+
+        test('Should not apply column limit when columnLimit is not provided', () => {
+            const pivotConfiguration = {
+                indexColumn: [{ reference: 'date', type: VizIndexType.TIME }],
+                valuesColumns: [
+                    {
+                        reference: 'event_id',
+                        aggregation: VizAggregationOptions.SUM,
+                    },
+                ],
+                groupByColumns: [{ reference: 'event_type' }],
+                sortBy: undefined,
+            };
+
+            const builder = new PivotQueryBuilder(
+                baseSql,
+                pivotConfiguration,
+                mockWarehouseSqlBuilder,
+                100,
+            );
+
+            const result = builder.toSql(); // No columnLimit provided
+
+            // Should NOT contain column_index filtering
+            expect(result).not.toContain('"column_index" <=');
+            // Should still contain row_index filtering
+            expect(result).toContain('"row_index" <= 100');
         });
     });
 
@@ -304,6 +339,47 @@ describe('PivotQueryBuilder', () => {
             // Row index order must follow: revenue anchor ASC, store_id DESC, then date ASC (appended)
             expect(replaceWhitespace(result)).toContain(
                 'DENSE_RANK() OVER (ORDER BY revenue_row_anchor."revenue_row_anchor_value" ASC, g."store_id" DESC, g."date" ASC) AS "row_index"',
+            );
+        });
+
+        test('Should include explicit frame clauses in FIRST_VALUE for Redshift compatibility', () => {
+            // Redshift requires explicit frame clauses for aggregate window functions with ORDER BY
+            // See: https://docs.aws.amazon.com/redshift/latest/dg/r_WF_first_value.html
+            const pivotConfiguration = {
+                indexColumn: [{ reference: 'date', type: VizIndexType.TIME }],
+                valuesColumns: [
+                    {
+                        reference: 'revenue',
+                        aggregation: VizAggregationOptions.SUM,
+                    },
+                ],
+                groupByColumns: [{ reference: 'category' }],
+                sortBy: [
+                    { reference: 'revenue', direction: SortByDirection.DESC },
+                ],
+            };
+
+            const builder = new PivotQueryBuilder(
+                baseSql,
+                pivotConfiguration,
+                mockWarehouseSqlBuilder,
+            );
+
+            const result = builder.toSql();
+
+            // Both anchor CTEs should have explicit frame clauses
+            expect(result).toContain(
+                'ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING',
+            );
+
+            // Verify the complete FIRST_VALUE syntax in row anchor
+            expect(replaceWhitespace(result)).toContain(
+                'FIRST_VALUE("revenue_sum") OVER (PARTITION BY "date" ORDER BY "revenue_sum" DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)',
+            );
+
+            // Verify the complete FIRST_VALUE syntax in column anchor
+            expect(replaceWhitespace(result)).toContain(
+                'FIRST_VALUE("revenue_sum") OVER (PARTITION BY "category" ORDER BY "revenue_sum" DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)',
             );
         });
     });
@@ -1105,6 +1181,225 @@ SELECT * FROM group_by_query LIMIT 50`);
             // Should deduplicate in the group by clause
             // The Set() should handle this deduplication
             expect(result).toContain('group by "category", "region", "date"');
+        });
+    });
+
+    describe('Time interval sorting', () => {
+        // Mock dimensions
+        const monthNameDimension: CompiledDimension = {
+            type: DimensionType.STRING,
+            name: 'month_name',
+            label: 'Month Name',
+            table: 'orders',
+            tableLabel: 'Orders',
+            fieldType: FieldType.DIMENSION,
+            sql: '${TABLE}.month_name',
+            compiledSql: '"orders".month_name',
+            tablesReferences: ['orders'],
+            timeInterval: TimeFrames.MONTH_NAME,
+            hidden: false,
+        };
+
+        const dayNameDimension: CompiledDimension = {
+            type: DimensionType.STRING,
+            name: 'day_name',
+            label: 'Day Name',
+            table: 'orders',
+            tableLabel: 'Orders',
+            fieldType: FieldType.DIMENSION,
+            sql: '${TABLE}.day_name',
+            compiledSql: '"orders".day_name',
+            tablesReferences: ['orders'],
+            timeInterval: TimeFrames.DAY_OF_WEEK_NAME,
+            hidden: false,
+        };
+
+        const quarterNameDimension: CompiledDimension = {
+            type: DimensionType.STRING,
+            name: 'quarter_name',
+            label: 'Quarter Name',
+            table: 'orders',
+            tableLabel: 'Orders',
+            fieldType: FieldType.DIMENSION,
+            sql: '${TABLE}.quarter_name',
+            compiledSql: '"orders".quarter_name',
+            tablesReferences: ['orders'],
+            timeInterval: TimeFrames.QUARTER_NAME,
+            hidden: false,
+        };
+
+        const categoryDimension: CompiledDimension = {
+            type: DimensionType.STRING,
+            name: 'category',
+            label: 'Category',
+            table: 'orders',
+            tableLabel: 'Orders',
+            fieldType: FieldType.DIMENSION,
+            sql: '${TABLE}.category',
+            compiledSql: '"orders".category',
+            tablesReferences: ['orders'],
+            hidden: false,
+        };
+
+        const regionDimension: CompiledDimension = {
+            type: DimensionType.STRING,
+            name: 'region',
+            label: 'Region',
+            table: 'orders',
+            tableLabel: 'Orders',
+            fieldType: FieldType.DIMENSION,
+            sql: '${TABLE}.region',
+            compiledSql: '"orders".region',
+            tablesReferences: ['orders'],
+            hidden: false,
+        };
+
+        test('Should sort MONTH_NAME descending', () => {
+            const itemsMap: ItemsMap = {
+                orders_month_name: monthNameDimension,
+            };
+
+            const pivotConfiguration = {
+                indexColumn: [
+                    {
+                        reference: 'orders_month_name',
+                        type: VizIndexType.CATEGORY,
+                    },
+                ],
+                valuesColumns: [
+                    {
+                        reference: 'revenue',
+                        aggregation: VizAggregationOptions.SUM,
+                    },
+                ],
+                groupByColumns: undefined,
+                sortBy: [
+                    {
+                        reference: 'orders_month_name',
+                        direction: SortByDirection.DESC,
+                    },
+                ],
+            };
+
+            const builder = new PivotQueryBuilder(
+                baseSql,
+                pivotConfiguration,
+                mockWarehouseSqlBuilder,
+                500,
+                itemsMap,
+            );
+
+            const result = builder.toSql();
+
+            // Should contain CASE statement with DESC
+            expect(result).toContain('CASE');
+            expect(result).toContain(
+                '"orders_month_name" = \'January\' THEN 1',
+            );
+        });
+
+        test('Should sort MONTH_NAME in pivot query with groupBy columns', () => {
+            const itemsMap: ItemsMap = {
+                orders_month_name: monthNameDimension,
+                orders_category: categoryDimension,
+            };
+
+            const pivotConfiguration = {
+                indexColumn: [
+                    {
+                        reference: 'orders_month_name',
+                        type: VizIndexType.CATEGORY,
+                    },
+                ],
+                valuesColumns: [
+                    {
+                        reference: 'revenue',
+                        aggregation: VizAggregationOptions.SUM,
+                    },
+                ],
+                groupByColumns: [{ reference: 'orders_category' }],
+                sortBy: [
+                    {
+                        reference: 'orders_month_name',
+                        direction: SortByDirection.ASC,
+                    },
+                ],
+            };
+
+            const builder = new PivotQueryBuilder(
+                baseSql,
+                pivotConfiguration,
+                mockWarehouseSqlBuilder,
+                500,
+                itemsMap,
+            );
+
+            const result = builder.toSql();
+
+            // Should contain CASE statement in DENSE_RANK for row_index
+            expect(result).toContain('DENSE_RANK() OVER (ORDER BY');
+            expect(result).toContain('CASE');
+            expect(result).toContain(
+                'g."orders_month_name" = \'January\' THEN 1',
+            );
+            // Should use replaceAll - all occurrences should have g. prefix
+            const monthNameOccurrences = result.match(
+                /g\."orders_month_name" =/g,
+            );
+            expect(monthNameOccurrences).toBeTruthy();
+            expect(monthNameOccurrences!.length).toBe(12); // At least 12 in CASE statement
+        });
+
+        test('Should handle mixed time interval and regular fields in sorting', () => {
+            const itemsMap: ItemsMap = {
+                orders_month_name: monthNameDimension,
+                orders_region: regionDimension,
+            };
+
+            const pivotConfiguration = {
+                indexColumn: [
+                    {
+                        reference: 'orders_month_name',
+                        type: VizIndexType.CATEGORY,
+                    },
+                    { reference: 'orders_region', type: VizIndexType.CATEGORY },
+                ],
+                valuesColumns: [
+                    {
+                        reference: 'revenue',
+                        aggregation: VizAggregationOptions.SUM,
+                    },
+                ],
+                groupByColumns: undefined,
+                sortBy: [
+                    {
+                        reference: 'orders_month_name',
+                        direction: SortByDirection.ASC,
+                    },
+                    {
+                        reference: 'orders_region',
+                        direction: SortByDirection.ASC,
+                    },
+                ],
+            };
+
+            const builder = new PivotQueryBuilder(
+                baseSql,
+                pivotConfiguration,
+                mockWarehouseSqlBuilder,
+                500,
+                itemsMap,
+            );
+
+            const result = builder.toSql();
+
+            // Should contain CASE for month_name but not for region
+            expect(result).toContain(
+                'WHEN "orders_month_name" = \'January\' THEN 1',
+            );
+            expect(result).toContain('ORDER BY');
+            // Region should be simple field reference
+            expect(result).toContain('"orders_region" ASC');
         });
     });
 });

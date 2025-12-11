@@ -277,12 +277,14 @@ export class CatalogService<
         sortArgs?: ApiSort;
         excludeUnmatched?: boolean;
         fullTextSearchOperator?: 'OR' | 'AND';
-        filteredExplore?: Explore;
+        filteredExplores?: Explore[];
     }): Promise<KnexPaginatedData<CatalogItem[]>> {
-        const changeset =
-            await this.changesetModel.findActiveChangesetWithChangesByProjectUuid(
-                args.projectUuid,
-            );
+        const changeset = args.filteredExplores
+            ? // Do not pass changeset as we expect `filteredExplores` to have changeset already applied
+              undefined
+            : await this.changesetModel.findActiveChangesetWithChangesByProjectUuid(
+                  args.projectUuid,
+              );
         return wrapSentryTransaction(
             'CatalogService.searchCatalog',
             {
@@ -311,7 +313,7 @@ export class CatalogService<
                             tablesConfiguration,
                             excludeUnmatched: args.excludeUnmatched,
                             fullTextSearchOperator: args.fullTextSearchOperator,
-                            filteredExplore: args.filteredExplore,
+                            filteredExplores: args.filteredExplores,
                         }),
                 );
             },

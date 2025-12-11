@@ -6,6 +6,7 @@ import {
     type ApiErrorDetail,
     type ChartConfig,
     type DashboardFilters,
+    type EChartsSeries,
     type ItemsMap,
     type MetricQuery,
     type ParametersValuesMap,
@@ -14,7 +15,7 @@ import {
     type StackType,
     type TableCalculationMetadata,
 } from '@lightdash/common';
-import type EChartsReact from 'echarts-for-react';
+import type { Map as LeafletMap } from 'leaflet';
 import isEqual from 'lodash/isEqual';
 import {
     useCallback,
@@ -26,7 +27,6 @@ import {
     type RefObject,
 } from 'react';
 import { type CartesianTypeOptions } from '../../hooks/cartesianChartConfig/useCartesianChartConfig';
-import { type EChartSeries } from '../../hooks/echarts/useEchartsCartesianConfig';
 import { type SeriesLike } from '../../hooks/useChartColorConfig/types';
 import { useChartColorConfig } from '../../hooks/useChartColorConfig/useChartColorConfig';
 import {
@@ -39,10 +39,13 @@ import {
 } from '../../hooks/useFeatureFlagEnabled';
 import usePivotDimensions from '../../hooks/usePivotDimensions';
 import { type InfiniteQueryResults } from '../../hooks/useQueryResults';
-import { type EchartSeriesClickEvent } from '../SimpleChart';
+import { type EChartsReact } from '../EChartsReactWrapper';
+import { type EchartsSeriesClickEvent } from '../SimpleChart';
 import VisualizationBigNumberConfig from './VisualizationBigNumberConfig';
 import VisualizationCartesianConfig from './VisualizationConfigCartesian';
 import VisualizationConfigFunnel from './VisualizationConfigFunnel';
+import VisualizationGaugeConfig from './VisualizationConfigGauge';
+import VisualizationMapConfig from './VisualizationConfigMap';
 import VisualizationPieConfig from './VisualizationConfigPie';
 import VisualizationTableConfig from './VisualizationConfigTable';
 import VisualizationTreemapConfig from './VisualizationConfigTreemap';
@@ -52,7 +55,6 @@ import { type useVisualizationContext } from './useVisualizationContext';
 
 export type VisualizationProviderProps = {
     minimal?: boolean;
-    isDashboard?: boolean;
     chartConfig: ChartConfig;
     initialPivotDimensions: string[] | undefined;
     unsavedMetricQuery?: MetricQuery;
@@ -64,8 +66,8 @@ export type VisualizationProviderProps = {
     isLoading: boolean;
     columnOrder: string[];
     onSeriesContextMenu?: (
-        e: EchartSeriesClickEvent,
-        series: EChartSeries[],
+        e: EchartsSeriesClickEvent,
+        series: EChartsSeries[],
     ) => void;
     onChartTypeChange?: (value: ChartType) => void;
     onChartConfigChange?: (value: ChartConfig) => void;
@@ -79,13 +81,15 @@ export type VisualizationProviderProps = {
     setEchartsRef?: (ref: RefObject<EChartsReact | null>) => void;
     computedSeries?: Series[];
     apiErrorDetail?: ApiErrorDetail | null;
+    containerWidth?: number;
+    containerHeight?: number;
+    isDashboard?: boolean;
 };
 
 const VisualizationProvider: FC<
     React.PropsWithChildren<VisualizationProviderProps>
 > = ({
     minimal = false,
-    isDashboard = false,
     initialPivotDimensions,
     resultsData,
     isLoading,
@@ -107,12 +111,16 @@ const VisualizationProvider: FC<
     apiErrorDetail,
     parameters,
     unsavedMetricQuery,
+    containerWidth,
+    containerHeight,
+    isDashboard,
 }) => {
     const itemsMap = useMemo(() => {
         return resultsData?.fields;
     }, [resultsData]);
 
     const chartRef = useRef<EChartsReact | null>(null);
+    const leafletMapRef = useRef<LeafletMap | null>(null);
     useEffect(() => {
         if (setEchartsRef)
             setEchartsRef(chartRef as RefObject<EChartsReact | null>);
@@ -130,6 +138,7 @@ const VisualizationProvider: FC<
         useSqlPivotResults?.enabled
             ? unsavedMetricQuery ?? lastValidResultsData?.metricQuery
             : lastValidResultsData?.metricQuery,
+        onPivotDimensionsChange,
     );
 
     const setChartType = useCallback(
@@ -209,10 +218,6 @@ const VisualizationProvider: FC<
         setLastValidResultsData(resultsData);
     }, [resultsData]);
 
-    useEffect(() => {
-        onPivotDimensionsChange?.(validPivotDimensions);
-    }, [validPivotDimensions, onPivotDimensionsChange]);
-
     /**
      * Gets a shared color for a given group name.
      * Used in pie charts
@@ -261,7 +266,7 @@ const VisualizationProvider: FC<
             if ('pivotReference' in seriesLike && seriesLike.pivotReference) {
                 pivot = seriesLike.pivotReference.pivotValues?.[0];
             } else if (seriesLike.encode && 'yRef' in seriesLike.encode) {
-                pivot = seriesLike.encode.yRef.pivotValues?.[0];
+                pivot = seriesLike.encode.yRef?.pivotValues?.[0];
             }
             if (itemsMap && pivot) {
                 const { field, value } = pivot;
@@ -304,9 +309,9 @@ const VisualizationProvider: FC<
         'visualizationConfig'
     > = {
         minimal,
-        isDashboard,
         pivotDimensions: validPivotDimensions,
         chartRef,
+        leafletMapRef,
         resultsData: lastValidResultsData,
         isLoading,
         apiErrorDetail,
@@ -321,6 +326,10 @@ const VisualizationProvider: FC<
         getGroupColor,
         getSeriesColor,
         chartConfig,
+        parameters,
+        containerWidth,
+        containerHeight,
+        isDashboard,
     };
 
     switch (chartConfig.type) {
@@ -338,6 +347,7 @@ const VisualizationProvider: FC<
                     onChartConfigChange={handleChartConfigChange}
                     colorPalette={colorPalette}
                     tableCalculationsMetadata={tableCalculationsMetadata}
+                    parameters={parameters}
                 >
                     {({ visualizationConfig }) => (
                         <Context.Provider
@@ -357,6 +367,7 @@ const VisualizationProvider: FC<
                     onChartConfigChange={handleChartConfigChange}
                     colorPalette={colorPalette}
                     tableCalculationsMetadata={tableCalculationsMetadata}
+                    parameters={parameters}
                 >
                     {({ visualizationConfig }) => (
                         <Context.Provider
@@ -376,6 +387,7 @@ const VisualizationProvider: FC<
                     onChartConfigChange={handleChartConfigChange}
                     colorPalette={colorPalette}
                     tableCalculationsMetadata={tableCalculationsMetadata}
+                    parameters={parameters}
                 >
                     {({ visualizationConfig }) => (
                         <Context.Provider
@@ -394,6 +406,7 @@ const VisualizationProvider: FC<
                     initialChartConfig={chartConfig.config}
                     onChartConfigChange={handleChartConfigChange}
                     tableCalculationsMetadata={tableCalculationsMetadata}
+                    parameters={parameters}
                 >
                     {({ visualizationConfig }) => (
                         <Context.Provider
@@ -421,6 +434,42 @@ const VisualizationProvider: FC<
                         </Context.Provider>
                     )}
                 </VisualizationTreemapConfig>
+            );
+        case ChartType.GAUGE:
+            return (
+                <VisualizationGaugeConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    parameters={parameters}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationGaugeConfig>
+            );
+        case ChartType.MAP:
+            return (
+                <VisualizationMapConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    parameters={parameters}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationMapConfig>
             );
         case ChartType.TABLE:
             return (

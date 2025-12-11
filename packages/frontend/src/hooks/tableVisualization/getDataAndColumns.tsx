@@ -2,8 +2,10 @@ import {
     formatItemValue,
     getSubtotalKey,
     isCustomDimension,
+    isDimension,
     isField,
     type ItemsMap,
+    type ParametersValuesMap,
     type ResultRow,
 } from '@lightdash/common';
 import { Text } from '@mantine/core';
@@ -30,6 +32,7 @@ type Args = {
     columnOrder: string[];
     totals?: Record<string, number>;
     groupedSubtotals?: Record<string, Record<string, number>[]>;
+    parameters?: ParametersValuesMap;
 };
 
 export function getGroupingValuesAndSubtotalKey(
@@ -73,6 +76,23 @@ export function getSubtotalValueFromGroup(
     return subtotal?.[columnId];
 }
 
+const getImageSize = (item: ItemsMap[string] | undefined) => {
+    if (isDimension(item) && item.image?.url) {
+        const defaultWidth = 100;
+        const defaultPadding = 8 * 2;
+        const width = (item.image?.width || defaultWidth) + defaultPadding;
+
+        return {
+            style: {
+                width,
+                minWidth: width,
+                maxWidth: width,
+            },
+        };
+    }
+    return {};
+};
+
 const getDataAndColumns = ({
     itemsMap,
     selectedItemIds,
@@ -83,6 +103,7 @@ const getDataAndColumns = ({
     columnOrder,
     totals,
     groupedSubtotals,
+    parameters,
 }: Args): Array<TableHeader | TableColumn> => {
     return columnOrder.reduce<Array<TableHeader | TableColumn>>(
         (acc, itemId) => {
@@ -96,7 +117,7 @@ const getDataAndColumns = ({
             const headerOverride = getFieldLabelOverride(itemId);
 
             const column: TableHeader | TableColumn = columnHelper.accessor(
-                (row) => row[itemId],
+                (row: ResultRow) => row[itemId],
                 {
                     id: itemId,
                     header: () => (
@@ -130,16 +151,23 @@ const getDataAndColumns = ({
                             )}
                         </TableHeaderLabelContainer>
                     ),
-                    cell: getFormattedValueCell,
+                    cell: (info) => getFormattedValueCell(info, parameters),
 
                     footer: () =>
                         totals?.[itemId]
-                            ? formatItemValue(item, totals[itemId])
+                            ? formatItemValue(
+                                  item,
+                                  totals[itemId],
+                                  false,
+                                  parameters,
+                              )
                             : null,
                     meta: {
                         item,
                         isVisible: isColumnVisible(itemId),
                         frozen: isColumnFrozen(itemId),
+                        // For image columns with explicit width: set fixed width constraints
+                        ...getImageSize(item),
                     },
                     // Some features work in the TanStack Table demos but not here, for unknown reasons.
                     // For example, setting grouping value here does not work. The workaround is to use
@@ -192,7 +220,12 @@ const getDataAndColumns = ({
 
                             return (
                                 <Text span fw={600}>
-                                    {formatItemValue(item, subtotalValue)}
+                                    {formatItemValue(
+                                        item,
+                                        subtotalValue,
+                                        false,
+                                        parameters,
+                                    )}
                                 </Text>
                             );
                         }

@@ -45,3 +45,4 @@ export const getSearchFieldValues = ({ searchFieldValues }: Dependencies) =>
         },
         toModelOutput: (output) => toModelOutput(output),
     });
+

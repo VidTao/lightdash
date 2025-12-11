@@ -1,7 +1,12 @@
 import {
+    formatColorIndicator,
     formatItemValue,
+    formatTooltipRow,
+    formatTooltipValue,
     FunnelChartLabelPosition,
     FunnelChartLegendPosition,
+    getLegendStyle,
+    getTooltipStyle,
     type Metric,
     type ResultRow,
     type ResultValue,
@@ -18,6 +23,7 @@ import { useLegendDoubleClickTooltip } from './useLegendDoubleClickTooltip';
 export type FunnelSeriesDataPoint = NonNullable<
     FunnelSeriesOption['data']
 >[number] & {
+    id: string;
     name: string;
     value: number;
     meta: {
@@ -30,12 +36,14 @@ const getValueAndPercentage = ({
     field,
     value,
     maxValue,
+    parameters,
 }: {
     field?: TableCalculation | Metric;
     value: any;
     maxValue: number;
+    parameters?: Record<string, unknown>;
 }) => {
-    const formattedValue = formatItemValue(field, value);
+    const formattedValue = formatItemValue(field, value, false, parameters);
 
     const percentOfMax = round((Number(value) / maxValue) * 100, 2);
     return { formattedValue, percentOfMax };
@@ -45,7 +53,7 @@ const useEchartsFunnelConfig = (
     selectedLegends?: Record<string, boolean>,
     isInDashboard?: boolean,
 ) => {
-    const { visualizationConfig, itemsMap, colorPalette } =
+    const { visualizationConfig, itemsMap, colorPalette, parameters } =
         useVisualizationContext();
 
     const theme = useMantineTheme();
@@ -83,28 +91,38 @@ const useEchartsFunnelConfig = (
 
         return {
             type: 'funnel',
-            data: seriesData.map(({ name, value, meta }) => {
+            gap: 3,
+            data: seriesData.map(({ id, name, value, meta }) => {
                 return {
-                    name: labelOverrides?.[name] ?? name,
+                    name: labelOverrides?.[id] ?? name,
                     value,
                     meta,
                     itemStyle: {
-                        color: colorOverrides?.[name] ?? colorDefaults[name],
+                        color: colorOverrides?.[id] ?? colorDefaults[id],
+                        borderWidth: 0,
                     },
                 };
             }),
             color: colorPalette,
             tooltip: {
                 trigger: 'item',
-                formatter: ({ marker, name, value }) => {
+                formatter: ({ color, name, value }) => {
                     const { formattedValue, percentOfMax } =
                         getValueAndPercentage({
                             field: selectedField,
                             value,
                             maxValue: chartConfig.maxValue,
+                            parameters,
                         });
 
-                    return `${marker}<b>${name}</b><br /> Value: ${formattedValue} <br/> Percent: ${percentOfMax}%`;
+                    const colorIndicator = formatColorIndicator(
+                        typeof color === 'string' ? color : '',
+                    );
+                    const valuePill = formatTooltipValue(
+                        `${percentOfMax}% - ${formattedValue}`,
+                    );
+
+                    return formatTooltipRow(colorIndicator, name, valuePill);
                 },
             },
             top:
@@ -129,6 +147,7 @@ const useEchartsFunnelConfig = (
                             field: selectedField,
                             value,
                             maxValue: chartConfig.maxValue,
+                            parameters,
                         });
 
                     const percentString = labels?.showPercentage
@@ -145,49 +164,65 @@ const useEchartsFunnelConfig = (
                 },
             },
             emphasis: {
-                label: {
-                    fontSize: 18,
-                },
+                disabled: true,
             },
         };
-    }, [chartConfig, colorPalette, seriesData]);
+    }, [chartConfig, colorPalette, seriesData, parameters]);
 
     const { tooltip: legendDoubleClickTooltip } = useLegendDoubleClickTooltip();
 
-    const eChartsOptions: EChartsOption | undefined = useMemo(() => {
-        if (!chartConfig || !funnelSeriesOptions || !seriesData) return;
+    const legendConfigWithTooltip = useMemo(() => {
+        if (!chartConfig) return undefined;
 
         const {
             validConfig: { showLegend, legendPosition },
         } = chartConfig;
 
+        const legendStyle = getLegendStyle('square');
+
+        const legendConfig = {
+            show: showLegend,
+            orient: legendPosition,
+            type: 'scroll' as const,
+            ...(legendPosition === FunnelChartLegendPosition.VERTICAL
+                ? {
+                      left: 'left' as const,
+                      top: 'middle' as const,
+                      align: 'left' as const,
+                  }
+                : {
+                      left: 'center' as const,
+                      top: 'top' as const,
+                      align: 'auto' as const,
+                  }),
+            selected: selectedLegends,
+        };
+
         return {
+            ...legendConfig,
+            ...legendStyle,
+            tooltip: legendDoubleClickTooltip,
+        };
+    }, [chartConfig, legendDoubleClickTooltip, selectedLegends]);
+
+    const eChartsOptions: EChartsOption | undefined = useMemo(() => {
+        if (!chartConfig || !funnelSeriesOptions || !seriesData) return;
+
+        const baseOptions = {
             textStyle: {
                 fontFamily: theme?.other.chartFont as string | undefined,
             },
             tooltip: {
-                trigger: 'item',
+                ...getTooltipStyle(),
+                trigger: 'item' as const,
             },
             series: [funnelSeriesOptions],
             animation: !isInDashboard,
-            legend: {
-                show: showLegend,
-                orient: legendPosition,
-                type: 'scroll',
-                ...(legendPosition === FunnelChartLegendPosition.VERTICAL
-                    ? {
-                          left: 'left',
-                          top: 'middle',
-                          align: 'left',
-                      }
-                    : {
-                          left: 'center',
-                          top: 'top',
-                          align: 'auto',
-                      }),
-                selected: selectedLegends,
-                tooltip: legendDoubleClickTooltip,
-            },
+        };
+
+        return {
+            ...baseOptions,
+            legend: legendConfigWithTooltip,
         };
     }, [
         chartConfig,
@@ -195,8 +230,7 @@ const useEchartsFunnelConfig = (
         seriesData,
         isInDashboard,
         theme,
-        legendDoubleClickTooltip,
-        selectedLegends,
+        legendConfigWithTooltip,
     ]);
 
     if (!itemsMap) return;

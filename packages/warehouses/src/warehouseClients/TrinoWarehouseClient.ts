@@ -224,6 +224,7 @@ export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredent
             catalog: credentials.dbname,
             schema: credentials.schema,
             server: `${credentials.http_scheme}://${credentials.host}:${credentials.port}`,
+            ...(credentials.source && { source: credentials.source }),
         };
     }
 
@@ -318,7 +319,10 @@ export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredent
                     );
                     // eslint-disable-next-line no-await-in-loop
                     queryResult = await query.next(); // Call .next() one more time to avoid warehouse timeouts
-                    break;
+                    // Don't break immediately - continue the loop to process any remaining data
+                    // The loop will exit naturally when queryResult.done becomes true
+                    // eslint-disable-next-line no-continue
+                    continue;
                 }
 
                 // eslint-disable-next-line no-await-in-loop

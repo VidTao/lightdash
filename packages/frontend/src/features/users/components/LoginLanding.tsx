@@ -13,12 +13,13 @@ import {
 import {
     ActionIcon,
     Anchor,
+    Box,
     Button,
     Card,
     Divider,
-    Image,
     PasswordInput,
     Stack,
+    Image,
     Text,
     TextInput,
     Title,
@@ -30,6 +31,7 @@ import { Navigate, useLocation } from 'react-router';
 import { z } from 'zod';
 import MantineIcon from '../../../components/common/MantineIcon';
 import { ThirdPartySignInButton } from '../../../components/common/ThirdPartySignInButton';
+import LightdashLogo from '../../../components/LightdashLogo/LightdashLogo';
 import PageSpinner from '../../../components/PageSpinner';
 import useToaster from '../../../hooks/toaster/useToaster';
 import { useFlashMessages } from '../../../hooks/useFlashMessages';
@@ -282,7 +284,7 @@ const Login: FC<{}> = () => {
                                         labelPosition="center"
                                         label={
                                             <Text
-                                                color="gray.5"
+                                                color="ldGray.5"
                                                 size="sm"
                                                 fw={500}
                                             >

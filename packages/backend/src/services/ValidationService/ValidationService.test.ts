@@ -42,6 +42,7 @@ const projectModel = {
 const validationModel = {
     delete: jest.fn(async () => {}),
     create: jest.fn(async () => {}),
+    get: jest.fn(async () => []),
 };
 const dashboardModel = {
     findDashboardsForValidation: jest.fn(async () => [dashboardForValidation]),

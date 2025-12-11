@@ -4,11 +4,11 @@ import {
     CustomFormatType,
     applyCustomFormat,
     formatItemValue,
-    formatValueWithExpression,
     friendlyName,
     getCustomFormatFromLegacy,
     getItemId,
     getItemLabel,
+    getItemLabelWithoutTableName,
     hasFormatOptions,
     hasValidFormatExpression,
     isField,
@@ -19,6 +19,7 @@ import {
     type BigNumber,
     type CompactOrAlias,
     type ItemsMap,
+    type ParametersValuesMap,
     type TableCalculationMetadata,
 } from '@lightdash/common';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -48,6 +49,7 @@ const formatComparisonValue = (
     item: ItemsMap[string] | undefined,
     value: number | string,
     bigNumberComparisonStyle: CompactOrAlias | undefined,
+    parameters?: ParametersValuesMap,
 ) => {
     const prefix =
         comparisonDiff === ComparisonDiffTypes.POSITIVE ||
@@ -65,7 +67,12 @@ const formatComparisonValue = (
             })}`;
         case ComparisonFormatTypes.RAW:
             if (item !== undefined && isTableCalculation(item)) {
-                return `${prefix}${formatItemValue(item, value)}`;
+                return `${prefix}${formatItemValue(
+                    item,
+                    value,
+                    false,
+                    parameters,
+                )}`;
             }
 
             const formattedValue = bigNumberComparisonStyle
@@ -77,12 +84,12 @@ const formatComparisonValue = (
                           compact: bigNumberComparisonStyle,
                       }),
                   )
-                : formatItemValue(item, value);
+                : formatItemValue(item, value, false, parameters);
 
             return `${prefix}${formattedValue}`;
         default:
             if (item !== undefined && isTableCalculation(item)) {
-                return formatItemValue(item, value);
+                return formatItemValue(item, value, false, parameters);
             }
             return bigNumberComparisonStyle
                 ? applyCustomFormat(
@@ -93,7 +100,7 @@ const formatComparisonValue = (
                           compact: bigNumberComparisonStyle,
                       }),
                   )
-                : formatItemValue(item, value);
+                : formatItemValue(item, value, false, parameters);
     }
 };
 
@@ -115,6 +122,7 @@ const useBigNumberConfig = (
     resultsData: InfiniteQueryResults | undefined,
     itemsMap: ItemsMap | undefined,
     tableCalculationsMetadata?: TableCalculationMetadata[],
+    parameters?: ParametersValuesMap,
 ) => {
     const availableFieldsIds = useMemo(() => {
         const itemsSortedByType = Object.values(itemsMap || {}).sort((a, b) => {
@@ -182,11 +190,21 @@ const useBigNumberConfig = (
         return itemsMap[selectedField];
     }, [itemsMap, selectedField]);
 
+    const [showTableNamesInLabel, setShowTableNamesInLabel] = useState<
+        BigNumber['showTableNamesInLabel'] | undefined
+    >(bigNumberConfigData?.showTableNamesInLabel);
+
     const label = useMemo(() => {
+        // For backwards compatibility: undefined means show table names (existing charts)
+        // false means hide table names (new charts default to hidden)
+        const shouldShowTableName = showTableNamesInLabel ?? true;
+
         return item
-            ? getItemLabel(item)
+            ? shouldShowTableName
+                ? getItemLabel(item)
+                : getItemLabelWithoutTableName(item)
             : selectedField && friendlyName(selectedField);
-    }, [item, selectedField]);
+    }, [item, selectedField, showTableNamesInLabel]);
 
     const [bigNumberLabel, setBigNumberLabel] = useState<
         BigNumber['label'] | undefined
@@ -220,6 +238,9 @@ const useBigNumberConfig = (
 
         setBigNumberLabel(bigNumberConfigData?.label);
         setShowBigNumberLabel(bigNumberConfigData?.showBigNumberLabel ?? true);
+        setShowTableNamesInLabel(
+            bigNumberConfigData?.showTableNamesInLabel ?? true,
+        );
 
         setBigNumberStyle(bigNumberConfigData?.style);
         setBigNumberComparisonStyle(bigNumberConfigData?.style);
@@ -252,13 +273,13 @@ const useBigNumberConfig = (
                 resultsData?.rows?.[0]?.[selectedField]?.value.formatted
             );
         } else if (item !== undefined && isTableCalculation(item)) {
-            return formatItemValue(item, firstRowValueRaw);
+            return formatItemValue(item, firstRowValueRaw, false, parameters);
         } else if (
             item !== undefined &&
             hasValidFormatExpression(item) &&
             !bigNumberStyle // If the big number has a comparison style, don't use the format expression returned by the backend
         ) {
-            return formatValueWithExpression(item.format, firstRowValueRaw);
+            return formatItemValue(item, firstRowValueRaw, false, parameters);
         } else if (item !== undefined && hasFormatOptions(item)) {
             // Custom metrics case
 
@@ -290,7 +311,14 @@ const useBigNumberConfig = (
                 }),
             );
         }
-    }, [item, firstRowValueRaw, selectedField, bigNumberStyle, resultsData]);
+    }, [
+        item,
+        firstRowValueRaw,
+        selectedField,
+        bigNumberStyle,
+        resultsData,
+        parameters,
+    ]);
 
     const unformattedValue = useMemo(() => {
         // For backwards compatibility with old table calculations without type
@@ -332,6 +360,7 @@ const useBigNumberConfig = (
                   item,
                   unformattedValue,
                   bigNumberComparisonStyle,
+                  parameters,
               );
     }, [
         comparisonFormat,
@@ -339,6 +368,7 @@ const useBigNumberConfig = (
         item,
         unformattedValue,
         bigNumberComparisonStyle,
+        parameters,
     ]);
 
     const comparisonTooltip = useMemo(() => {
@@ -367,6 +397,7 @@ const useBigNumberConfig = (
             style: bigNumberStyle,
             selectedField: selectedField,
             showBigNumberLabel,
+            showTableNamesInLabel,
             showComparison,
             comparisonFormat,
             flipColors,
@@ -377,6 +408,7 @@ const useBigNumberConfig = (
         bigNumberStyle,
         selectedField,
         showBigNumberLabel,
+        showTableNamesInLabel,
         showComparison,
         comparisonFormat,
         flipColors,
@@ -410,6 +442,8 @@ const useBigNumberConfig = (
         comparisonTooltip,
         comparisonLabel,
         setComparisonLabel,
+        showTableNamesInLabel,
+        setShowTableNamesInLabel,
     };
 };
 

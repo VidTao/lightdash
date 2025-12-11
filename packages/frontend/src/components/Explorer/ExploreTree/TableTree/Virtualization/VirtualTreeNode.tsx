@@ -22,7 +22,7 @@ const VirtualTreeNodeComponent: FC<VirtualTreeNodeProps> = ({
     onToggleGroup,
     onSelectedFieldChange,
 }) => {
-    const { node, isGroup, sectionKey, depth } = item.data;
+    const { node, isGroup, sectionKey, depth, isExpanded } = item.data;
 
     // Look up the shared section context
     const sectionContext = sectionContexts.get(sectionKey);
@@ -48,6 +48,14 @@ const VirtualTreeNodeComponent: FC<VirtualTreeNodeProps> = ({
                 expandedGroups: new Set<string>(),
                 onToggleGroup: () => {},
             };
+        }
+
+        // Build expandedGroups Set from the node's isExpanded state
+        // This is used by TreeGroupNode to determine chevron rotation
+        const expandedGroups = new Set<string>();
+        if (isGroup && isExpanded) {
+            // Use item.id which already contains the unique key with parent path
+            expandedGroups.add(item.id);
         }
 
         return {
@@ -78,12 +86,21 @@ const VirtualTreeNodeComponent: FC<VirtualTreeNodeProps> = ({
             searchResults: sectionContext.searchResults,
             tableName: sectionContext.tableName,
             treeSectionType: sectionContext.sectionType,
-            expandedGroups: new Set<string>(), // Not needed - expansion state is in flattened data
+            expandedGroups,
             onToggleGroup,
             isVirtualized: true, // Flag to prevent inline children rendering
             depth, // Nesting depth for indentation
+            groupKey: isGroup ? item.id : undefined, // Pre-computed unique group key with parent path
         };
-    }, [sectionContext, depth, onSelectedFieldChange, onToggleGroup]);
+    }, [
+        sectionContext,
+        depth,
+        onSelectedFieldChange,
+        onToggleGroup,
+        isGroup,
+        isExpanded,
+        item.id,
+    ]);
 
     if (!sectionContext) {
         console.error(`Section context not found for key: ${sectionKey}`);

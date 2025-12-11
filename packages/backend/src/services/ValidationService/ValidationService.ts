@@ -15,7 +15,9 @@ import {
     getFilterRules,
     getItemId,
     InlineErrorType,
+    isChartValidationError,
     isDashboardFieldTarget,
+    isDashboardValidationError,
     isExploreError,
     isSqlTableCalculation,
     isTemplateTableCalculation,
@@ -810,6 +812,21 @@ export class ValidationService extends BaseService {
         // Filter private content to developers
         return Promise.all(
             validations.map(async (validation) => {
+                const isDeleted =
+                    (isDashboardValidationError(validation) &&
+                        !validation.dashboardUuid) ||
+                    (isChartValidationError(validation) &&
+                        !validation.chartUuid);
+
+                if (isDeleted) {
+                    return {
+                        ...validation,
+                        chartUuid: undefined,
+                        dashboardUuid: undefined,
+                        name: 'Deleted content',
+                    };
+                }
+
                 const space = spaces.find(
                     (s) => s.uuid === validation.spaceUuid,
                 );
@@ -846,7 +863,30 @@ export class ValidationService extends BaseService {
         ) {
             throw new ForbiddenError();
         }
-        const validations = await this.validationModel.get(projectUuid, jobId);
+        const allValidations = await this.validationModel.get(
+            projectUuid,
+            jobId,
+        );
+
+        // Filter out orphaned validations (content was deleted)
+        const validations = allValidations.filter((validation) => {
+            // Keep table validations (they don't reference charts/dashboards)
+            if (
+                !isDashboardValidationError(validation) &&
+                !isChartValidationError(validation)
+            ) {
+                return true;
+            }
+
+            // Filter out chart/dashboard validations where content no longer exists
+            const hasChartUuid =
+                isChartValidationError(validation) && validation.chartUuid;
+            const hasDashboardUuid =
+                isDashboardValidationError(validation) &&
+                validation.dashboardUuid;
+
+            return hasChartUuid || hasDashboardUuid;
+        });
 
         if (fromSettings) {
             const contentIds = validations.map(

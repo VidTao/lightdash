@@ -71,8 +71,10 @@ export const Axes: FC<Props> = ({ itemsMap }) => {
         setShowGridY,
         setShowXAxis,
         setShowYAxis,
+        setShowAxisTicks,
         setXAxisSort,
         setXAxisLabelRotation,
+        setScrollableChart,
         dirtyChartType,
     } = visualizationConfig.chartConfig;
 
@@ -228,6 +230,19 @@ export const Axes: FC<Props> = ({ itemsMap }) => {
                             </Group>
                         )}
                     </Group>
+
+                    {getAxisTypeFromField(xAxisField) === 'category' && (
+                        <Checkbox
+                            label="Enable scrollable chart"
+                            checked={
+                                dirtyEchartsConfig?.xAxis?.[0]
+                                    ?.enableDataZoom || false
+                            }
+                            onChange={(e) =>
+                                setScrollableChart(e.currentTarget.checked)
+                            }
+                        />
+                    )}
                 </Config.Section>
             </Config>
 
@@ -369,6 +384,18 @@ export const Axes: FC<Props> = ({ itemsMap }) => {
                             }}
                         />
                     </Stack>
+                </Config.Section>
+            </Config>
+            <Config>
+                <Config.Section>
+                    <Config.Heading>Show tick lines</Config.Heading>
+                    <Checkbox
+                        label="Show tick lines on axes"
+                        checked={!!dirtyEchartsConfig?.showAxisTicks}
+                        onChange={(e) => {
+                            setShowAxisTicks(e.currentTarget.checked);
+                        }}
+                    />
                 </Config.Section>
             </Config>
         </Stack>

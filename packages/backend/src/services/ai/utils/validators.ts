@@ -24,7 +24,7 @@ import {
     isMetric,
     isTableCalculation,
     MetricType,
-    nillaryWindowFunctions,
+    nullaryWindowFunctions,
     numberFilterSchema,
     renderFilterRuleSql,
     renderFilterRuleSqlFromField,
@@ -684,6 +684,27 @@ ${availableTableNames.map((t) => `- ${t}`).join('\n')}`;
     }
 }
 
+/**
+ * Validate that an explore name exists in the list of available explores
+ * @param availableExploreNames - Array of available explore names
+ * @param exploreName - The explore name to validate
+ */
+export function validateExploreNameExists(
+    availableExplores: Explore[],
+    exploreName: string,
+) {
+    if (availableExplores.some((e) => e.name === exploreName)) return;
+
+    const errorMessage = `Invalid explore name: "${exploreName}"
+
+Available explores:
+${availableExplores.map((e) => `- ${e.name}`).join('\n')}`;
+
+    Logger.error(`[AiAgent][Validate Explore Name Exists] ${errorMessage}`);
+
+    throw new Error(errorMessage);
+}
+
 // Numeric metric types that support most table calculations
 const NUMERIC_METRIC_TYPES: MetricType[] = [
     MetricType.NUMBER,
@@ -733,11 +754,12 @@ function buildTableCalcSchemaDependencyGraph(
 
 /**
  * Validate table calculations to ensure fieldId and orderBy.fieldId reference valid metrics/custom metrics
- * with compatible types for the calculation being performed
+ * with compatible types for the calculation being performed, and that all referenced fields are selected
  */
 export function validateTableCalculations(
     explore: Explore,
     tableCalcs: TableCalcsSchema,
+    selectedDimensions: string[],
     selectedMetrics: string[],
     customMetrics: CustomMetricBase[] | null,
 ) {
@@ -763,14 +785,30 @@ export function validateTableCalculations(
         throw new Error(getTableCalcValidationError(getErrorMessage(e)));
     }
 
-    // Validate orderBy fields exist
-    const orderByFieldIds = tableCalcs.flatMap((calc) => {
+    // Collect orderBy fields with their calc names for validation
+    const orderByFields = tableCalcs.flatMap((calc) => {
         if ('orderBy' in calc && calc.orderBy !== null) {
-            return calc.orderBy.map((order) => order.fieldId);
+            return calc.orderBy.map((order) => ({
+                fieldId: order.fieldId,
+                calcName: calc.name,
+            }));
         }
         return [];
     });
 
+    // Collect partitionBy fields with their calc names for validation
+    const partitionByFields = tableCalcs.flatMap((calc) => {
+        if ('partitionBy' in calc && calc.partitionBy !== null) {
+            return calc.partitionBy.map((fieldId) => ({
+                fieldId,
+                calcName: calc.name,
+            }));
+        }
+        return [];
+    });
+
+    // Validate orderBy fields exist in explore/custom metrics/table calcs
+    const orderByFieldIds = orderByFields.map((f) => f.fieldId);
     if (orderByFieldIds.length > 0) {
         try {
             validateSelectedFieldsExistence(
@@ -786,13 +824,8 @@ export function validateTableCalculations(
         }
     }
 
-    const partitionByFieldIds = tableCalcs.flatMap((calc) => {
-        if ('partitionBy' in calc && calc.partitionBy !== null) {
-            return calc.partitionBy;
-        }
-        return [];
-    });
-
+    // Validate partitionBy fields exist in explore/custom metrics/table calcs
+    const partitionByFieldIds = partitionByFields.map((f) => f.fieldId);
     if (partitionByFieldIds.length > 0) {
         try {
             validateSelectedFieldsExistence(
@@ -806,6 +839,34 @@ export function validateTableCalculations(
         }
     }
 
+    // Validate that partitionBy and orderBy fields are selected in the query
+    // (not just that they exist in the explore)
+    const tableCalculationNames = tableCalcs.map((tc) => tc.name);
+    const allSelectedFieldIds = [
+        ...selectedDimensions,
+        ...selectedMetrics,
+        ...customMetricIds,
+        ...tableCalculationNames,
+    ];
+
+    // Check orderBy fields are selected
+    orderByFields.forEach(({ fieldId, calcName }) => {
+        if (!allSelectedFieldIds.includes(fieldId)) {
+            errors.push(
+                `Table calculation "${calcName}" uses orderBy field "${fieldId}" which is not selected in the query. The field must be included in dimensions, metrics, or be another table calculation.`,
+            );
+        }
+    });
+
+    // Check partitionBy fields are selected
+    partitionByFields.forEach(({ fieldId, calcName }) => {
+        if (!allSelectedFieldIds.includes(fieldId)) {
+            errors.push(
+                `Table calculation "${calcName}" uses partitionBy field "${fieldId}" which is not selected in the query. The field must be included in dimensions or metrics to be used for partitioning.`,
+            );
+        }
+    });
+
     const findField = (fieldId: string) =>
         allFields.find((f) => getItemId(f) === fieldId);
 
@@ -813,7 +874,7 @@ export function validateTableCalculations(
         const { type, name } = tableCalc;
 
         if (type === 'window_function') {
-            const needsFieldId = !nillaryWindowFunctions.includes(
+            const needsFieldId = !nullaryWindowFunctions.includes(
                 tableCalc.windowFunction,
             );
 

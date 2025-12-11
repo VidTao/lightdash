@@ -92,7 +92,10 @@ flake.lock
 /ssl-certs/
 
 # Charts as code
-lightdash
+/examples/full-jaffle-shop-demo/dbt/lightdash
+/examples/lightdash
+/lightdash
+
 *storybook.log
 
 # Prometheus
@@ -106,3 +109,4 @@ data/
 
 CLAUDE.local.md
 credentials/
+http-client.private.env.json

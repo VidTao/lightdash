@@ -5,15 +5,19 @@ import IDBSQLClient, {
 import IDBSQLSession from '@databricks/sql/dist/contracts/IDBSQLSession';
 import IOperation from '@databricks/sql/dist/contracts/IOperation';
 import { TTypeId as DatabricksDataTypes } from '@databricks/sql/thrift/TCLIService_types';
+import fetch from 'node-fetch';
+
 import {
     AnyType,
     CreateDatabricksCredentials,
+    DatabricksAuthenticationType,
     DimensionType,
     getErrorMessage,
     Metric,
     MetricType,
     ParseError,
     SupportedDbtAdapter,
+    UnexpectedServerError,
     WarehouseConnectionError,
     WarehouseQueryError,
     WarehouseResults,
@@ -212,6 +216,9 @@ export class DatabricksSqlBuilder extends WarehouseBaseSqlBuilder {
     }
 }
 
+const DATABRICKS_SOCKET_TIMEOUT_MS = 60000;
+const DATABRICKS_QUERY_TIMEOUT_SECONDS = 300;
+
 export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabricksCredentials> {
     schema: string;
 
@@ -219,17 +226,55 @@ export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabri
 
     connectionOptions: ConnectionOptions;
 
+    private readonly enableTimeouts: boolean;
+
     constructor(credentials: CreateDatabricksCredentials) {
         super(credentials, new DatabricksSqlBuilder(credentials.startOfWeek));
         this.schema = credentials.database;
         this.catalog = credentials.catalog;
-        this.connectionOptions = {
-            token: credentials.personalAccessToken,
-            host: credentials.serverHostName,
-            path: credentials.httpPath.startsWith('/')
-                ? credentials.httpPath
-                : `/${credentials.httpPath}`,
-        };
+        this.enableTimeouts = process.env.DATABRICKS_ENABLE_TIMEOUTS === 'true';
+
+        // Build connection options based on authentication type
+        if (
+            credentials.authenticationType ===
+                DatabricksAuthenticationType.OAUTH_M2M ||
+            credentials.authenticationType ===
+                DatabricksAuthenticationType.OAUTH_U2M
+        ) {
+            if (!credentials.token) {
+                throw new UnexpectedServerError(
+                    `Databricks OAuth access token is required for OAuth ${credentials.authenticationType} authentication`,
+                );
+            }
+            this.connectionOptions = {
+                authType: 'access-token',
+                token: credentials.token,
+                host: credentials.serverHostName,
+                path: credentials.httpPath.startsWith('/')
+                    ? credentials.httpPath
+                    : `/${credentials.httpPath}`,
+                ...(this.enableTimeouts && {
+                    socketTimeout: DATABRICKS_SOCKET_TIMEOUT_MS,
+                }),
+            };
+        } else {
+            // Default to personal access token authentication
+            if (!credentials.personalAccessToken) {
+                throw new UnexpectedServerError(
+                    'Databricks personal access token is required for token authentication',
+                );
+            }
+            this.connectionOptions = {
+                token: credentials.personalAccessToken,
+                host: credentials.serverHostName,
+                path: credentials.httpPath.startsWith('/')
+                    ? credentials.httpPath
+                    : `/${credentials.httpPath}`,
+                ...(this.enableTimeouts && {
+                    socketTimeout: DATABRICKS_SOCKET_TIMEOUT_MS,
+                }),
+            };
+        }
     }
 
     private async getSession() {
@@ -239,12 +284,24 @@ export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabri
 
         try {
             connection = await client.connect(this.connectionOptions);
+        } catch (e: AnyType) {
+            throw new WarehouseConnectionError(getErrorMessage(e));
+        }
 
+        try {
             session = await connection.openSession({
                 initialCatalog: this.catalog,
                 initialSchema: this.schema,
             });
         } catch (e: AnyType) {
+            try {
+                await connection.close();
+            } catch (closeError: AnyType) {
+                console.error(
+                    'Error closing connection after session failure',
+                    closeError,
+                );
+            }
             throw new WarehouseConnectionError(getErrorMessage(e));
         }
 
@@ -288,8 +345,12 @@ export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabri
                     },
                 );
             }
+
             query = await session.executeStatement(alteredQuery, {
                 runAsync: true,
+                ...(this.enableTimeouts && {
+                    queryTimeout: DATABRICKS_QUERY_TIMEOUT_SECONDS,
+                }),
                 ordinalParameters: options?.values,
             });
 
@@ -467,3 +528,88 @@ export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabri
         return this.parseWarehouseCatalog(rows, mapFieldType);
     }
 }
+
+/**
+ * Exchange Databricks OAuth M2M credentials for access and refresh tokens
+ */
+export const exchangeDatabricksOAuthCredentials = async (
+    host: string,
+    clientId: string,
+    clientSecret: string,
+): Promise<{ accessToken: string; refreshToken?: string }> => {
+    const tokenUrl = `https://${host}/oidc/v1/token`;
+
+    const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            grant_type: 'client_credentials',
+            client_id: clientId,
+            client_secret: clientSecret,
+            scope: 'sql',
+        }).toString(),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+            `Failed to obtain Databricks OAuth token: ${response.status} ${errorText}`,
+        );
+    }
+
+    const data = (await response.json()) as {
+        access_token: string;
+        refresh_token?: string;
+    };
+    return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+    };
+};
+
+/**
+ * Refresh Databricks OAuth U2M access token using refresh token
+ */
+export const refreshDatabricksOAuthToken = async (
+    host: string,
+    clientId: string,
+    refreshToken: string,
+): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+}> => {
+    const tokenUrl = `https://${host}/oidc/v1/token`;
+
+    const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+            client_id: clientId,
+        }).toString(),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+            `Failed to refresh Databricks OAuth token: ${response.status} ${errorText}`,
+        );
+    }
+
+    const data = (await response.json()) as {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+    };
+    return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in,
+    };
+};

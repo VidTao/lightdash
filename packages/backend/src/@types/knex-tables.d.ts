@@ -123,6 +123,10 @@ import {
 } from '../database/entities/warehouseCredentials';
 
 import {
+    AiAgentReasoningTable,
+    AiAgentReasoningTableName,
+} from '../database/entities/aiAgentReasoning';
+import {
     AnalyticsChartViews,
     AnalyticsChartViewsTableName,
     AnalyticsDashboardViews,
@@ -290,6 +294,8 @@ import {
 import {
     AiEvalPromptTable,
     AiEvalPromptTableName,
+    AiEvalRunResultAssessmentTable,
+    AiEvalRunResultAssessmentTableName,
     AiEvalRunResultTable,
     AiEvalRunResultTableName,
     AiEvalRunTable,
@@ -395,6 +401,7 @@ declare module 'knex/types/tables' {
         [AiAgentSlackIntegrationTableName]: AiAgentSlackIntegrationTable;
         [AiAgentInstructionVersionsTableName]: AiAgentInstructionVersionsTable;
         [AiAgentUserPreferencesTableName]: AiAgentUserPreferencesTable;
+        [AiAgentReasoningTableName]: AiAgentReasoningTable;
         [AiAgentToolCallTableName]: AiAgentToolCallTable;
         [AiAgentToolResultTableName]: AiAgentToolResultTable;
         [DashboardTabsTableName]: DashboardTabsTable;
@@ -418,6 +425,7 @@ declare module 'knex/types/tables' {
         [AiEvalPromptTableName]: AiEvalPromptTable;
         [AiEvalRunTableName]: AiEvalRunTable;
         [AiEvalRunResultTableName]: AiEvalRunResultTable;
+        [AiEvalRunResultAssessmentTableName]: AiEvalRunResultAssessmentTable;
         [ChangesetsTableName]: ChangesetsTable;
         [ChangesTableName]: ChangesTable;
     }

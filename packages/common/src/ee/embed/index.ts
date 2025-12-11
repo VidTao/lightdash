@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { OssEmbed } from '../../types/auth';
+import type { EmbedContent, OssEmbed } from '../../types/auth';
 import assertUnreachable from '../../utils/assertUnreachable';
 
 /** @deprecated Use OssEmbed instead */
@@ -10,14 +10,19 @@ export type DecodedEmbed = Omit<Embed, 'encodedSecret'> & {
     secret: string;
 };
 
-// tsoa can't differentiate betwen CreateEmbed and CreatedEmbedJwt so we opt for a more unique name
+// tsoa can't differentiate between CreateEmbed and CreatedEmbedJwt so we opt for a more unique name
+// At least one of dashboardUuids or chartUuids must be provided
 export type CreateEmbedRequestBody = {
-    dashboardUuids: string[];
+    dashboardUuids?: string[];
+    chartUuids?: string[];
 };
 
 export type UpdateEmbed = {
     dashboardUuids: string[];
     allowAllDashboards: boolean;
+    // TODO: Make these required in Settings UI PR
+    chartUuids?: string[];
+    allowAllCharts?: boolean;
 };
 
 export enum FilterInteractivityValues {
@@ -36,15 +41,25 @@ export const DashboardFilterInteractivityOptionsSchema = z.object({
     enabled: z.union([z.boolean(), FilterInteractivityValuesSchema]),
     // Nullish because we have python clients that serialize None to null
     allowedFilters: z.array(z.string()).nullish(),
+    hidden: z.boolean().optional(),
 });
 
 export type DashboardFilterInteractivityOptions = z.infer<
     typeof DashboardFilterInteractivityOptionsSchema
 >;
 
+export const ParameterInteractivityOptionsSchema = z.object({
+    enabled: z.boolean(),
+});
+
+export type ParameterInteractivityOptions = z.infer<
+    typeof ParameterInteractivityOptionsSchema
+>;
+
 export const InteractivityOptionsSchema = z.object({
     dashboardFiltersInteractivity:
         DashboardFilterInteractivityOptionsSchema.optional(),
+    parameterInteractivity: ParameterInteractivityOptionsSchema.optional(),
     canExportCsv: z.boolean().optional(),
     canExportImages: z.boolean().optional(),
     canExportPagePdf: z.boolean().optional(),
@@ -54,6 +69,17 @@ export const InteractivityOptionsSchema = z.object({
 });
 
 export type InteractivityOptions = z.infer<typeof InteractivityOptionsSchema>;
+
+export const ChartInteractivityOptionsSchema = z.object({
+    scopes: z.array(z.string()).optional(),
+    canExportCsv: z.boolean().optional(),
+    canExportImages: z.boolean().optional(),
+    canViewUnderlyingData: z.boolean().optional(),
+});
+
+export type ChartInteractivityOptions = z.infer<
+    typeof ChartInteractivityOptionsSchema
+>;
 
 export const EmbedJwtSchema = z
     .object({
@@ -81,6 +107,14 @@ export const EmbedJwtSchema = z
                     isPreview: z.boolean().optional(),
                 })
                 .merge(InteractivityOptionsSchema),
+            z
+                .object({
+                    type: z.literal('chart'),
+                    projectUuid: z.string().optional(),
+                    contentId: z.string(),
+                    isPreview: z.boolean().optional(),
+                })
+                .merge(ChartInteractivityOptionsSchema),
         ]),
         iat: z.number().optional(),
         exp: z.number(),
@@ -92,19 +126,36 @@ export const EmbedJwtSchema = z
 export type EmbedJwt = z.infer<typeof EmbedJwtSchema>;
 
 // Note: we can't extend zod types since tsoa doesn't support it
-type CommonEmbedJwtContent = {
+export type CommonEmbedJwtContent = {
     type: 'dashboard';
     projectUuid?: string;
     isPreview?: boolean;
     dashboardFiltersInteractivity?: {
         enabled: FilterInteractivityValues | boolean;
         allowedFilters?: string[] | null;
+        // Should the filters be rendered hidden or visible in the UI
+        hidden?: boolean;
+    };
+    parameterInteractivity?: {
+        enabled: boolean;
     };
     canExportCsv?: boolean;
     canExportImages?: boolean;
     canDateZoom?: boolean;
     canExportPagePdf?: boolean;
     canExplore?: boolean;
+    canViewUnderlyingData?: boolean;
+};
+
+type CommonChartEmbedJwtContent = {
+    type: 'chart';
+    projectUuid?: string;
+    isPreview?: boolean;
+    scopes?: string[];
+    dashboardFiltersInteractivity?: undefined;
+    parameterInteractivity?: undefined;
+    canExportCsv?: boolean;
+    canExportImages?: boolean;
     canViewUnderlyingData?: boolean;
 };
 
@@ -116,8 +167,15 @@ type EmbedJwtContentDashboardSlug = CommonEmbedJwtContent & {
     dashboardSlug: string;
 };
 
+export type EmbedJwtContentChart = CommonChartEmbedJwtContent & {
+    contentId: string;
+};
+
 export type CreateEmbedJwt = {
-    content: EmbedJwtContentDashboardUuid | EmbedJwtContentDashboardSlug;
+    content:
+        | EmbedJwtContentDashboardUuid
+        | EmbedJwtContentDashboardSlug
+        | EmbedJwtContentChart;
     userAttributes?: { [key: string]: string };
     user?: {
         email?: string;
@@ -131,13 +189,25 @@ export type CreateEmbedJwt = {
 export function isDashboardUuidContent(
     content: CreateEmbedJwt['content'],
 ): content is EmbedJwtContentDashboardUuid {
-    return 'dashboardUuid' in content;
+    return content.type === 'dashboard' && 'dashboardUuid' in content;
 }
 
 export function isDashboardSlugContent(
     content: CreateEmbedJwt['content'],
 ): content is EmbedJwtContentDashboardSlug {
-    return 'dashboardSlug' in content;
+    return content.type === 'dashboard' && 'dashboardSlug' in content;
+}
+
+export function isChartContent(
+    content: CreateEmbedJwt['content'],
+): content is EmbedJwtContentChart {
+    return content.type === 'chart';
+}
+
+export function isDashboardContent(
+    content: CreateEmbedJwt['content'] | EmbedContent,
+): content is EmbedJwtContentDashboardUuid | EmbedJwtContentDashboardSlug {
+    return content.type === 'dashboard';
 }
 
 export type EmbedUrl = {
@@ -182,4 +252,10 @@ export function isFilterInteractivityEnabled(
                 `Unknown FilterInteractivityValue ${filterInteractivityValue}`,
             );
     }
+}
+
+export function isParameterInteractivityEnabled(
+    parameterInteractivityOptions?: ParameterInteractivityOptions,
+): boolean {
+    return parameterInteractivityOptions?.enabled ?? false;
 }

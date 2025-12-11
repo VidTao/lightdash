@@ -1,17 +1,19 @@
 import {
     Anchor,
+    Box,
     Button,
     Card,
     Center,
-    Image,
     PasswordInput,
     Stack,
     Text,
     Title,
+    Image,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { type FC } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import LightdashLogo from '../components/LightdashLogo/LightdashLogo';
 import PageSpinner from '../components/PageSpinner';
 import ErrorState from '../components/common/ErrorState';
 import Page from '../components/common/Page/Page';

@@ -5,6 +5,7 @@ import {
     AlreadyExistsError,
     AlreadyProcessingError,
     AndFilterGroup,
+    AnonymousAccount,
     AnyType,
     ApiChartAndResults,
     ApiCreatePreviewResults,
@@ -16,6 +17,7 @@ import {
     assertUnreachable,
     BigqueryAuthenticationType,
     CacheMetadata,
+    calculateCompilationReport,
     type CalculateSubtotalsFromQuery,
     CalculateTotalFromQuery,
     ChartSourceType,
@@ -42,6 +44,7 @@ import {
     DashboardBasicDetails,
     type DashboardDAO,
     DashboardFilters,
+    DatabricksAuthenticationType,
     DateZoom,
     DbtExposure,
     DbtExposureType,
@@ -90,6 +93,7 @@ import {
     isExploreError,
     isFilterableDimension,
     isFilterRule,
+    isJwtUser,
     isNotNull,
     isUserWithOrg,
     ItemsMap,
@@ -99,7 +103,6 @@ import {
     JobType,
     LightdashError,
     LightdashProjectConfig,
-    MAX_PIVOT_COLUMN_LIMIT,
     maybeOverrideDbtConnection,
     maybeOverrideWarehouseConnection,
     maybeReplaceFieldsInChartVersion,
@@ -166,7 +169,12 @@ import {
     WarehouseTableSchema,
     WarehouseTypes,
 } from '@lightdash/common';
-import { BigqueryWarehouseClient, SshTunnel } from '@lightdash/warehouses';
+import {
+    BigqueryWarehouseClient,
+    exchangeDatabricksOAuthCredentials,
+    refreshDatabricksOAuthToken,
+    SshTunnel,
+} from '@lightdash/warehouses';
 import * as Sentry from '@sentry/node';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -333,6 +341,8 @@ export class ProjectService extends BaseService {
 
     projectParametersModel: ProjectParametersModel;
 
+    projectCompileLogModel: ProjectCompileLogModel;
+
     organizationWarehouseCredentialsModel: OrganizationWarehouseCredentialsModel;
 
     constructor({
@@ -363,6 +373,7 @@ export class ProjectService extends BaseService {
         userModel,
         featureFlagModel,
         projectParametersModel,
+        projectCompileLogModel,
         organizationWarehouseCredentialsModel,
     }: ProjectServiceArguments) {
         super();
@@ -394,6 +405,7 @@ export class ProjectService extends BaseService {
         this.userModel = userModel;
         this.featureFlagModel = featureFlagModel;
         this.projectParametersModel = projectParametersModel;
+        this.projectCompileLogModel = projectCompileLogModel;
         this.organizationWarehouseCredentialsModel =
             organizationWarehouseCredentialsModel;
     }
@@ -743,6 +755,125 @@ export class ProjectService extends BaseService {
                 throw new SnowflakeTokenError(errorMessage);
             }
         }
+
+        if (
+            args.type === WarehouseTypes.DATABRICKS &&
+            args.authenticationType === DatabricksAuthenticationType.OAUTH_M2M
+        ) {
+            try {
+                // Try to use stored OAuth credentials first, then fall back to refresh token
+                if (
+                    args.oauthClientId &&
+                    args.oauthClientSecret &&
+                    !args.refreshToken
+                ) {
+                    this.logger.debug(
+                        `Exchanging Databricks OAuth credentials for access token for user ${userUuid}`,
+                    );
+                    const { accessToken, refreshToken } =
+                        await exchangeDatabricksOAuthCredentials(
+                            args.serverHostName,
+                            args.oauthClientId,
+                            args.oauthClientSecret,
+                        );
+                    return {
+                        ...args,
+                        authenticationType:
+                            DatabricksAuthenticationType.OAUTH_M2M,
+                        token: accessToken,
+                        refreshToken,
+                    };
+                }
+
+                let { refreshToken } = args;
+
+                // If no refresh token provided, try to get it from user's OpenID table
+                if (refreshToken === undefined) {
+                    refreshToken = await this.userModel.getRefreshToken(
+                        userUuid,
+                        OpenIdIdentityIssuerType.DATABRICKS,
+                    );
+                }
+
+                // If we still don't have a refresh token, we can't refresh
+                if (!refreshToken) {
+                    throw new Error(
+                        'No refresh token or OAuth credentials available for Databricks OAuth authentication',
+                    );
+                }
+
+                this.logger.debug(
+                    `Refreshing databricks token for user ${userUuid}`,
+                );
+
+                const accessToken =
+                    await UserService.generateDatabricksAccessToken(
+                        refreshToken,
+                    );
+                return {
+                    ...args,
+                    authenticationType: DatabricksAuthenticationType.OAUTH_M2M,
+                    token: accessToken,
+                };
+            } catch (e: unknown) {
+                if (e instanceof LightdashError) {
+                    throw e;
+                }
+                this.logger.error(
+                    `Error refreshing databricks token: ${JSON.stringify(e)}`,
+                );
+                throw new UnexpectedServerError(
+                    'Error refreshing databricks token',
+                );
+            }
+        }
+
+        if (
+            args.type === WarehouseTypes.DATABRICKS &&
+            args.authenticationType === DatabricksAuthenticationType.OAUTH_U2M
+        ) {
+            try {
+                // For U2M OAuth, refresh token should be stored in credentials
+                const { refreshToken } = args;
+
+                if (!refreshToken) {
+                    throw new Error(
+                        'No refresh token available for Databricks U2M OAuth authentication',
+                    );
+                }
+
+                this.logger.debug(
+                    `Refreshing databricks U2M OAuth token for user ${userUuid}`,
+                );
+
+                const { accessToken, refreshToken: newRefreshToken } =
+                    await refreshDatabricksOAuthToken(
+                        args.serverHostName,
+                        args.oauthClientId || 'databricks-cli',
+                        refreshToken,
+                    );
+
+                return {
+                    ...args,
+                    authenticationType: DatabricksAuthenticationType.OAUTH_U2M,
+                    token: accessToken,
+                    refreshToken: newRefreshToken, // Update in case token was rotated
+                };
+            } catch (e: unknown) {
+                if (e instanceof LightdashError) {
+                    throw e;
+                }
+                this.logger.error(
+                    `Error refreshing databricks U2M OAuth token: ${JSON.stringify(
+                        e,
+                    )}`,
+                );
+                throw new UnexpectedServerError(
+                    'Error refreshing databricks U2M OAuth token',
+                );
+            }
+        }
+
         return args;
     }
 
@@ -759,24 +890,35 @@ export class ProjectService extends BaseService {
             warehouseConnection: CreateWarehouseCredentials;
             organizationWarehouseCredentialsUuid?: string;
         },
-    >(args: T, userUuid: string): Promise<T> {
+    >(args: T, userUuid: string, organizationUuid: string): Promise<T> {
         // If using organization credentials, load them from the organization table
         const organizationWarehouseCredentialsUuid =
-            args.warehouseConnection.type === WarehouseTypes.SNOWFLAKE
-                ? args.organizationWarehouseCredentialsUuid ||
-                  args.warehouseConnection.organizationWarehouseCredentialsUuid
-                : undefined;
+            args.organizationWarehouseCredentialsUuid ||
+            (args.warehouseConnection.type === WarehouseTypes.SNOWFLAKE
+                ? args.warehouseConnection.organizationWarehouseCredentialsUuid
+                : undefined);
 
         if (organizationWarehouseCredentialsUuid) {
             this.logger.debug(
                 `Resolving organization warehouse credentials with uuid ${organizationWarehouseCredentialsUuid}`,
             );
 
-            const { credentials: orgCredentials } =
-                await this.organizationWarehouseCredentialsModel.getByUuid(
+            const orgCredentialData =
+                await this.organizationWarehouseCredentialsModel.getByUuidWithSensitiveData(
                     organizationWarehouseCredentialsUuid,
-                    true, // withSensitiveData
                 );
+
+            // Security check: Verify the credentials belong to the user's organization
+            if (orgCredentialData.organizationUuid !== organizationUuid) {
+                this.logger.warn(
+                    `User attempted to use organization credentials from different organization. User org: ${organizationUuid}, Credentials org: ${orgCredentialData.organizationUuid}`,
+                );
+                throw new ForbiddenError(
+                    'You do not have permission to use these organization warehouse credentials',
+                );
+            }
+
+            const { credentials: orgCredentials } = orgCredentialData;
 
             if (orgCredentials.type !== WarehouseTypes.SNOWFLAKE) {
                 throw new UnexpectedServerError(
@@ -870,6 +1012,34 @@ export class ProjectService extends BaseService {
             );
             const credentials = await this.refreshCredentials(
                 { ...args.warehouseConnection, token: refreshToken },
+                userUuid,
+            );
+            return {
+                ...args,
+                warehouseConnection: {
+                    ...args.warehouseConnection,
+                    ...credentials,
+                    refreshToken, // Store refresh token from user so we can generate new access tokens later
+                },
+            };
+        }
+
+        if (
+            args.warehouseConnection.type === WarehouseTypes.DATABRICKS &&
+            args.warehouseConnection.authenticationType ===
+                DatabricksAuthenticationType.OAUTH_M2M &&
+            !organizationWarehouseCredentialsUuid
+        ) {
+            const refreshToken = await this.userModel.getRefreshToken(
+                userUuid,
+                OpenIdIdentityIssuerType.DATABRICKS,
+            );
+            // Validate refresh token and generate new access token
+            this.logger.debug(
+                `Refreshing databricks warehouse credentials from user uuid: ${userUuid}`,
+            );
+            const credentials = await this.refreshCredentials(
+                { ...args.warehouseConnection, refreshToken },
                 userUuid,
             );
             return {
@@ -1075,6 +1245,9 @@ export class ProjectService extends BaseService {
         userUuid: string,
         projectUuid: string,
         explores: (Explore | ExploreError)[],
+        compilationSource: 'cli_deploy' | 'refresh_dbt' | 'create_project',
+        jobUuid?: string | null,
+        requestMethod?: string | null,
     ) {
         // We delete the explores when saving to cache which cascades to the catalog
         // So we need to get the current tagged catalog items before deleting the explores (to do a best effort re-tag) and icons
@@ -1099,6 +1272,26 @@ export class ProjectService extends BaseService {
         this.logger.info(
             `Saved ${cachedExploreUuids.length} explores to cache for project ${projectUuid}`,
         );
+
+        const compilationReport = calculateCompilationReport({ explores });
+        const project = await this.projectModel.get(projectUuid);
+
+        await this.projectCompileLogModel.insert({
+            projectUuid,
+            jobUuid: jobUuid ?? null,
+            userUuid,
+            organizationUuid,
+            compilationSource,
+            dbtConnectionType: project.dbtConnection.type,
+            requestMethod: requestMethod ?? null,
+            warehouseType: project.warehouseConnection?.type ?? null,
+            report: compilationReport,
+        });
+
+        this.logger.info(
+            `Inserted compilation log for project ${projectUuid}: ${compilationReport.totalExploresCount} explores, ${compilationReport.errorExploresCount} errors`,
+        );
+
         return this.schedulerClient.indexCatalog({
             projectUuid,
             userUuid,
@@ -1184,6 +1377,7 @@ export class ProjectService extends BaseService {
                 ? await this._resolveWarehouseClientCredentials(
                       newProjectData,
                       user.userUuid,
+                      user.organizationUuid,
                   )
                 : newProjectData;
 
@@ -1209,6 +1403,7 @@ export class ProjectService extends BaseService {
         });
 
         let hasContentCopy = false;
+        let contentCopyError: string | undefined;
 
         if (data.type === ProjectType.PREVIEW && data.upstreamProjectUuid) {
             try {
@@ -1228,7 +1423,14 @@ export class ProjectService extends BaseService {
                 }
             } catch (e) {
                 Sentry.captureException(e);
-                this.logger.error(`Unable to copy content on preview ${e}`);
+                contentCopyError = e instanceof Error ? e.message : String(e);
+                this.logger.error(
+                    `Unable to copy content on preview from ${data.upstreamProjectUuid} to ${projectUuid}`,
+                    {
+                        error: contentCopyError,
+                        stack: e instanceof Error ? e.stack : undefined,
+                    },
+                );
             }
         }
 
@@ -1263,6 +1465,7 @@ export class ProjectService extends BaseService {
         return {
             hasContentCopy,
             project,
+            contentCopyError,
         };
     }
 
@@ -1358,6 +1561,7 @@ export class ProjectService extends BaseService {
             const createProject = await this._resolveWarehouseClientCredentials(
                 data,
                 user.userUuid,
+                user.organizationUuid,
             );
 
             await this.jobModel.update(jobUuid, {
@@ -1433,6 +1637,9 @@ export class ProjectService extends BaseService {
                         user.userUuid,
                         newProjectUuid,
                         explores,
+                        'create_project',
+                        jobUuid,
+                        method,
                     );
                     return newProjectUuid;
                 },
@@ -1494,10 +1701,14 @@ export class ProjectService extends BaseService {
             throw new ForbiddenError();
         }
 
+        // TODO: Do not hardcode CLI information here
         await this.saveExploresToCacheAndIndexCatalog(
             user.userUuid,
             projectUuid,
             explores,
+            'cli_deploy',
+            null,
+            'cli',
         );
 
         await this.schedulerClient.generateValidation({
@@ -1598,6 +1809,7 @@ export class ProjectService extends BaseService {
         const createProject = await this._resolveWarehouseClientCredentials(
             data,
             user.userUuid,
+            savedProject.organizationUuid,
         );
         const updatedProject = ProjectModel.mergeMissingProjectConfigSecrets(
             createProject,
@@ -1728,6 +1940,9 @@ export class ProjectService extends BaseService {
                                 user.userUuid,
                                 projectUuid,
                                 explores,
+                                'refresh_dbt',
+                                job.jobUuid,
+                                method,
                             );
                         } finally {
                             await adapter.destroy();
@@ -1858,6 +2073,68 @@ export class ProjectService extends BaseService {
                 project.warehouseConnection.refreshToken,
             );
             project.warehouseConnection.token = accessToken;
+        }
+
+        if (
+            project.warehouseConnection.type === WarehouseTypes.DATABRICKS &&
+            project.warehouseConnection.authenticationType ===
+                DatabricksAuthenticationType.OAUTH_M2M
+        ) {
+            // If we have OAuth credentials but no refresh token, exchange them for tokens
+            if (
+                project.warehouseConnection.oauthClientId &&
+                project.warehouseConnection.oauthClientSecret &&
+                !project.warehouseConnection.refreshToken
+            ) {
+                this.logger.debug(
+                    `Exchanging Databricks OAuth credentials for access token on buildAdapter`,
+                );
+                const { accessToken, refreshToken } =
+                    await exchangeDatabricksOAuthCredentials(
+                        project.warehouseConnection.serverHostName,
+                        project.warehouseConnection.oauthClientId,
+                        project.warehouseConnection.oauthClientSecret,
+                    );
+                project.warehouseConnection.token = accessToken;
+                if (refreshToken) {
+                    project.warehouseConnection.refreshToken = refreshToken;
+                    // Note: refresh token will be persisted when project credentials are next saved
+                }
+            } else if (project.warehouseConnection.refreshToken) {
+                // If we have a refresh token, use it to get a fresh access token
+                this.logger.debug(
+                    `Refreshing databricks warehouse credentials from refresh token on buildAdapter`,
+                );
+                const accessToken =
+                    await UserService.generateDatabricksAccessToken(
+                        project.warehouseConnection.refreshToken,
+                    );
+                project.warehouseConnection.token = accessToken;
+            }
+        }
+
+        if (
+            project.warehouseConnection.type === WarehouseTypes.DATABRICKS &&
+            project.warehouseConnection.authenticationType ===
+                DatabricksAuthenticationType.OAUTH_U2M
+        ) {
+            // For U2M OAuth, check if token needs refresh
+            if (project.warehouseConnection.refreshToken) {
+                this.logger.debug(
+                    `Refreshing databricks U2M OAuth token from refresh token on buildAdapter`,
+                );
+                const { accessToken, refreshToken } =
+                    await refreshDatabricksOAuthToken(
+                        project.warehouseConnection.serverHostName,
+                        project.warehouseConnection.oauthClientId ||
+                            'databricks-cli',
+                        project.warehouseConnection.refreshToken,
+                    );
+                project.warehouseConnection.token = accessToken;
+                // Update refresh token in case it was rotated
+                project.warehouseConnection.refreshToken = refreshToken;
+                // Note: Updated tokens will be persisted when project credentials are next saved
+            }
         }
 
         const sshTunnel = new SshTunnel(project.warehouseConnection);
@@ -2893,6 +3170,7 @@ export class ProjectService extends BaseService {
                         await this.projectModel.getSummary(projectUuid);
 
                     if (
+                        account.isJwtUser() ||
                         account.user.ability.cannot(
                             'view',
                             subject('Project', {
@@ -3229,7 +3507,9 @@ export class ProjectService extends BaseService {
             limit,
         );
 
-        const pivotedSql = pivotQueryBuilder.toSql();
+        const pivotedSql = pivotQueryBuilder.toSql({
+            columnLimit: this.lightdashConfig.pivotTable.maxColumnLimit,
+        });
 
         this.logger.debug(`Stream query against warehouse`);
         const queryTags: RunQueryTags = {
@@ -4004,6 +4284,9 @@ export class ProjectService extends BaseService {
                             user.userUuid,
                             projectUuid,
                             explores,
+                            'refresh_dbt',
+                            job.jobUuid,
+                            requestMethod,
                         );
                     },
                 );
@@ -4079,7 +4362,9 @@ export class ProjectService extends BaseService {
         const { organizationUuid } = await this.projectModel.getSummary(
             projectUuid,
         );
+
         if (
+            ProjectService.isChartEmbed(account) ||
             account.user.ability.cannot(
                 'view',
                 subject('Project', { organizationUuid, projectUuid }),
@@ -4182,15 +4467,25 @@ export class ProjectService extends BaseService {
                 const project = organizationUuid
                     ? { organizationUuid }
                     : await this.projectModel.getSummary(projectUuid);
-                if (
+
+                const isForbidden =
                     account.user.ability.cannot(
                         'view',
                         subject('Project', {
                             organizationUuid: project.organizationUuid,
                             projectUuid,
                         }),
-                    )
-                ) {
+                    ) &&
+                    account.user.ability.cannot(
+                        'view',
+                        subject('Explore', {
+                            organizationUuid: project.organizationUuid,
+                            projectUuid,
+                            exploreNames,
+                        }),
+                    );
+
+                if (isForbidden) {
                     throw new ForbiddenError();
                 }
                 const explores = await this.projectModel.findExploresFromCache(
@@ -4545,7 +4840,9 @@ export class ProjectService extends BaseService {
         const { organizationUuid } = await this.projectModel.getSummary(
             projectUuid,
         );
+
         if (
+            ProjectService.isChartEmbed(account) ||
             account.user.ability.cannot(
                 'view',
                 subject('Project', { organizationUuid, projectUuid }),
@@ -5091,10 +5388,19 @@ export class ProjectService extends BaseService {
         }
 
         const spaces = await this.spaceModel.find({ projectUuid });
+        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
+            user.userUuid,
+            spaces.map((s) => s.uuid),
+        );
         const allowedSpaces = spaces.filter(
             (space) =>
-                space.projectUuid === projectUuid &&
-                hasDirectAccessToSpace(user, space), // NOTE: We don't check for admin access to the space - exclude private spaces from this panel if admin
+                (space.projectUuid === projectUuid &&
+                    hasDirectAccessToSpace(user, space)) ||
+                hasViewAccessToSpace(
+                    user,
+                    space,
+                    spacesAccess[space.uuid] ?? [],
+                ),
         );
 
         const mostPopular = await this.getMostPopular(allowedSpaces);
@@ -6584,6 +6890,10 @@ export class ProjectService extends BaseService {
                 models,
                 DbtManifestVersion.V12,
             );
+        const disableTimestampConversion =
+            project.warehouseConnection?.type === 'snowflake' &&
+            project.warehouseConnection.disableTimestampConversion === true;
+
         const convertedExplores = await convertExplores(
             dbtModelNode,
             false,
@@ -6595,6 +6905,7 @@ export class ProjectService extends BaseService {
                     default_visibility: 'hide', // todo: pass correct config
                 },
             },
+            disableTimestampConversion,
         );
         Logger.info(`Explore count: ${convertedExplores.length}`);
         const previewName = `preview_${jobId}_${prId}`;
@@ -6640,6 +6951,9 @@ export class ProjectService extends BaseService {
             user.userUuid,
             projectToSetExplores,
             [...convertedExplores, ...exploreErrors],
+            'refresh_dbt',
+            null,
+            'api',
         );
 
         Logger.info(`Schedule validation:`, {
@@ -6757,5 +7071,11 @@ export class ProjectService extends BaseService {
             ...(savedParameters || {}),
             ...(requestParameters || {}),
         };
+    }
+
+    static isChartEmbed(account: Account) {
+        if (!isJwtUser(account)) return false;
+
+        return account.access.content.type === 'chart';
     }
 }

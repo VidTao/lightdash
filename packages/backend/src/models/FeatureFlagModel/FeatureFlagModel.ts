@@ -36,12 +36,8 @@ export class FeatureFlagModel {
                 this.getUserGroupsEnabled.bind(this),
             [FeatureFlags.UseSqlPivotResults]:
                 this.getUseSqlPivotResults.bind(this),
-            [FeatureFlags.ExperimentalExplorerImprovements]:
-                this.getExperimentalExplorerImprovements.bind(this),
             [FeatureFlags.DashboardComments]:
                 this.getDashboardComments.bind(this),
-            [FeatureFlags.ExperimentalVirtualizedSideBar]:
-                this.getExperimentalVirtualizedSideBar.bind(this),
         };
     }
 
@@ -61,7 +57,10 @@ export class FeatureFlagModel {
     }
 
     static async getPosthogFeatureFlag(
-        user: Pick<LightdashUser, 'userUuid' | 'organizationUuid'>,
+        user: Pick<
+            LightdashUser,
+            'userUuid' | 'organizationUuid' | 'organizationName'
+        >,
         featureFlagId: FeatureFlags,
     ): Promise<FeatureFlag> {
         const enabled = await isFeatureFlagEnabled(featureFlagId, {
@@ -120,58 +119,6 @@ export class FeatureFlagModel {
                       },
                   )
                 : false);
-        return {
-            id: featureFlagId,
-            enabled,
-        };
-    }
-
-    private async getExperimentalExplorerImprovements({
-        user,
-        featureFlagId,
-    }: FeatureFlagLogicArgs) {
-        const enabled =
-            this.lightdashConfig.experimentalExplorerImprovements ||
-            (user
-                ? await isFeatureFlagEnabled(
-                      FeatureFlags.ExperimentalExplorerImprovements,
-                      {
-                          userUuid: user.userUuid,
-                          organizationUuid: user.organizationUuid,
-                      },
-                      {
-                          throwOnTimeout: false,
-                          timeoutMilliseconds: 500,
-                      },
-                  )
-                : false);
-
-        return {
-            id: featureFlagId,
-            enabled,
-        };
-    }
-
-    private async getExperimentalVirtualizedSideBar({
-        user,
-        featureFlagId,
-    }: FeatureFlagLogicArgs) {
-        const enabled =
-            this.lightdashConfig.experimentalVirtualizedSideBar ||
-            (user
-                ? await isFeatureFlagEnabled(
-                      FeatureFlags.ExperimentalVirtualizedSideBar,
-                      {
-                          userUuid: user.userUuid,
-                          organizationUuid: user.organizationUuid,
-                      },
-                      {
-                          throwOnTimeout: false,
-                          timeoutMilliseconds: 500,
-                      },
-                  )
-                : false);
-
         return {
             id: featureFlagId,
             enabled,

@@ -15,6 +15,7 @@ import {
     Button,
     getDefaultZIndex,
     Group,
+    Loader,
     Modal,
     Paper,
     Select,
@@ -32,7 +33,15 @@ import {
     IconMaximize,
     IconMinimize,
 } from '@tabler/icons-react';
-import { useRef, useState, type FC } from 'react';
+import {
+    lazy,
+    Suspense,
+    useCallback,
+    useMemo,
+    useRef,
+    useState,
+    type FC,
+} from 'react';
 import { useToggle } from 'react-use';
 import { type ValueOf } from 'type-fest';
 import { FormatForm } from '../../../components/Explorer/FormatForm';
@@ -44,8 +53,12 @@ import {
 } from '../../../features/explorer/store';
 import useToaster from '../../../hooks/toaster/useToaster';
 import { getUniqueTableCalculationName } from '../utils';
-import { SqlForm } from './SqlForm';
 import { TemplateViewer } from './TemplateViewer/TemplateViewer';
+
+// Lazy load SqlForm to avoid loading heavy Ace Editor on initial modal open
+const SqlForm = lazy(() =>
+    import('./SqlForm').then((module) => ({ default: module.SqlForm })),
+);
 
 type Props = ModalProps & {
     tableCalculation?: TableCalculation;
@@ -87,8 +100,8 @@ const TableCalculationModal: FC<Props> = ({
     const tableCalculations = useExplorerSelector(selectTableCalculations);
     const customDimensions = useExplorerSelector(selectCustomDimensions);
 
-    const form = useForm<TableCalculationFormInputs>({
-        initialValues: {
+    const initialValues = useMemo(
+        () => ({
             name: tableCalculation?.displayName || '',
             sql:
                 tableCalculation && isSqlTableCalculation(tableCalculation)
@@ -108,31 +121,43 @@ const TableCalculationModal: FC<Props> = ({
                 suffix: tableCalculation?.format?.suffix,
                 custom: tableCalculation?.format?.custom,
             },
+        }),
+        [tableCalculation],
+    );
+
+    const existingItemIds = useMemo(() => {
+        const ids = new Set<string>();
+        tableCalculations.forEach((tc) => {
+            ids.add(getItemId(tc).toLowerCase().trim());
+        });
+        (customDimensions ?? []).forEach((cd) => {
+            ids.add(getItemId(cd).toLowerCase().trim());
+        });
+        return ids;
+    }, [tableCalculations, customDimensions]);
+
+    const validateName = useCallback(
+        (label: string) => {
+            if (!label) return null;
+
+            if (tableCalculation && tableCalculation.displayName === label) {
+                return null;
+            }
+
+            const normalizedLabel = label.toLowerCase().trim();
+            const isInvalid = existingItemIds.has(normalizedLabel);
+
+            return isInvalid
+                ? 'Table calculation/Dimension with this label already exists'
+                : null;
         },
+        [tableCalculation, existingItemIds],
+    );
+
+    const form = useForm<TableCalculationFormInputs>({
+        initialValues,
         validate: {
-            name: (label) => {
-                if (!label) return null;
-
-                if (
-                    tableCalculation &&
-                    tableCalculation.displayName === label
-                ) {
-                    return null;
-                }
-
-                const isInvalid = [
-                    ...tableCalculations,
-                    ...(customDimensions ?? []),
-                ].some(
-                    (i) =>
-                        getItemId(i).toLowerCase().trim() ===
-                        label.toLowerCase().trim(),
-                );
-
-                return isInvalid
-                    ? 'Table calculation/Dimension with this label already exists'
-                    : null;
-            },
+            name: validateName,
         },
     });
 
@@ -202,16 +227,78 @@ const TableCalculationModal: FC<Props> = ({
         }
     });
 
-    const getFormatInputProps = (path: keyof CustomFormat) => {
-        return form.getInputProps(`format.${path}`);
-    };
+    const getFormatInputProps = useCallback(
+        (path: keyof CustomFormat) => {
+            return form.getInputProps(`format.${path}`);
+        },
+        [form],
+    );
 
-    const setFormatFieldValue = (
-        path: keyof CustomFormat,
-        value: ValueOf<CustomFormat>,
-    ) => {
-        return form.setFieldValue(`format.${path}`, value);
-    };
+    const setFormatFieldValue = useCallback(
+        (path: keyof CustomFormat, value: ValueOf<CustomFormat>) => {
+            return form.setFieldValue(`format.${path}`, value);
+        },
+        [form],
+    );
+
+    // Memoize callback for Cmd+Enter
+    const handleCmdEnter = useCallback(() => {
+        if (submitButtonRef.current) {
+            submitButtonRef.current.click();
+        }
+    }, []);
+
+    // Memoize template for TemplateViewer
+    const template = useMemo(
+        () =>
+            tableCalculation && isTemplateTableCalculation(tableCalculation)
+                ? tableCalculation.template
+                : undefined,
+        [tableCalculation],
+    );
+
+    // Memoize table calculation type options
+    const tableCalculationTypeOptions = useMemo(
+        () => Object.values(TableCalculationType),
+        [],
+    );
+
+    // Memoize type change handler
+    const handleTypeChange = useCallback(
+        (value: string | null) => {
+            if (
+                value &&
+                tableCalculationTypeOptions.includes(
+                    value as TableCalculationType,
+                )
+            ) {
+                form.setFieldValue('type', value as TableCalculationType);
+            }
+        },
+        [form, tableCalculationTypeOptions],
+    );
+
+    // Memoize edit mode data
+    const editModeOptions = useMemo(
+        () => [
+            {
+                value: EditMode.SQL,
+                label: 'Raw SQL',
+            },
+            {
+                value: EditMode.TEMPLATE,
+                label: 'Predefined Template',
+            },
+        ],
+        [],
+    );
+
+    // Memoize edit mode change handler
+    const handleEditModeChange = useCallback((value: string | null) => {
+        if (value) {
+            setEditMode(value as EditMode);
+        }
+    }, []);
 
     return (
         <Modal.Root
@@ -237,7 +324,7 @@ const TableCalculationModal: FC<Props> = ({
             >
                 <Modal.Header
                     sx={(themeProps) => ({
-                        borderBottom: `1px solid ${themeProps.colors.gray[2]}`,
+                        borderBottom: `1px solid ${themeProps.colors.ldGray[2]}`,
                         padding: themeProps.spacing.sm,
                     })}
                 >
@@ -245,7 +332,7 @@ const TableCalculationModal: FC<Props> = ({
                         <Paper p="xs" withBorder radius="sm">
                             <MantineIcon icon={IconCalculator} size="sm" />
                         </Paper>
-                        <Text color="dark.7" fw={700} fz="md">
+                        <Text fw={700} fz="md">
                             {tableCalculation ? 'Edit' : 'Create'} Table
                             Calculation
                             {tableCalculation ? (
@@ -283,19 +370,8 @@ const TableCalculationModal: FC<Props> = ({
                                 <Select
                                     label="Calculation Mode"
                                     value={editMode}
-                                    onChange={(value) =>
-                                        setEditMode(value as EditMode)
-                                    }
-                                    data={[
-                                        {
-                                            value: EditMode.SQL,
-                                            label: 'Raw SQL',
-                                        },
-                                        {
-                                            value: EditMode.TEMPLATE,
-                                            label: 'Predefined Template',
-                                        },
-                                    ]}
+                                    onChange={handleEditModeChange}
+                                    data={editModeOptions}
                                     mb="md"
                                 />
                             )}
@@ -331,14 +407,7 @@ const TableCalculationModal: FC<Props> = ({
 
                                     <Tabs.Panel value="template" p="sm">
                                         <TemplateViewer
-                                            template={
-                                                tableCalculation &&
-                                                isTemplateTableCalculation(
-                                                    tableCalculation,
-                                                )
-                                                    ? tableCalculation.template
-                                                    : undefined
-                                            }
+                                            template={template}
                                             readOnly={true}
                                         />
                                     </Tabs.Panel>
@@ -364,7 +433,7 @@ const TableCalculationModal: FC<Props> = ({
                                     radius="xs"
                                     styles={{
                                         panel: {
-                                            borderColor: colors.gray[2],
+                                            borderColor: colors.ldGray[2],
                                             borderWidth: 1,
                                             borderStyle: 'solid',
                                             borderTop: 'none',
@@ -384,16 +453,33 @@ const TableCalculationModal: FC<Props> = ({
                                     </Tabs.List>
 
                                     <Tabs.Panel value="sqlEditor">
-                                        <SqlForm
-                                            form={form}
-                                            isFullScreen={isExpanded}
-                                            focusOnRender={true}
-                                            onCmdEnter={() => {
-                                                if (submitButtonRef.current) {
-                                                    submitButtonRef.current.click();
-                                                }
-                                            }}
-                                        />
+                                        <Suspense
+                                            fallback={
+                                                <Box
+                                                    p="xl"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent:
+                                                            'center',
+                                                        minHeight: '250px',
+                                                        gap: '12px',
+                                                    }}
+                                                >
+                                                    <Loader size="sm" />
+                                                    <Text c="dimmed" size="sm">
+                                                        Loading SQL editor...
+                                                    </Text>
+                                                </Box>
+                                            }
+                                        >
+                                            <SqlForm
+                                                form={form}
+                                                isFullScreen={isExpanded}
+                                                focusOnRender={true}
+                                                onCmdEnter={handleCmdEnter}
+                                            />
+                                        </Suspense>
                                     </Tabs.Panel>
 
                                     <Tabs.Panel value="format" p="sm">
@@ -428,14 +514,8 @@ const TableCalculationModal: FC<Props> = ({
                                         alignSelf: 'flex-start',
                                     }}
                                     {...form.getInputProps('type')}
-                                    onChange={(value) => {
-                                        const tcType = Object.values(
-                                            TableCalculationType,
-                                        ).find((type) => type === value);
-                                        if (tcType)
-                                            form.setFieldValue(`type`, tcType);
-                                    }}
-                                    data={Object.values(TableCalculationType)}
+                                    onChange={handleTypeChange}
+                                    data={tableCalculationTypeOptions}
                                 />
                             </Tooltip>
                         </Stack>
@@ -443,9 +523,9 @@ const TableCalculationModal: FC<Props> = ({
 
                     <Box
                         sx={(themeProps) => ({
-                            borderTop: `1px solid ${themeProps.colors.gray[2]}`,
+                            borderTop: `1px solid ${themeProps.colors.ldGray[2]}`,
                             padding: themeProps.spacing.sm,
-                            backgroundColor: themeProps.white,
+                            backgroundColor: themeProps.colors.background,
                             position: 'sticky',
                             bottom: 0,
                             width: '100%',

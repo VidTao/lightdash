@@ -3,8 +3,8 @@ import {
     Box,
     Button,
     Card,
-    Image,
     Modal,
+    Image,
     Stack,
     Text,
     Title,
@@ -14,6 +14,7 @@ import { IconCircleCheckFilled } from '@tabler/icons-react';
 import { type FC } from 'react';
 import { useNavigate } from 'react-router';
 import { useIntercom } from 'react-use-intercom';
+import LightdashLogo from '../components/LightdashLogo/LightdashLogo';
 import PageSpinner from '../components/PageSpinner';
 import { SuccessIconBounce } from '../components/RegisterForms/ProjectConnectFlow.styles';
 import VerifyEmailForm from '../components/RegisterForms/VerifyEmailForm';
@@ -79,7 +80,7 @@ const VerifyEmailPage: FC = () => {
                         statusLoading={statusLoading}
                     />
                 </Card>
-                <Text color="gray.6" ta="center" px="xs">
+                <Text color="ldGray.6" ta="center" px="xs">
                     You need to verify your email to get access to Lightdash. If
                     you need help, you can{' '}
                     <Anchor onClick={() => showIntercom()}>

@@ -1,8 +1,10 @@
 import { Center, Loader } from '@mantine-8/core';
+import { useEffect } from 'react';
 import { useOutletContext, useParams } from 'react-router';
 import useApp from '../../../providers/App/useApp';
 import { AgentChatDisplay } from '../../features/aiCopilot/components/ChatElements/AgentChatDisplay';
 import { AgentChatInput } from '../../features/aiCopilot/components/ChatElements/AgentChatInput';
+import { useAiAgentPermission } from '../../features/aiCopilot/hooks/useAiAgentPermission';
 import { useAiAgentThreadArtifact } from '../../features/aiCopilot/hooks/useAiAgentThreadArtifact';
 import {
     useProjectAiAgent as useAiAgent,
@@ -16,11 +18,11 @@ const AiAgentThreadPage = ({ debug }: { debug?: boolean }) => {
     const { agentUuid, threadUuid, projectUuid, promptUuid } = useParams();
     const { user } = useApp();
 
-    const { data: thread, isLoading: isLoadingThread } = useAiAgentThread(
-        projectUuid!,
-        agentUuid,
-        threadUuid,
-    );
+    const {
+        data: thread,
+        isLoading: isLoadingThread,
+        refetch,
+    } = useAiAgentThread(projectUuid!, agentUuid, threadUuid);
 
     // Handle artifact selection based on thread changes
     useAiAgentThreadArtifact({
@@ -35,6 +37,11 @@ const AiAgentThreadPage = ({ debug }: { debug?: boolean }) => {
     const agentQuery = useAiAgent(projectUuid!, agentUuid!);
     const { agent } = useOutletContext<AgentContext>();
 
+    const canManage = useAiAgentPermission({
+        action: 'manage',
+        projectUuid,
+    });
+
     const {
         mutateAsync: createAgentThreadMessage,
         isLoading: isCreatingMessage,
@@ -43,7 +50,23 @@ const AiAgentThreadPage = ({ debug }: { debug?: boolean }) => {
         agentUuid,
         threadUuid,
     );
+    const isPending = thread?.messages?.some(
+        (message) =>
+            message.role === 'assistant' && message.status === 'pending',
+    );
+
     const isStreaming = useAiAgentThreadStreaming(threadUuid!);
+
+    useEffect(() => {
+        if (!isPending) return;
+        if (isStreaming) return;
+
+        const interval = setInterval(() => {
+            void refetch();
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [isPending, refetch, isStreaming]);
 
     const handleSubmit = (prompt: string) => {
         void createAgentThreadMessage({ prompt });
@@ -66,13 +89,14 @@ const AiAgentThreadPage = ({ debug }: { debug?: boolean }) => {
             debug={debug}
             projectUuid={projectUuid}
             agentUuid={agentUuid}
+            showAddToEvalsButton={canManage}
         >
             <AgentChatInput
                 disabled={
                     thread.createdFrom === 'slack' || !isThreadFromCurrentUser
                 }
                 disabledReason="This thread is read-only. To continue the conversation, reply in Slack."
-                loading={isCreatingMessage || isStreaming}
+                loading={isCreatingMessage || isStreaming || isPending}
                 onSubmit={handleSubmit}
                 placeholder={`Ask ${agent.name} anything about your data...`}
                 messageCount={thread.messages?.length || 0}

@@ -118,6 +118,7 @@ const convertDimension = (
     timeInterval?: TimeFrames,
     startOfWeek?: WeekDay | null,
     isAdditionalDimension?: boolean,
+    disableTimestampConversion?: boolean,
 ): Dimension => {
     // Config block takes priority, then meta block
     const meta = merge({}, column.meta, column.config?.meta);
@@ -135,7 +136,7 @@ const convertDimension = (
     let name = meta.dimension?.name || column.name;
     let sql = meta.dimension?.sql || defaultSql(column.name);
     let label = meta.dimension?.label || friendlyName(name);
-    if (type === DimensionType.TIMESTAMP) {
+    if (type === DimensionType.TIMESTAMP && !disableTimestampConversion) {
         sql = convertTimezone(sql, 'UTC', 'UTC', targetWarehouse);
     }
     const isIntervalBase =
@@ -189,6 +190,7 @@ const convertDimension = (
         requiredAttributes: meta.dimension?.required_attributes,
         colors: meta.dimension?.colors,
         ...(meta.dimension?.urls ? { urls: meta.dimension.urls } : {}),
+        ...(meta.dimension?.image ? { image: meta.dimension.image } : {}),
         ...(isAdditionalDimension ? { isAdditionalDimension } : {}),
         groups,
         isIntervalBase,
@@ -450,6 +452,7 @@ export const convertTable = (
     dbtMetrics: DbtMetric[],
     spotlightConfig: LightdashProjectConfig['spotlight'],
     startOfWeek?: WeekDay | null,
+    disableTimestampConversion?: boolean,
 ): Omit<Table, 'lineageGraph'> => {
     // Config block takes priority, then meta block
     const meta = merge({}, model.meta, model.config?.meta);
@@ -469,6 +472,8 @@ export const convertTable = (
                 undefined,
                 undefined,
                 startOfWeek,
+                undefined,
+                disableTimestampConversion,
             );
 
             // Config block takes priority, then meta block
@@ -532,6 +537,7 @@ export const convertTable = (
                                     startOfWeek,
                                     'isAdditionalDimension' in dim &&
                                         dim.isAdditionalDimension,
+                                    disableTimestampConversion,
                                 ),
                         }),
                         {},
@@ -568,6 +574,7 @@ export const convertTable = (
                     undefined,
                     startOfWeek,
                     true,
+                    disableTimestampConversion,
                 );
 
                 return {
@@ -677,9 +684,6 @@ export const convertTable = (
         throw new ParseError(`${message} ${duplicatedNames}`);
     }
 
-    if (!model.relation_name) {
-        throw new Error(`Model "${model.name}" has no table relation`);
-    }
     const groupDetails: Record<string, GroupType> = {};
     if (meta.group_details) {
         Object.entries(meta.group_details).forEach(([key, data]) => {
@@ -695,6 +699,9 @@ export const convertTable = (
     }
 
     const sqlTable = meta.sql_from || model.relation_name;
+    if (sqlTable === null || sqlTable === undefined || sqlTable === '') {
+        throw new Error(`Model "${model.name}" is missing a table reference.`);
+    }
     return {
         name: model.name,
         label: tableLabel,
@@ -784,6 +791,7 @@ export const convertExplores = async (
     metrics: DbtMetric[],
     warehouseSqlBuilder: WarehouseSqlBuilder,
     lightdashProjectConfig: LightdashProjectConfig,
+    disableTimestampConversion?: boolean,
 ): Promise<(Explore | ExploreError)[]> => {
     const tableLineage = translateDbtModelsToTableLineage(models);
     const [tables, exploreErrors] = models.reduce(
@@ -814,6 +822,7 @@ export const convertExplores = async (
                     tableMetrics,
                     lightdashProjectConfig.spotlight,
                     warehouseSqlBuilder.getStartOfWeek(),
+                    disableTimestampConversion,
                 );
 
                 // add lineage

@@ -105,6 +105,11 @@ import {
     type CreatePersonalAccessToken,
     type PersonalAccessToken,
 } from './personalAccessToken';
+
+import {
+    type ApiProjectCompileLogResponse,
+    type ApiProjectCompileLogsResponse,
+} from './projectCompileLogs';
 import { type ProjectMemberProfile } from './projectMemberProfile';
 import { type ProjectMemberRole } from './projectMemberRole';
 import {
@@ -159,6 +164,7 @@ import type {
     ApiAiAgentThreadMessageVizResponse,
     ApiAiAgentThreadResponse,
     ApiAiAgentThreadSummaryListResponse,
+    ApiAiAgentVerifiedArtifactsResponse,
     ApiAiOrganizationSettingsResponse,
     ApiAppendInstructionResponse,
     ApiCreateEvaluationResponse,
@@ -347,6 +353,9 @@ export type HealthState = {
         snowflake: {
             enabled: boolean;
         };
+        databricks: {
+            enabled: boolean;
+        };
     };
     posthog:
         | {
@@ -375,6 +384,9 @@ export type HealthState = {
         maxColumnLimit: number;
     };
     hasSlack: boolean;
+    slack: {
+        multiAgentChannelEnabled: boolean;
+    };
     hasGithub: boolean;
     hasGitlab: boolean;
     hasHeadlessBrowser: boolean;
@@ -402,6 +414,9 @@ export type HealthState = {
     ai: {
         analyticsProjectUuid?: string;
         analyticsDashboardUuid?: string;
+    };
+    echarts6: {
+        enabled: boolean;
     };
 };
 
@@ -523,7 +538,7 @@ export type ReadyQueryResultsPage = ResultsPaginationMetadata<ResultRow> & {
     resultsPageExecutionMs: number;
     status: QueryHistoryStatus.READY;
     pivotDetails: {
-        // Unlimited total column count, this is used to display a warning to the user in the frontend when the number of columns is over MAX_PIVOT_COLUMN_LIMIT
+        // Unlimited total column count, this is used to display a warning to the user in the frontend when the number of columns is over maxColumnLimit
         totalColumnCount: number | null;
         indexColumn: PivotConfiguration['indexColumn'] | undefined;
         valuesColumns: PivotValuesColumn[];
@@ -646,6 +661,7 @@ export type CreateInviteLink = Pick<InviteLink, 'expiresAt' | 'email'> & {
 export type ApiCreateProjectResults = {
     project: Project;
     hasContentCopy: boolean;
+    contentCopyError?: string;
 };
 
 export type ProjectSavedChartStatus = boolean;
@@ -805,11 +821,14 @@ type ApiResults =
     | ApiAiAgentEvaluationRunResponse['results']
     | ApiAiAgentEvaluationRunSummaryListResponse['results']
     | ApiAiAgentEvaluationRunResultsResponse['results']
+    | ApiAiAgentVerifiedArtifactsResponse['results']
     | ApiCreateEvaluationResponse['results']
     | ApiAppendInstructionResponse['results']
     | ApiGetChangeResponse['results']
     | ApiAiOrganizationSettingsResponse['results']
-    | ApiUpdateAiOrganizationSettingsResponse['results'];
+    | ApiUpdateAiOrganizationSettingsResponse['results']
+    | ApiProjectCompileLogsResponse['results']
+    | ApiProjectCompileLogResponse['results'];
 // Note: EE API types removed from ApiResults to avoid circular imports
 // They can still be used with ApiResponse<T> by importing from '@lightdash/common'
 

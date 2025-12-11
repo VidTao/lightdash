@@ -2,17 +2,23 @@ import { assertUnreachable, ParameterError } from '@lightdash/common';
 import { LightdashConfig } from '../../../../config/parseConfig';
 import { getAnthropicModel } from './anthropic-claude';
 import { getAzureGpt41Model } from './azure-openai-gpt-4.1';
+import { getBedrockModel } from './bedrock';
 import { getOpenaiGptmodel } from './openai-gpt';
 import { getOpenRouterModel } from './openrouter';
 
-export const getModel = (config: LightdashConfig['ai']['copilot']) => {
+export const getModel = (
+    config: LightdashConfig['ai']['copilot'],
+    options?: {
+        enableReasoning?: boolean;
+    },
+) => {
     switch (config.defaultProvider) {
         case 'openai': {
             const openaiConfig = config.providers.openai;
             if (!openaiConfig) {
                 throw new ParameterError('OpenAI configuration is required');
             }
-            return getOpenaiGptmodel(openaiConfig);
+            return getOpenaiGptmodel(openaiConfig, options);
         }
         case 'azure': {
             const azureConfig = config.providers.azure;
@@ -36,6 +42,13 @@ export const getModel = (config: LightdashConfig['ai']['copilot']) => {
                 );
             }
             return getOpenRouterModel(openrouterConfig);
+        }
+        case 'bedrock': {
+            const bedrockConfig = config.providers.bedrock;
+            if (!bedrockConfig) {
+                throw new ParameterError('Bedrock configuration is required');
+            }
+            return getBedrockModel(bedrockConfig);
         }
         default:
             return assertUnreachable(

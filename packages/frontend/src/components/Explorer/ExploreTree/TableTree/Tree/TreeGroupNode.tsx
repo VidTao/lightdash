@@ -47,10 +47,13 @@ const TreeGroupNodeComponent: FC<Props> = ({ node }) => {
     const onToggleGroup = useTableTree((ctx) => ctx.onToggleGroup);
     const isVirtualized = useTableTree((ctx) => ctx.isVirtualized);
     const depth = useTableTree((ctx) => ctx.depth);
+    const contextGroupKey = useTableTree((ctx) => ctx.groupKey);
     const [isHover, toggleHover] = useToggle(false);
 
-    // Build unique group key
-    const groupKey = buildGroupKey(tableName, treeSectionType, node.key);
+    // Use pre-computed group key from context (virtualized with parent paths)
+    // or build it (non-virtualized)
+    const groupKey =
+        contextGroupKey ?? buildGroupKey(tableName, treeSectionType, node.key);
     const isOpen = expandedGroups.has(groupKey);
 
     const allChildrenKeys = useMemo(() => getAllChildrenKeys([node]), [node]);
@@ -123,7 +126,7 @@ const TreeGroupNodeComponent: FC<Props> = ({ node }) => {
                 style={{
                     margin: 1,
                     transition: 'transform 200ms ease',
-                    transform: isNavLinkOpen ? 'rotate(90deg)' : undefined,
+                    transform: isNavLinkOpen ? 'rotate(90deg)' : 'rotate(0deg)',
                 }}
             />
         ),
@@ -134,7 +137,8 @@ const TreeGroupNodeComponent: FC<Props> = ({ node }) => {
     // Non-virtualized mode uses NavLink's built-in nesting with childrenOffset
     const pl = useMemo(() => {
         if (isVirtualized) {
-            return depth ? `${(depth + 1) * 24}px` : '24px';
+            // Base padding is 12px, each nesting level adds 20px
+            return `${12 + (depth ?? 0) * 20}px`;
         }
         return undefined;
     }, [depth, isVirtualized]);
@@ -202,7 +206,7 @@ const TreeGroupNodeComponent: FC<Props> = ({ node }) => {
         >
             {/* In virtualized mode, children are rendered as separate items in the flat list */}
             {isNavLinkOpen && !isVirtualized && (
-                <TreeNodes nodeMap={node.children} isNested />
+                <TreeNodes nodeMap={node.children} />
             )}
         </NavLink>
     );

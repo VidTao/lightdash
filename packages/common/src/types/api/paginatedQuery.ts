@@ -1,4 +1,8 @@
-import { type ParametersValuesMap, type PivotConfiguration } from '../..';
+import {
+    type ParametersValuesMap,
+    type PeriodOverPeriodComparison,
+    type PivotConfiguration,
+} from '../..';
 
 import type { QueryExecutionContext } from '../analytics';
 import type { DownloadFileType } from '../downloadFile';
@@ -23,6 +27,7 @@ export type ExecuteAsyncMetricQueryRequestParams =
         query: Omit<MetricQueryRequest, 'csvLimit'>;
         dateZoom?: DateZoom;
         pivotConfiguration?: PivotConfiguration;
+        periodOverPeriod?: PeriodOverPeriodComparison;
     };
 
 export type ExecuteAsyncSavedChartRequestParams =
@@ -36,6 +41,7 @@ export type ExecuteAsyncSavedChartRequestParams =
 export type ExecuteAsyncDashboardChartRequestParams =
     CommonExecuteQueryRequestParams & {
         chartUuid: string;
+        tileUuid: string;
         dashboardUuid: string;
         dashboardFilters: DashboardFilters;
         dashboardSorts: SortField[];

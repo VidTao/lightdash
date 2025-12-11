@@ -6,7 +6,7 @@ import {
     useMantineTheme,
 } from '@mantine/core';
 import { IconSparkles } from '@tabler/icons-react';
-import { type FC } from 'react';
+import { useCallback, type FC } from 'react';
 import AceEditor, { type IAceEditorProps } from 'react-ace';
 import styled, { css } from 'styled-components';
 import MantineIcon from '../../../components/common/MantineIcon';
@@ -16,6 +16,7 @@ import { type TableCalculationForm } from '../types';
 import { useLocalStorage } from '@mantine/hooks';
 import 'ace-builds/src-noconflict/mode-sql';
 import 'ace-builds/src-noconflict/theme-github';
+import 'ace-builds/src-noconflict/theme-tomorrow_night';
 import { SqlEditorActions } from '../../../components/SqlRunner/SqlEditorActions';
 
 const SQL_PLACEHOLDER = '${table_name.field_name} + ${table_name.metric_name}';
@@ -60,33 +61,44 @@ export const SqlForm: FC<Props> = ({
 
     const { setAceEditor } = useTableCalculationAceEditorCompleter();
 
-    const handleEditorLoad = (editor: any) => {
-        setAceEditor(editor);
-        editor.commands.addCommand({
-            name: 'executeCmdEnter',
-            bindKey: { win: 'Ctrl-Enter', mac: 'Cmd-Enter' },
-            exec: () => {
-                if (onCmdEnter) {
-                    onCmdEnter();
-                }
-            },
-        });
-        if (focusOnRender) {
-            // set timeout throws the focus to the end of the event loop (after the render)
-            // without it the focus would be set before the editor is fully rendered (and not work)
-            setTimeout(() => {
-                editor.focus(); // focus the editor
-                editor.navigateFileEnd(); // navigate to the end of the content
-            }, 0);
-        }
-    };
+    const handleEditorLoad = useCallback(
+        (editor: any) => {
+            setAceEditor(editor);
+            editor.commands.addCommand({
+                name: 'executeCmdEnter',
+                bindKey: { win: 'Ctrl-Enter', mac: 'Cmd-Enter' },
+                exec: () => {
+                    if (onCmdEnter) {
+                        onCmdEnter();
+                    }
+                },
+            });
+            if (focusOnRender) {
+                // set timeout throws the focus to the end of the event loop (after the render)
+                // without it the focus would be set before the editor is fully rendered (and not work)
+                setTimeout(() => {
+                    editor.focus(); // focus the editor
+                    editor.navigateFileEnd(); // navigate to the end of the content
+                }, 0);
+            }
+        },
+        [setAceEditor, onCmdEnter, focusOnRender],
+    );
+
+    const handleToggleSoftWrap = useCallback(() => {
+        setSoftWrapEnabled(!isSoftWrapEnabled);
+    }, [isSoftWrapEnabled, setSoftWrapEnabled]);
 
     return (
         <>
             <ScrollArea h={isFullScreen ? '90%' : '150px'}>
                 <SqlEditor
                     mode="sql"
-                    theme="github"
+                    theme={
+                        theme.colorScheme === 'dark'
+                            ? 'tomorrow_night'
+                            : 'github'
+                    }
                     width="100%"
                     placeholder={SQL_PLACEHOLDER}
                     maxLines={Infinity}
@@ -101,14 +113,12 @@ export const SqlForm: FC<Props> = ({
                     showPrintMargin={false}
                     isFullScreen={isFullScreen}
                     wrapEnabled={isSoftWrapEnabled}
-                    gutterBackgroundColor={theme.colors.gray['1']}
+                    gutterBackgroundColor={theme.colors.ldGray[1]}
                     {...form.getInputProps('sql')}
                 />
                 <SqlEditorActions
                     isSoftWrapEnabled={isSoftWrapEnabled}
-                    onToggleSoftWrap={() =>
-                        setSoftWrapEnabled(!isSoftWrapEnabled)
-                    }
+                    onToggleSoftWrap={handleToggleSoftWrap}
                     clipboardContent={form.values.sql}
                 />
             </ScrollArea>

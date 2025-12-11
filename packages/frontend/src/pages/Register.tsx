@@ -4,19 +4,12 @@ import {
     type CreateUserArgs,
     type LightdashUser,
 } from '@lightdash/common';
-import {
-    Anchor,
-    Card,
-    Divider,
-    Image,
-    Stack,
-    Text,
-    Title,
-} from '@mantine/core';
+import { Anchor, Box, Card, Divider, Stack, Text, Title, Image } from '@mantine/core';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, type FC } from 'react';
 import { useLocation } from 'react-router';
 import { lightdashApi } from '../api';
+import LightdashLogo from '../components/LightdashLogo/LightdashLogo';
 import PageSpinner from '../components/PageSpinner';
 import CreateUserForm from '../components/RegisterForms/CreateUserForm';
 import Page from '../components/common/Page/Page';
@@ -110,7 +103,7 @@ const Register: FC = () => {
                     my="md"
                     labelPosition="center"
                     label={
-                        <Text color="gray.5" size="sm" fw={500}>
+                        <Text color="ldGray.5" size="sm" fw={500}>
                             OR
                         </Text>
                     }
@@ -135,7 +128,7 @@ const Register: FC = () => {
                     </Title>
                     {logins}
                 </Card>
-                <Text color="gray.6" ta="center">
+                <Text color="ldGray.6" ta="center">
                     By creating an account, you agree to
                     <br />
                     our{' '}

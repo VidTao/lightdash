@@ -233,13 +233,34 @@
                                                     "type": "object",
                                                     "properties": {
                                                         "url": {
-                                                            "type": "string"
+                                                            "type": "string",
+                                                            "description": "Liquidjs template for the URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}"
                                                         },
                                                         "label": {
                                                             "type": "string"
                                                         }
                                                     }
                                                 }
+                                            },
+                                            "image": {
+                                                "type": "object",
+                                                "description": "Displays the dimension value as an image",
+                                                "properties": {
+                                                    "url": {
+                                                        "type": "string",
+                                                        "description": "Liquidjs template for the image URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}. Only fields selected in the query are available in row context."
+                                                    },
+                                                    "width": {
+                                                        "type": "number"
+                                                    },
+                                                    "height": {
+                                                        "type": "number"
+                                                    },
+                                                    "fit": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": ["url"]
                                             },
                                             "tags": {
                                                 "oneOf": [
@@ -717,13 +738,25 @@
                                                                 "type": "object",
                                                                 "properties": {
                                                                     "url": {
-                                                                        "type": "string"
+                                                                        "type": "string",
+                                                                        "description": "Liquidjs template for the URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}"
                                                                     },
                                                                     "label": {
                                                                         "type": "string"
                                                                     }
                                                                 }
                                                             }
+                                                        },
+                                                        "image": {
+                                                            "type": "object",
+                                                            "description": "Displays the dimension value as an image",
+                                                            "properties": {
+                                                                "url": {
+                                                                    "type": "string",
+                                                                    "description": "Liquidjs template for the image URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}. Only fields selected in the query are available in row context."
+                                                                }
+                                                            },
+                                                            "required": ["url"]
                                                         },
                                                         "tags": {
                                                             "oneOf": [
@@ -952,13 +985,25 @@
                                                         "type": "object",
                                                         "properties": {
                                                             "url": {
-                                                                "type": "string"
+                                                                "type": "string",
+                                                                "description": "Liquidjs template for the URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}"
                                                             },
                                                             "label": {
                                                                 "type": "string"
                                                             }
                                                         }
                                                     }
+                                                },
+                                                "image": {
+                                                    "type": "object",
+                                                    "description": "Displays the dimension value as an image",
+                                                    "properties": {
+                                                        "url": {
+                                                            "type": "string",
+                                                            "description": "Liquidjs template for the image URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}. Only fields selected in the query are available in row context."
+                                                        }
+                                                    },
+                                                    "required": ["url"]
                                                 },
                                                 "tags": {
                                                     "oneOf": [
@@ -1127,13 +1172,25 @@
                                                                 "type": "object",
                                                                 "properties": {
                                                                     "url": {
-                                                                        "type": "string"
+                                                                        "type": "string",
+                                                                        "description": "Liquidjs template for the URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}"
                                                                     },
                                                                     "label": {
                                                                         "type": "string"
                                                                     }
                                                                 }
                                                             }
+                                                        },
+                                                        "image": {
+                                                            "type": "object",
+                                                            "description": "Displays the dimension value as an image",
+                                                            "properties": {
+                                                                "url": {
+                                                                    "type": "string",
+                                                                    "description": "Liquidjs template for the image URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}. Only fields selected in the query are available in row context."
+                                                                }
+                                                            },
+                                                            "required": ["url"]
                                                         },
                                                         "tags": {
                                                             "oneOf": [
@@ -1288,13 +1345,25 @@
                                     "type": "object",
                                     "properties": {
                                         "url": {
-                                            "type": "string"
+                                            "type": "string",
+                                            "description": "Liquidjs template for the URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}"
                                         },
                                         "label": {
                                             "type": "string"
                                         }
                                     }
                                 }
+                            },
+                            "image": {
+                                "type": "object",
+                                "description": "Displays the dimension value as an image",
+                                "properties": {
+                                    "url": {
+                                        "type": "string",
+                                        "description": "Liquidjs template for the image URL. Available variables: ${value.raw}, ${value.formatted}, ${row.table_name.field_name.raw}, ${row.table_name.field_name.formatted}. Only fields selected in the query are available in row context."
+                                    }
+                                },
+                                "required": ["url"]
                             },
                             "tags": {
                                 "oneOf": [

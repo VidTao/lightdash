@@ -18,6 +18,7 @@ import {
     Text,
     Title,
     Tooltip,
+    useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -42,7 +43,13 @@ import {
 import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
 import { useBlocker, useLocation, useNavigate, useParams } from 'react-router';
 import {
+    explorerActions,
+    selectHasUnsavedChanges,
+    selectIsEditMode,
     selectIsValidQuery,
+    selectSavedChart,
+    selectUnsavedChartVersion,
+    useExplorerDispatch,
     useExplorerSelector,
 } from '../../../features/explorer/store';
 import { PromotionConfirmDialog } from '../../../features/promotion/components/PromotionConfirmDialog';
@@ -66,10 +73,13 @@ import { useFeatureFlagEnabled } from '../../../hooks/useFeatureFlagEnabled';
 import { useProject } from '../../../hooks/useProject';
 import { useUpdateMutation } from '../../../hooks/useSavedQuery';
 import useSearchParams from '../../../hooks/useSearchParams';
-import { useSpaceSummaries } from '../../../hooks/useSpaces';
 import { Can } from '../../../providers/Ability';
 import useApp from '../../../providers/App/useApp';
-import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
+import {
+    defaultQueryExecution,
+    defaultState,
+} from '../../../providers/Explorer/defaultState';
+import { ExplorerSection } from '../../../providers/Explorer/types';
 import { TrackSection } from '../../../providers/Tracking/TrackingProvider';
 import { SectionName } from '../../../types/Events';
 import ExploreFromHereButton from '../../ExploreFromHereButton';
@@ -103,6 +113,8 @@ const SavedChartsHeader: FC = () => {
 
     const { data: project } = useProject(projectUuid);
 
+    const { colorScheme } = useMantineColorScheme();
+
     const { mutate: promoteChart } = usePromoteMutation();
     const {
         mutate: getPromoteChartDiff,
@@ -111,26 +123,14 @@ const SavedChartsHeader: FC = () => {
         isLoading: promoteChartDiffLoading,
     } = usePromoteChartDiffMutation();
     const navigate = useNavigate();
-    const isEditMode = useExplorerContext(
-        (context) => context.state.isEditMode,
-    );
+    const dispatch = useExplorerDispatch();
 
-    const unsavedChartVersion = useExplorerContext(
-        (context) => context.state.mergedUnsavedChartVersion,
-    );
+    const isEditMode = useExplorerSelector(selectIsEditMode);
+    const unsavedChartVersion = useExplorerSelector(selectUnsavedChartVersion);
 
-    // Get savedChart, comparison function, and isValidQuery from Context
-    const savedChart = useExplorerContext(
-        (context) => context.state.savedChart,
-    );
-    const isUnsavedChartChanged = useExplorerContext(
-        (context) => context.actions.isUnsavedChartChanged,
-    );
-    const reset = useExplorerContext((context) => context.actions.reset);
+    const savedChart = useExplorerSelector(selectSavedChart);
 
-    const hasUnsavedChanges = savedChart
-        ? isUnsavedChartChanged(unsavedChartVersion)
-        : false;
+    const hasUnsavedChanges = useExplorerSelector(selectHasUnsavedChanges);
 
     const { query } = useExplorerQuery();
     const itemsMap = query.data?.fields;
@@ -165,7 +165,6 @@ const SavedChartsHeader: FC = () => {
         useDisclosure();
 
     const { user, health } = useApp();
-    const { data: spaces = [] } = useSpaceSummaries(projectUuid, true);
     const { mutateAsync: contentAction, isLoading: isContentActionLoading } =
         useContentAction(projectUuid);
     const updateSavedChart = useUpdateMutation(
@@ -237,12 +236,18 @@ const SavedChartsHeader: FC = () => {
 
     const userCanManageChart =
         savedChart &&
-        user.data?.ability?.can('manage', subject('SavedChart', savedChart));
+        user.data?.ability?.can(
+            'manage',
+            subject('SavedChart', { ...savedChart }),
+        );
 
     const userCanPromoteChart =
         savedChart &&
         !savedChart?.dashboardUuid &&
-        user.data?.ability?.can('promote', subject('SavedChart', savedChart));
+        user.data?.ability?.can(
+            'promote',
+            subject('SavedChart', { ...savedChart }),
+        );
 
     const userCanManageExplore = user.data?.ability.can(
         'manage',
@@ -274,14 +279,35 @@ const SavedChartsHeader: FC = () => {
         });
     };
 
-    const handleCancelClick = () => {
-        reset();
+    const handleCancelClick = useCallback(() => {
+        // Reset to saved chart state
+        if (savedChart) {
+            const resetState = {
+                savedChart,
+                isEditMode,
+                parameterReferences: Object.keys(savedChart.parameters ?? {}),
+                parameterDefinitions: {},
+                cachedChartConfigs: {},
+                expandedSections: [ExplorerSection.VISUALIZATION],
+                unsavedChartVersion: {
+                    tableName: savedChart.tableName,
+                    chartConfig: savedChart.chartConfig,
+                    metricQuery: savedChart.metricQuery,
+                    tableConfig: savedChart.tableConfig,
+                    pivotConfig: savedChart.pivotConfig,
+                    parameters: savedChart.parameters,
+                },
+                modals: defaultState.modals,
+                queryExecution: defaultQueryExecution,
+            };
+            dispatch(explorerActions.reset(resetState));
+        }
 
         if (!isFromDashboard)
             void navigate({
                 pathname: `/projects/${savedChart?.projectUuid}/saved/${savedChart?.uuid}/view`,
             });
-    };
+    }, [dispatch, isEditMode, savedChart, isFromDashboard, navigate]);
 
     const promoteDisabled = !(
         project?.upstreamProjectUuid !== undefined && userCanPromoteChart
@@ -346,7 +372,11 @@ const SavedChartsHeader: FC = () => {
                                     dashboardName={savedChart.dashboardName}
                                 />
                                 <Title
-                                    c="dark.6"
+                                    c={
+                                        colorScheme === 'dark'
+                                            ? 'ldDark.0'
+                                            : 'ldDark.6'
+                                    }
                                     order={5}
                                     fw={600}
                                     truncate
@@ -357,7 +387,7 @@ const SavedChartsHeader: FC = () => {
                                 {isEditMode && userCanManageChart && (
                                     <ActionIcon
                                         size="xs"
-                                        color="gray.6"
+                                        color="ldGray.6"
                                         disabled={updateSavedChart.isLoading}
                                         onClick={() => setIsRenamingChart(true)}
                                     >
@@ -365,14 +395,12 @@ const SavedChartsHeader: FC = () => {
                                     </ActionIcon>
                                 )}
                             </Group>
-
                             <ChartUpdateModal
                                 opened={isRenamingChart}
                                 uuid={savedChart.uuid}
                                 onClose={() => setIsRenamingChart(false)}
                                 onConfirm={() => setIsRenamingChart(false)}
                             />
-
                             <Group spacing="xs">
                                 <UpdatedInfo
                                     updatedAt={savedChart.updatedAt}
@@ -393,7 +421,6 @@ const SavedChartsHeader: FC = () => {
                         </>
                     )}
                 </div>
-
                 {userTimeZonesEnabled &&
                     savedChart?.metricQuery.timezone &&
                     !isEditMode && (
@@ -401,7 +428,6 @@ const SavedChartsHeader: FC = () => {
                             {savedChart?.metricQuery.timezone}
                         </Text>
                     )}
-
                 {(userCanManageChart ||
                     userCanCreateDeliveriesAndAlerts ||
                     userCanManageExplore) && (
@@ -833,7 +859,6 @@ const SavedChartsHeader: FC = () => {
                               ]
                             : []),
                     ]}
-                    spaces={spaces}
                     isLoading={isMovingChart || isContentActionLoading}
                     onClose={transferToSpaceModalHandlers.close}
                     onConfirm={async (newSpaceUuid) => {

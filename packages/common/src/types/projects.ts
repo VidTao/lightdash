@@ -70,6 +70,8 @@ export const sensitiveCredentialsFieldNames = [
     'sslrootcert',
     'token',
     'refreshToken',
+    'oauthClientId',
+    'oauthClientSecret',
 ] as const;
 export type SensitiveCredentialsFieldNames =
     typeof sensitiveCredentialsFieldNames[number];
@@ -77,6 +79,13 @@ export type BigqueryCredentials = Omit<
     CreateBigqueryCredentials,
     SensitiveCredentialsFieldNames
 >;
+
+export enum DatabricksAuthenticationType {
+    PERSONAL_ACCESS_TOKEN = 'personal_access_token',
+    OAUTH_M2M = 'oauth_m2m',
+    OAUTH_U2M = 'oauth_u2m',
+}
+
 export type CreateDatabricksCredentials = {
     type: WarehouseTypes.DATABRICKS;
     catalog?: string;
@@ -84,7 +93,12 @@ export type CreateDatabricksCredentials = {
     database: string;
     serverHostName: string;
     httpPath: string;
-    personalAccessToken: string;
+    authenticationType?: DatabricksAuthenticationType;
+    personalAccessToken?: string; // Optional when using OAuth
+    refreshToken?: string; // Refresh token for OAuth, used to generate a new access token
+    token?: string; // Access token for OAuth, has a low expiry time (1 hour)
+    oauthClientId?: string; // OAuth M2M client ID (Service Principal)
+    oauthClientSecret?: string; // OAuth M2M client secret (Service Principal)
     requireUserCredentials?: boolean;
     startOfWeek?: WeekDay | null;
     compute?: Array<{
@@ -138,6 +152,7 @@ export type CreateTrinoCredentials = {
     dbname: string;
     schema: string;
     http_scheme: string;
+    source?: string;
     startOfWeek?: WeekDay | null;
 };
 export type TrinoCredentials = Omit<
@@ -210,6 +225,7 @@ export type CreateSnowflakeCredentials = {
     accessUrl?: string;
     startOfWeek?: WeekDay | null;
     quotedIdentifiersIgnoreCase?: boolean;
+    disableTimestampConversion?: boolean; // Disable timestamp conversion to UTC - only disable if all timestamp values are already in UTC
     override?: boolean;
     organizationWarehouseCredentialsUuid?: string;
 };

@@ -16,6 +16,7 @@ import {
     IconLock,
     IconPalette,
     IconPlug,
+    IconRefresh,
     IconReportAnalytics,
     IconTableOptions,
     IconUserCircle,
@@ -219,7 +220,7 @@ const Settings: FC = () => {
                         <SettingsGridCard>
                             <div>
                                 <Title order={4}>Allowed email domains</Title>
-                                <Text c="gray.6" fz="xs">
+                                <Text c="ldGray.6" fz="xs">
                                     Anyone with email addresses at these domains
                                     can automatically join the organization.
                                 </Text>
@@ -230,7 +231,7 @@ const Settings: FC = () => {
                         <SettingsGridCard>
                             <div>
                                 <Title order={4}>Default Project</Title>
-                                <Text c="gray.6" fz="xs">
+                                <Text c="ldGray.6" fz="xs">
                                     This is the project users will see when they
                                     log in for the first time or from a new
                                     device. If a user does not have access, they
@@ -244,7 +245,7 @@ const Settings: FC = () => {
                             <SettingsGridCard>
                                 <div>
                                     <Title order={4}>Danger zone </Title>
-                                    <Text c="gray.6" fz="xs">
+                                    <Text c="ldGray.6" fz="xs">
                                         This action deletes the whole workspace
                                         and all its content, including users.
                                         This action is not reversible.
@@ -419,6 +420,12 @@ const Settings: FC = () => {
             !matchPath(
                 {
                     path: '/generalSettings/projectManagement/:projectUuid/scheduledDeliveries',
+                },
+                location.pathname,
+            ) &&
+            !matchPath(
+                {
+                    path: '/generalSettings/projectManagement/:projectUuid/compilationHistory',
                 },
                 location.pathname,
             )
@@ -735,6 +742,15 @@ const Settings: FC = () => {
                                     />
 
                                     <RouterNavLink
+                                        label="Compilation history"
+                                        exact
+                                        to={`/generalSettings/projectManagement/${project.projectUuid}/compilationHistory`}
+                                        icon={
+                                            <MantineIcon icon={IconRefresh} />
+                                        }
+                                    />
+
+                                    <RouterNavLink
                                         label="Parameters"
                                         exact
                                         to={`/generalSettings/projectManagement/${project.projectUuid}/parameters`}
@@ -743,12 +759,23 @@ const Settings: FC = () => {
                                         }
                                     />
 
-                                    <RouterNavLink
-                                        label="Project access"
-                                        exact
-                                        to={`/generalSettings/projectManagement/${project.projectUuid}/projectAccess`}
-                                        icon={<MantineIcon icon={IconUsers} />}
-                                    />
+                                    <Can
+                                        I="manage"
+                                        this={subject('Project', {
+                                            organizationUuid:
+                                                organization.organizationUuid,
+                                            projectUuid: project.projectUuid,
+                                        })}
+                                    >
+                                        <RouterNavLink
+                                            label="Project access"
+                                            exact
+                                            to={`/generalSettings/projectManagement/${project.projectUuid}/projectAccess`}
+                                            icon={
+                                                <MantineIcon icon={IconUsers} />
+                                            }
+                                        />
+                                    </Can>
 
                                     {user.ability.can(
                                         'view',

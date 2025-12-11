@@ -1,6 +1,7 @@
-import { Card, Image, Stack } from '@mantine/core';
+import { Box, Card, Stack, Image } from '@mantine/core';
 import { type FC } from 'react';
 import { Navigate } from 'react-router';
+import LightdashLogo from '../components/LightdashLogo/LightdashLogo';
 import PageSpinner from '../components/PageSpinner';
 import Page from '../components/common/Page/Page';
 import useApp from '../providers/App/useApp';

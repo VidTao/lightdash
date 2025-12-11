@@ -3,6 +3,7 @@ import {
     Box,
     Text,
     Tooltip,
+    useMantineTheme,
     type BoxProps as BoxPropsBase,
 } from '@mantine/core';
 import { getHotkeyHandler, useClipboard, useId } from '@mantine/hooks';
@@ -49,6 +50,7 @@ type TableRowProps = PolymorphicComponentProps<'tr', BoxProps> & {
     index: number;
 };
 type TableCellProps = PolymorphicComponentProps<'th' | 'td', BoxProps> & {
+    isMinimal: boolean;
     withMinimalWidth?: boolean;
     withAlignRight?: boolean;
     withBoldFont?: boolean;
@@ -151,6 +153,7 @@ const TableProvider: FC<
 const TableComponent = forwardRef<HTMLTableElement, TableProps>(
     ({ children, component = 'table', containerRef, ...rest }, ref) => {
         const { cx, classes } = useTableStyles();
+        const theme = useMantineTheme();
 
         const [isContainerInitialized, setIsContainerInitialized] =
             useState(false);
@@ -184,9 +187,13 @@ const TableComponent = forwardRef<HTMLTableElement, TableProps>(
             <Box
                 ref={containerRef}
                 miw="inherit"
-                h="inherit"
+                mah="100%"
                 pos="relative"
-                sx={{ overflow: 'auto' }}
+                sx={{
+                    overflow: 'auto',
+                    border: `1px solid ${theme.colors.ldGray[3]}`,
+                    borderRadius: '4px',
+                }}
             >
                 <Box
                     ref={ref}
@@ -344,6 +351,7 @@ const BaseCell = (
         (
             {
                 children,
+                isMinimal = false,
                 withMinimalWidth = false,
                 withAlignRight = false,
                 withTooltip = false,
@@ -393,12 +401,13 @@ const BaseCell = (
             });
 
             const cellHasLargeContent = useMemo(() => {
-                return (
+                return !!(
                     sectionType === SectionType.Body &&
-                    typeof children === 'string' &&
-                    children.length > SMALL_TEXT_LENGTH
+                    withValue &&
+                    typeof withValue === 'string' &&
+                    withValue.length > SMALL_TEXT_LENGTH
                 );
-            }, [sectionType, children]);
+            }, [sectionType, withValue]);
 
             const component = useMemo(() => {
                 switch (cellType) {
@@ -423,7 +432,8 @@ const BaseCell = (
                         data-is-selected={isSelected}
                         className={cx(classes.root, rest.className, {
                             [classes.withSticky]: withSticky,
-                            [classes.withLargeContent]: cellHasLargeContent,
+                            [classes.withLargeContent]:
+                                cellHasLargeContent && !isMinimal,
                             [classes.withMinimalWidth]: withMinimalWidth,
                             [classes.withAlignRight]: withAlignRight,
                             [classes.withBoldFont]: withBoldFont,
@@ -448,6 +458,8 @@ const BaseCell = (
                                 maw={400}
                                 multiline
                                 label={withTooltip}
+                                openDelay={500}
+                                variant="xs"
                             >
                                 <Text span>{children}</Text>
                             </Tooltip>
@@ -460,6 +472,7 @@ const BaseCell = (
                     component,
                     ref,
                     rest,
+                    isSelected,
                     cx,
                     classes.root,
                     classes.withSticky,
@@ -473,6 +486,7 @@ const BaseCell = (
                     classes.withCopying,
                     withSticky,
                     cellHasLargeContent,
+                    isMinimal,
                     withMinimalWidth,
                     withAlignRight,
                     withBoldFont,
@@ -480,11 +494,10 @@ const BaseCell = (
                     withInteractions,
                     withBackground,
                     clipboard.copied,
+                    children,
                     withTooltip,
-                    isSelected,
                     toggleCell,
                     cellId,
-                    children,
                 ],
             );
 

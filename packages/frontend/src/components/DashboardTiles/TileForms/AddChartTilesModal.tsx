@@ -77,15 +77,15 @@ const SelectItem = forwardRef<HTMLDivElement, ItemProps>(
                     <Group spacing="xs">
                         <ChartIcon
                             chartKind={chartKind ?? ChartKind.VERTICAL_BAR}
-                            color={disabled ? 'gray.5' : undefined}
+                            color={disabled ? 'ldGray.5' : undefined}
                         />
                         <Text
                             c={
                                 disabled
                                     ? 'dimmed'
                                     : selected
-                                    ? 'gray.0'
-                                    : 'gray.8'
+                                    ? 'ldGray.0'
+                                    : 'ldGray.8'
                             }
                             fw={500}
                             fz="xs"
@@ -212,6 +212,11 @@ const AddChartTilesModal: FC<Props> = ({ onAddTiles, onClose }) => {
                             properties: {
                                 savedChartUuid: uuid,
                                 chartName: chart?.name ?? '',
+                                // BigNumber charts default to hidden title for cleaner appearance
+                                hideTitle:
+                                    chart?.chartKind === ChartKind.BIG_NUMBER
+                                        ? true
+                                        : undefined,
                             },
                             tabUuid: undefined,
                             ...defaultTileSize,
@@ -259,13 +264,19 @@ const AddChartTilesModal: FC<Props> = ({ onAddTiles, onClose }) => {
                             separator: {
                                 position: 'sticky',
                                 top: 0,
-                                backgroundColor: 'white',
+                                backgroundColor:
+                                    theme.colorScheme === 'dark'
+                                        ? 'var(--mantine-color-dark-6)'
+                                        : 'var(--mantine-color-white)',
                                 zIndex: getDefaultZIndex('modal'),
                             },
                             separatorLabel: {
-                                color: theme.colors.gray[6],
+                                color: theme.colors.ldGray[6],
                                 fontWeight: 500,
-                                backgroundColor: 'white',
+                                backgroundColor:
+                                    theme.colorScheme === 'dark'
+                                        ? 'var(--mantine-color-dark-6)'
+                                        : 'var(--mantine-color-white)',
                             },
                             item: {
                                 paddingTop: 4,

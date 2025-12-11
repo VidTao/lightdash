@@ -21,6 +21,9 @@ export const BaseResponse: HealthState = {
     hasGitlab: false,
     hasHeadlessBrowser: false,
     hasSlack: false,
+    slack: {
+        multiAgentChannelEnabled: false,
+    },
     auth: {
         disablePasswordAuthentication: false,
         google: {
@@ -50,6 +53,9 @@ export const BaseResponse: HealthState = {
             maxExpirationTimeInDays: undefined,
         },
         snowflake: {
+            enabled: false,
+        },
+        databricks: {
             enabled: false,
         },
     },
@@ -98,6 +104,9 @@ export const BaseResponse: HealthState = {
     ai: {
         analyticsProjectUuid: undefined,
         analyticsDashboardUuid: undefined,
+    },
+    echarts6: {
+        enabled: false,
     },
 };
 

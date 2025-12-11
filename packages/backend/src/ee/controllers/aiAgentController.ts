@@ -1,5 +1,6 @@
 import {
     AiArtifactTSOACompat,
+    ApiAgentReadinessScoreResponse,
     ApiAiAgentArtifactResponseTSOACompat,
     ApiAiAgentEvaluationResponse,
     ApiAiAgentEvaluationRunResponse,
@@ -18,6 +19,8 @@ import {
     ApiAiAgentThreadMessageVizQueryResponse,
     ApiAiAgentThreadResponse,
     ApiAiAgentThreadSummaryListResponse,
+    ApiAiAgentVerifiedArtifactsResponse,
+    ApiAiAgentVerifiedQuestionsResponse,
     ApiAppendEvaluationRequest,
     ApiAppendInstructionRequest,
     ApiAppendInstructionResponse,
@@ -37,6 +40,7 @@ import {
     ApiUpdateUserAgentPreferencesResponse,
     KnexPaginateArgs,
 } from '@lightdash/common';
+import * as Sentry from '@sentry/node';
 import {
     Body,
     Delete,
@@ -59,6 +63,7 @@ import {
     isAuthenticated,
 } from '../../controllers/authentication';
 import { BaseController } from '../../controllers/baseController';
+import Logger from '../../logging/logger';
 import { type AiAgentService } from '../services/AiAgentService';
 
 @Route('/api/v1/projects/{projectUuid}/aiAgents')
@@ -163,6 +168,83 @@ export class AiAgentController extends BaseController {
         return {
             status: 'ok',
             results: agent,
+        };
+    }
+
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Post('/{agentUuid}/evaluateReadiness')
+    @OperationId('evaluateAgentReadiness')
+    async evaluateAgentReadiness(
+        @Request() req: express.Request,
+        @Path() projectUuid: string,
+        @Path() agentUuid: string,
+    ): Promise<ApiAgentReadinessScoreResponse> {
+        this.setStatus(200);
+
+        const readinessScore = await this.getAiAgentService().evaluateReadiness(
+            req.user!,
+            { agentUuid, projectUuid },
+        );
+
+        return {
+            status: 'ok',
+            results: readinessScore,
+        };
+    }
+
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('/{agentUuid}/verified-artifacts')
+    @OperationId('getVerifiedArtifacts')
+    async getVerifiedArtifacts(
+        @Request() req: express.Request,
+        @Path() projectUuid: string,
+        @Path() agentUuid: string,
+        @Query() page?: KnexPaginateArgs['page'],
+        @Query() pageSize?: KnexPaginateArgs['pageSize'],
+    ): Promise<ApiAiAgentVerifiedArtifactsResponse> {
+        const paginateArgs: KnexPaginateArgs | undefined =
+            page !== undefined || pageSize !== undefined
+                ? {
+                      page: page ?? 1,
+                      pageSize: pageSize ?? 50,
+                  }
+                : {
+                      page: 1,
+                      pageSize: 50,
+                  };
+
+        const result = await this.getAiAgentService().getVerifiedArtifacts(
+            req.user!,
+            projectUuid,
+            agentUuid,
+            paginateArgs,
+        );
+
+        this.setStatus(200);
+        return {
+            status: 'ok',
+            results: result,
+        };
+    }
+
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('/{agentUuid}/verified-questions')
+    @OperationId('getVerifiedQuestions')
+    async getVerifiedQuestions(
+        @Request() req: express.Request,
+        @Path() projectUuid: string,
+        @Path() agentUuid: string,
+    ): Promise<ApiAiAgentVerifiedQuestionsResponse> {
+        this.setStatus(200);
+        return {
+            status: 'ok',
+            results: await this.getAiAgentService().getVerifiedQuestions(
+                req.user!,
+                agentUuid,
+            ),
         };
     }
 
@@ -335,6 +417,42 @@ export class AiAgentController extends BaseController {
          * Hack to get the response object from the request
          */
         stream.pipeUIMessageStreamToResponse(req.res!);
+
+        // If client disconnects, continue consuming the stream so side-effects complete
+        let hasConsumed = false;
+        const handleClientDisconnect = (err: Error | undefined) => {
+            if (hasConsumed) return;
+            hasConsumed = true;
+            Logger.info(
+                `Client disconnected ${
+                    err ? `with error: ${err.message}` : ''
+                }, consuming stream`,
+            );
+            if (err) {
+                Sentry.captureException(err, {
+                    tags: {
+                        errorType: 'AiAgentStreamError',
+                    },
+                });
+            }
+            void stream.consumeStream({
+                onError: (error) => {
+                    Logger.error('Error consuming stream');
+                    Sentry.captureException(error, {
+                        tags: {
+                            errorType: 'AiAgentStreamError',
+                        },
+                    });
+                },
+            });
+        };
+        req.res?.on('finish', () => {
+            // If the request is finished, we can stop consuming the stream
+            hasConsumed = true;
+        });
+        req.res?.on('close', handleClientDisconnect);
+        req.res?.on('error', handleClientDisconnect);
+        req.on('aborted', handleClientDisconnect);
     }
 
     @Middlewares([allowApiKeyAuthentication, isAuthenticated])
@@ -461,13 +579,14 @@ export class AiAgentController extends BaseController {
         @Path() agentUuid: string,
         @Path() threadUuid: string,
         @Path() messageUuid: string,
-        @Body() body: { humanScore: number },
+        @Body() body: { humanScore: number; humanFeedback?: string | null },
     ): Promise<ApiSuccessEmpty> {
         this.setStatus(200);
         await this.getAiAgentService().updateHumanScoreForMessage(
             req.user!,
             messageUuid,
             body.humanScore,
+            body.humanFeedback,
         );
         return {
             status: 'ok',
@@ -624,6 +743,35 @@ export class AiAgentController extends BaseController {
             artifactUuid,
             versionUuid,
             savedDashboardUuid: body.savedDashboardUuid,
+        });
+
+        return {
+            status: 'ok',
+            results: undefined,
+        };
+    }
+
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Patch(
+        '/{agentUuid}/artifacts/{artifactUuid}/versions/{versionUuid}/verified',
+    )
+    @OperationId('setArtifactVersionVerified')
+    async setArtifactVersionVerified(
+        @Request() req: express.Request,
+        @Path() projectUuid: string,
+        @Path() agentUuid: string,
+        @Path() artifactUuid: string,
+        @Path() versionUuid: string,
+        @Body() body: { verified: boolean },
+    ): Promise<ApiSuccessEmpty> {
+        this.setStatus(200);
+
+        await this.getAiAgentService().setArtifactVersionVerified(req.user!, {
+            agentUuid,
+            artifactUuid,
+            versionUuid,
+            verified: body.verified,
         });
 
         return {

@@ -44,6 +44,7 @@ function flattenNodeRecursive(
     searchResults: string[],
     isSearching: boolean,
     depth: number = 0,
+    parentPath: string = '',
 ): TreeNodeItem[] {
     const items: TreeNodeItem[] = [];
 
@@ -73,7 +74,12 @@ function flattenNodeRecursive(
         }
 
         // Add the group node itself
-        const groupKey = buildGroupKey(tableName, sectionType, node.key);
+        const groupKey = buildGroupKey(
+            tableName,
+            sectionType,
+            node.key,
+            parentPath,
+        );
         const isExpanded = expandedGroups.has(groupKey) || isSearching;
 
         items.push({
@@ -91,6 +97,11 @@ function flattenNodeRecursive(
 
         // Add children if expanded
         if (isExpanded) {
+            // Build the parent path for children: append current node's key
+            const childParentPath = parentPath
+                ? `${parentPath}-${node.key}`
+                : node.key;
+
             Object.values(groupNode.children).forEach((child) => {
                 items.push(
                     ...flattenNodeRecursive(
@@ -102,6 +113,7 @@ function flattenNodeRecursive(
                         searchResults,
                         isSearching,
                         depth + 1,
+                        childParentPath,
                     ),
                 );
             });
@@ -135,6 +147,7 @@ function flattenSection(
     isSearching: boolean,
     options: FlattenTreeOptions,
     sectionContexts: Map<string, SectionContext>,
+    baseDepth: number = 0,
 ): TreeNodeItem[] {
     // Use pre-computed nodeMap from options instead of computing it here
     const nodeMapKey = `${tableName}-${sectionInfo.type}`;
@@ -190,6 +203,7 @@ function flattenSection(
                 expandedGroups,
                 searchResults,
                 isSearching,
+                baseDepth,
             ),
         );
     });
@@ -210,6 +224,9 @@ function flattenTable(
     const isExpanded =
         options.expandedTables.has(tableName) || options.isSearching;
     const searchResults = options.searchResultsMap[tableName] || [];
+
+    // When showing multiple tables with headers, all content should be indented one level
+    const baseDepth = options.showMultipleTables ? 1 : 0;
 
     // Add table header if showing multiple tables
     if (options.showMultipleTables) {
@@ -238,9 +255,10 @@ function flattenTable(
             estimatedHeight: ITEM_HEIGHTS.SECTION_HEADER,
             data: {
                 tableName,
-                treeSection: TreeSection.Dimensions, // Arbitrary, missing fields aren't tied to a section
+                treeSection: TreeSection.MissingFields, // Arbitrary, missing fields aren't tied to a section
                 label: 'Missing fields',
-                color: 'gray.6',
+                color: 'ldGray.6',
+                depth: baseDepth,
             },
         } satisfies SectionHeaderItem);
 
@@ -252,7 +270,7 @@ function flattenTable(
                 data: {
                     fieldId,
                     tableName,
-                    isDimension: true, // Will be determined by the component
+                    isDimension: options.selectedDimensions.includes(fieldId),
                 },
             } satisfies MissingFieldItem);
         });
@@ -284,6 +302,7 @@ function flattenTable(
                 treeSection: TreeSection.Dimensions,
                 label: 'Dimensions',
                 color: 'blue.9',
+                depth: baseDepth,
             },
         } satisfies SectionHeaderItem);
     }
@@ -303,6 +322,7 @@ function flattenTable(
             options.isSearching,
             options,
             sectionContexts,
+            baseDepth,
         );
 
         if (sectionHasResults(dimensionItems) || !options.isSearching) {
@@ -342,6 +362,14 @@ function flattenTable(
                 treeSection: TreeSection.Metrics,
                 label: 'Metrics',
                 color: 'yellow.9',
+                depth: baseDepth,
+                helpButton: !hasMetrics
+                    ? {
+                          href: 'https://docs.lightdash.com/guides/how-to-create-metrics',
+                          tooltipText:
+                              'No metrics defined in your dbt project. Click to view docs and learn how to add a metric to your project.',
+                      }
+                    : undefined,
             },
         } satisfies SectionHeaderItem);
     }
@@ -361,6 +389,7 @@ function flattenTable(
             options.isSearching,
             options,
             sectionContexts,
+            baseDepth,
         );
 
         if (sectionHasResults(metricItems) || !options.isSearching) {
@@ -387,6 +416,12 @@ function flattenTable(
                 treeSection: TreeSection.CustomMetrics,
                 label: 'Custom metrics',
                 color: 'yellow.9',
+                depth: baseDepth,
+                helpButton: {
+                    href: 'https://docs.lightdash.com/guides/how-to-create-metrics#-adding-custom-metrics-in-the-explore-view',
+                    tooltipText:
+                        'Add custom metrics by hovering over the dimension of your choice & selecting the three-dot Action Menu. Click to view docs.',
+                },
             },
         } satisfies SectionHeaderItem);
 
@@ -431,6 +466,7 @@ function flattenTable(
             options.isSearching,
             options,
             sectionContexts,
+            baseDepth,
         );
 
         items.push(...customMetricItems);
@@ -455,6 +491,7 @@ function flattenTable(
                 treeSection: TreeSection.CustomDimensions,
                 label: 'Custom dimensions',
                 color: 'blue.9',
+                depth: baseDepth,
             },
         } satisfies SectionHeaderItem);
 
@@ -475,6 +512,7 @@ function flattenTable(
             options.isSearching,
             options,
             sectionContexts,
+            baseDepth,
         );
 
         items.push(...customDimensionItems);

@@ -1,6 +1,7 @@
 import {
     type CreateEmbedJwt,
     type DashboardFilterInteractivityOptions,
+    type ParameterInteractivityOptions,
 } from '../ee';
 import { ForbiddenError } from './errors';
 import { type Organization } from './organization';
@@ -63,6 +64,8 @@ export type OssEmbed = {
     encodedSecret: string;
     dashboardUuids: string[];
     allowAllDashboards: boolean;
+    chartUuids: string[];
+    allowAllCharts: boolean;
     createdAt: string;
     user: Pick<LightdashUser, 'userUuid' | 'firstName' | 'lastName'>;
 };
@@ -79,13 +82,28 @@ export type UserAccessControls = {
     intrinsicUserAttributes: IntrinsicUserAttributes;
 };
 
-export type DashboardAccess = {
-    /** The dashboard ID the account has access to */
-    dashboardId: string;
+/**
+ * Details about the content bound to the given JWT
+ */
+export type EmbedContent = {
+    /** The dashboard UUID the JWT may have access to */
+    dashboardUuid?: string;
+    /** The chart IDs the JWT dashboard may have access to */
+    chartUuids: string[];
+    /** Explores available to the embedded dashboard */
+    explores: string[];
+    /** The type of content */
+    type: 'dashboard' | 'chart';
+};
+
+export type EmbedAccess = {
+    content: EmbedContent;
     /** Dashboard filtering options for interactivity */
     filtering?: DashboardFilterInteractivityOptions;
     /** User-specific access controls */
     controls?: UserAccessControls;
+    /** Dashboard parameter interactivity options */
+    parameters?: ParameterInteractivityOptions;
 };
 
 export type AccountHelpers = {
@@ -137,7 +155,7 @@ export type AnonymousAccount = BaseAccountWithHelpers & {
     authentication: JwtAuth;
     user: ExternalUser;
     /** The access permissions the account has */
-    access: DashboardAccess;
+    access: EmbedAccess;
     /** The embed configuration associated with the JWT */
     embed: OssEmbed;
 };

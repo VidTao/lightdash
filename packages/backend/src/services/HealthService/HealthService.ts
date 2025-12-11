@@ -65,6 +65,7 @@ export class HealthService extends BaseService {
             process.env.LIGHTDASH_INSTALL_TYPE !==
                 LightdashInstallType.HEROKU &&
             this.lightdashConfig.mode !== LightdashMode.CLOUD_BETA;
+
         return {
             healthy: true,
             mode: this.lightdashConfig.mode,
@@ -109,6 +110,11 @@ export class HealthService extends BaseService {
             },
             pivotTable: this.lightdashConfig.pivotTable,
             hasSlack: this.hasSlackConfig(),
+            slack: {
+                multiAgentChannelEnabled:
+                    this.lightdashConfig.slack?.multiAgentChannelEnabled ??
+                    false,
+            },
             hasGithub: process.env.GITHUB_PRIVATE_KEY !== undefined,
             hasGitlab:
                 this.lightdashConfig.gitlab.clientId !== undefined &&
@@ -152,6 +158,9 @@ export class HealthService extends BaseService {
                         !!this.lightdashConfig.auth.snowflake.clientId &&
                         this.isEnterpriseEnabled(),
                 },
+                databricks: {
+                    enabled: !!this.lightdashConfig.auth.databricks.clientId,
+                },
             },
             hasEmailClient: !!this.lightdashConfig.smtp,
             hasHeadlessBrowser:
@@ -189,6 +198,9 @@ export class HealthService extends BaseService {
                     this.lightdashConfig.ai.analyticsProjectUuid,
                 analyticsDashboardUuid:
                     this.lightdashConfig.ai.analyticsDashboardUuid,
+            },
+            echarts6: {
+                enabled: this.lightdashConfig.echarts6.enabled,
             },
         };
     }
