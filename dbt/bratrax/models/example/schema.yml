@@ -2551,7 +2551,6 @@ models:
             meta:
                 dimension:
                     type: string
-                    groups: ["Performance Metrics"]
 
     - name: cod_payments
       label: COD Payments
@@ -3118,4 +3117,4 @@ models:
             meta:
                 dimension:
                     type: string
-                    groups: ["Performance Metrics"]
+                    
