@@ -691,8 +691,9 @@ Triggered by user ${user.firstName} ${user.lastName} (${user.email})
         path: string,
         name: string,
         extension: 'sql' | 'yml',
+        organizationId: number,
     ) {
-        const filePath = `${path}/models/lightdash/${snakeCaseName(
+        const filePath = `${path}/models/${organizationId}/${snakeCaseName(
             name,
         )}.${extension}`;
         return GitIntegrationService.removeExtraSlashes(filePath);
@@ -702,15 +703,18 @@ Triggered by user ${user.firstName} ${user.lastName} (${user.email})
         gitProps,
         name,
         sql,
+        organizationId,
     }: {
         gitProps: GitProps;
         name: string;
         sql: string;
+        organizationId: number;
     }) {
         const fileName = GitIntegrationService.getFilePath(
             gitProps.path,
             name,
             'sql',
+            organizationId,
         );
 
         const checkFileDoesNotExist =
@@ -751,15 +755,18 @@ ${sql}
         gitProps,
         name,
         columns,
+        organizationId,
     }: {
         gitProps: GitProps;
         name: string;
         columns: VizColumn[];
+        organizationId: number;
     }) {
         const fileName = GitIntegrationService.getFilePath(
             gitProps.path,
             name,
             'yml',
+            organizationId,
         );
 
         const checkFileDoesNotExist =
@@ -815,17 +822,25 @@ ${sql}
         quoteChar: `"` | `'` = '"',
     ): Promise<PullRequestCreated> {
         const gitProps = await this.getGitProps(user, projectUuid, quoteChar);
+        
+        // Get organization_id for the project to determine folder path
+        const organizationId = await this.projectModel.getOrganizationIdByProject(
+            projectUuid,
+        );
+        
         await GitIntegrationService.createBranch(gitProps);
 
         await GitIntegrationService.createSqlFile({
             gitProps,
             name,
             sql,
+            organizationId,
         });
         await GitIntegrationService.createYmlFile({
             gitProps,
             name,
             columns,
+            organizationId,
         });
         Logger.debug(
             `Creating ${
@@ -901,6 +916,11 @@ Triggered by user ${user.firstName} ${user.lastName} (${user.email})
         const { owner, repo, path, type, hostDomain } =
             await this.getProjectRepo(projectUuid);
 
+        // Get organization_id for the project to determine folder path
+        const organizationId = await this.projectModel.getOrganizationIdByProject(
+            projectUuid,
+        );
+
         const baseUrl =
             type === DbtProjectType.GITHUB
                 ? `https://github.com/${owner}/${repo}`
@@ -909,10 +929,10 @@ Triggered by user ${user.firstName} ${user.lastName} (${user.email})
         return {
             url: baseUrl,
             repo,
-            path: `${path}/models/lightdash`,
+            path: `${path}/models/${organizationId}`,
             files: [
-                GitIntegrationService.getFilePath(path, name, 'sql'),
-                GitIntegrationService.getFilePath(path, name, 'yml'),
+                GitIntegrationService.getFilePath(path, name, 'sql', organizationId),
+                GitIntegrationService.getFilePath(path, name, 'yml', organizationId),
             ],
             owner,
         };

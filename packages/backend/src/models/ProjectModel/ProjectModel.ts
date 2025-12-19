@@ -822,6 +822,19 @@ export class ProjectModel {
         };
     }
 
+    async getOrganizationIdByProject(projectUuid: string): Promise<number> {
+        const result = await this.database(ProjectTableName)
+            .select('organization_id')
+            .where('project_uuid', projectUuid)
+            .first();
+        if (!result) {
+            throw new NotExistsError(
+                `Cannot find project with id: ${projectUuid}`,
+            );
+        }
+        return result.organization_id;
+    }
+
     /*
     This method will load default values for backwards compatibility
     For example, when we introduce a new authentication type, we need to set the default value for the existing projects

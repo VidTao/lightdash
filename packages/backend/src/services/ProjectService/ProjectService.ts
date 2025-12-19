@@ -2058,6 +2058,12 @@ export class ProjectService extends BaseService {
                 'Warehouse credentials must be provided to connect to your dbt project',
             );
         }
+        
+        // Get numeric organization_id for filtering dbt models by organization folder
+        const organizationId = await this.projectModel.getOrganizationIdByProject(
+            projectUuid,
+        );
+        
         const cachedWarehouseCatalog =
             await this.projectModel.getWarehouseFromCache(projectUuid);
 
@@ -2140,8 +2146,16 @@ export class ProjectService extends BaseService {
         const sshTunnel = new SshTunnel(project.warehouseConnection);
         await sshTunnel.connect();
 
+        // Set selector to filter dbt models by organization folder
+        const dbtConnectionWithSelector = {
+            ...project.dbtConnection,
+            selector: organizationId 
+                ? `path:models/${organizationId}` 
+                : ('selector' in project.dbtConnection ? project.dbtConnection.selector : undefined),
+        };
+
         const adapter = await projectAdapterFromConfig(
-            project.dbtConnection,
+            dbtConnectionWithSelector,
             sshTunnel.overrideCredentials,
             {
                 warehouseCatalog: cachedWarehouseCatalog,
