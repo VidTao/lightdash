@@ -7,7 +7,7 @@ networks:
   lightdash_librechat_network:
     name: lightdash_librechat_network
     driver: bridge
-    external: true
+    # external: true
 
 services:
   lightdash:
@@ -112,7 +112,7 @@ services:
       - "/data/postgres-ssl:/usr/app/ssl:ro"  # This mounts all certificates including postgres.crt
       - "./startup.sh:/usr/app/startup.sh:ro"
     ports:
-      - "3000:3000"  # Expose Lightdash directly
+      - "3001:3000"  # Expose Lightdash directly
     restart: unless-stopped
     entrypoint: ["dumb-init", "--"]
     command:
@@ -136,7 +136,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
       - /data/postgres-ssl:/var/lib/postgresql/ssl:ro
-      - /data/postgres-config/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      # - /data/postgres-config/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     ports:
       - "5433:5432"
     command: >
