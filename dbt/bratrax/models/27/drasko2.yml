@@ -1,0 +1,7 @@
+version: 2
+models:
+  - name: drasko2
+    description: SQL model for Drasko 2
+    meta:
+      label: Drasko 2
+    columns: []
