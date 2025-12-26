@@ -5,7 +5,7 @@ sources:
     - name: production_tables_no_flat
       description: 'Production tables from bratrax-without-flattening project'
       database: 'bratrax-without-flattening'
-      schema: '2'
+      schema: 'cod'
       tables:
           - name: slack_delivery
             description: 'Slack delivery tracking and budget management with client_id for multi-tenancy'
