@@ -9,73 +9,60 @@ models:
               field: created_at
               interval: DAY
           sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-          group_details:
-              "Delivery Info": { order: 1 }
-              "Budget Metrics": { order: 2 }
-              "Tracking Info": { order: 3 }
       columns:
           - name: client_id
             description: 'Client identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: bid
             description: 'Buyer ID'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: buyer_id
             description: 'Buyer identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: allocation_id
             description: 'Allocation identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: delivery_id
             description: 'Delivery identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: channel
             description: 'Delivery channel'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: geos
             description: 'Geographical targeting'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: optional_tag
             description: 'Optional tag for categorization'
             meta:
                 dimension:
                     type: string
-                    groups: ["Delivery Info"]
 
           - name: status
             description: 'Delivery status'
             meta:
                 dimension:
                     type: string
-                    groups: ["Tracking Info"]
 
           - name: created_at
             description: 'Delivery creation timestamp'
@@ -83,14 +70,12 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-                    groups: ["Tracking Info"]
 
           - name: created_by
             description: 'User who created the delivery'
             meta:
                 dimension:
                     type: string
-                    groups: ["Tracking Info"]
 
           - name: total_budget
             description: 'Total budget allocated'
@@ -101,10 +86,8 @@ models:
                         label: "Total Budget"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
                 dimension:
                     type: number
-                    groups: ["Budget Metrics"]
 
           - name: total_spent
             description: 'Total amount spent'
@@ -115,10 +98,8 @@ models:
                         label: "Total Spent"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
                 dimension:
                     type: number
-                    groups: ["Budget Metrics"]
 
           - name: available
             description: 'Available budget remaining'
@@ -129,10 +110,8 @@ models:
                         label: "Total Available"
                         round: 2
                         format: "usd"
-                        groups: ["Budget Metrics"]
                 dimension:
                     type: number
-                    groups: ["Budget Metrics"]
 
     - name: slack_payment_delivery
       label: Slack Payment Delivery
@@ -142,38 +121,30 @@ models:
               field: created_at
               interval: DAY
           sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-          group_details:
-              "Payment Info": { order: 1 }
-              "Amount Metrics": { order: 2 }
-              "Tracking Info": { order: 3 }
       columns:
           - name: client_id
             description: 'Client identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: payment_delivery_id
             description: 'Unique payment delivery record identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: payment_id
             description: 'Payment identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: allocation_id
             description: 'Allocation identifier linking to delivery'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: amount
             description: 'Payment amount allocated to delivery'
@@ -184,16 +155,13 @@ models:
                         label: "Total Payment Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Amount Metrics"]
                     avg_payment_amount:
                         type: average
                         label: "Avg Payment Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Amount Metrics"]
                 dimension:
                     type: number
-                    groups: ["Amount Metrics"]
 
           - name: created_at
             description: 'Record creation timestamp'
@@ -201,14 +169,12 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-                    groups: ["Tracking Info"]
 
           - name: created_by
             description: 'User who created the record'
             meta:
                 dimension:
                     type: string
-                    groups: ["Tracking Info"]
 
     - name: slack_payments
       label: Slack Payments
@@ -218,40 +184,30 @@ models:
               field: payment_date
               interval: DAY
           sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-          group_details:
-              "Payment Info": { order: 1 }
-              "Financial Metrics": { order: 2 }
-              "Fee Metrics": { order: 3 }
-              "Subscription Info": { order: 4 }
-              "Tracking Info": { order: 5 }
       columns:
           - name: client_id
             description: 'Client identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: bid
             description: 'Buyer ID'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: buyer_id
             description: 'Buyer identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: payment_id
             description: 'Unique payment identifier'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: payment_date
             description: 'Payment transaction date'
@@ -259,7 +215,6 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-                    groups: ["Payment Info"]
 
           - name: gross_amount
             description: 'Gross payment amount before fees'
@@ -270,23 +225,19 @@ models:
                         label: "Total Gross Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Financial Metrics"]
                     avg_gross_amount:
                         type: average
                         label: "Avg Gross Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Financial Metrics"]
                 dimension:
                     type: number
-                    groups: ["Financial Metrics"]
 
           - name: payment_type
             description: 'Type of payment'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: fee_percent
             description: 'Fee percentage applied to payment'
@@ -296,10 +247,8 @@ models:
                         type: average
                         label: "Avg Fee Percent"
                         round: 4
-                        groups: ["Fee Metrics"]
                 dimension:
                     type: number
-                    groups: ["Fee Metrics"]
 
           - name: fee_amount
             description: 'Fee amount charged'
@@ -310,16 +259,13 @@ models:
                         label: "Total Fee Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Fee Metrics"]
                     avg_fee_amount:
                         type: average
                         label: "Avg Fee Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Fee Metrics"]
                 dimension:
                     type: number
-                    groups: ["Fee Metrics"]
 
           - name: net_amount
             description: 'Net payment amount after fees'
@@ -330,30 +276,25 @@ models:
                         label: "Total Net Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Financial Metrics"]
                     avg_net_amount:
                         type: average
                         label: "Avg Net Amount"
                         round: 2
                         format: "usd"
-                        groups: ["Financial Metrics"]
                 dimension:
                     type: number
-                    groups: ["Financial Metrics"]
 
           - name: payment_method
             description: 'Payment method used'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: invoice_number
             description: 'Invoice number reference'
             meta:
                 dimension:
                     type: string
-                    groups: ["Payment Info"]
 
           - name: subscription_start_date
             description: 'Subscription period start date'
@@ -361,7 +302,6 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-                    groups: ["Subscription Info"]
 
           - name: subscription_end_date
             description: 'Subscription period end date'
@@ -369,7 +309,6 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-                    groups: ["Subscription Info"]
 
           - name: created_at
             description: 'Record creation timestamp'
@@ -377,12 +316,9 @@ models:
                 dimension:
                     type: timestamp
                     time_intervals: true
-                    groups: ["Tracking Info"]
 
           - name: created_by
             description: 'User who created the record'
             meta:
                 dimension:
                     type: string
-                    groups: ["Tracking Info"]
-
