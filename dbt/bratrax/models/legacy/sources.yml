@@ -1,0 +1,70 @@
+version: 2
+
+sources:
+    # New bratrax-without-flattening project  
+    - name: production_tables_no_flat
+      description: 'Production tables from bratrax-without-flattening project'
+      database: 'bratrax-without-flattening'
+      schema: 'production_tables'
+      tables:
+          - name: orders
+            description: 'Orders data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: ads
+            description: 'Advertising data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: pixel_joined
+            description: 'Pixel tracking data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: geo_report
+            description: 'Geographical reports data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: geo_ads
+            description: 'Geographical advertising data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: customer_journey
+            description: 'Customer journey tracking data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: products
+            description: 'Product catalog data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: web_analytics
+            description: 'Web analytics data with session tracking with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: cod_retainer
+            description: 'COD retainer budget tracking and performance data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: cod_payments
+            description: 'COD payment records and transaction data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: cod_leads
+            description: 'COD leads data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: cod_campaigns_geo
+            description: 'COD campaigns geographical performance data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+            
