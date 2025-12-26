@@ -90,9 +90,10 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
     }
 
     public async runDbt(selector?: string): Promise<void> {
-        Logger.debug(`Running dbt models${selector ? ` with selector: ${selector}` : ''}`);
+        // Use the provided selector, or fall back to the client's configured selector
+        const effectiveSelector = selector || this.dbtClient.getSelector();
         if (this.dbtClient.run) {
-            await this.dbtClient.run(selector);
+            await this.dbtClient.run(effectiveSelector);
         } else {
             Logger.warn('dbt run is not supported for this client type');
         }
@@ -164,7 +165,9 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
             await this.dbtClient.installDeps();
         }
         Logger.debug('Get dbt manifest');
+        
         const { manifest } = await this.dbtClient.getDbtManifest();
+        
         // Type of the target warehouse
         if (!isSupportedDbtAdapter(manifest.metadata)) {
             throw new ParseError(
@@ -174,28 +177,40 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
         }
         let models: DbtRawModelNode[] = [];
 
-        if (this.dbtClient.getSelector()) {
-            Logger.info(
-                `Manifest generated with selector "${this.dbtClient.getSelector()}"`,
-            );
-            // If selector is provided, we use compile to get the models that match the selector
+        const selector = this.dbtClient.getSelector();
+        
+        if (selector) {
+            // If selector is provided, filter models by the path selector
             const manifestModels = getModelsFromManifest(manifest);
-            Logger.info(`Manifest models ${manifestModels.length}`);
             const compiledModels = getCompiledModels(manifestModels, undefined);
-            Logger.info(`Compiled models ${compiledModels.length}`);
+            
+            // Extract path from selector (e.g., "path:models/2" -> "models/2")
+            let pathFilter: string | undefined;
+            if (selector.startsWith('path:')) {
+                pathFilter = selector.substring(5); // Remove "path:" prefix
+            }
+            
             models = compiledModels.filter(
-                (node: AnyType) => node.resource_type === 'model' && node.meta, // check that node.meta exists
+                (node: AnyType) => {
+                    const isModelWithMeta = node.resource_type === 'model' && node.meta;
+                    if (!isModelWithMeta) return false;
+                    
+                    // If path filter is specified, check if model's path matches
+                    if (pathFilter) {
+                        const modelPath = node.original_file_path || node.path || '';
+                        return modelPath.startsWith(pathFilter);
+                    }
+                    
+                    return true;
+                },
             ) as DbtRawModelNode[];
-            Logger.info(`Filtered models ${models.length}`);
         } else {
             const nodes = Object.values(manifest.nodes);
-            Logger.info(`Manifest models ${nodes.length}`);
             // If selector is not provided, we use all the models from the manifest
             // models with invalid metadata will compile to failed Explores
             models = nodes.filter(
                 (node: AnyType) => node.resource_type === 'model' && node.meta, // check that node.meta exists
             ) as DbtRawModelNode[];
-            Logger.info(`Filtered models ${models.length}`);
         }
 
         const adapterType = manifest.metadata.adapter_type;

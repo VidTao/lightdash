@@ -1897,6 +1897,7 @@ export class ProjectService extends BaseService {
                     this.testProjectAdapter(
                         updatedProject as UpdateProject,
                         user,
+                        projectUuid,
                     ),
             );
             if (updatedProject.dbtConnection.type !== DbtProjectType.NONE) {
@@ -1913,6 +1914,20 @@ export class ProjectService extends BaseService {
                             const explores = await adapter.compileAllExplores(
                                 trackingParams,
                             );
+                            
+                            // Run dbt to materialize models in the warehouse (create views/tables)
+                            // Uses the selector configured for the organization to filter models
+                            if (adapter.runDbt) {
+                                this.logger.info('Running dbt to materialize models...');
+                                try {
+                                    await adapter.runDbt();
+                                    this.logger.info('Successfully ran dbt models');
+                                } catch (e) {
+                                    this.logger.warn(`Failed to run dbt models: ${e instanceof Error ? e.message : e}`);
+                                    // Don't throw - compilation succeeded, so continue even if run fails
+                                }
+                            }
+                            
                             const lightdashProjectConfig =
                                 await adapter.getLightdashProjectConfig(
                                     trackingParams,
@@ -1984,14 +1999,36 @@ export class ProjectService extends BaseService {
     private async testProjectAdapter(
         data: UpdateProject,
         _user: Pick<SessionUser, 'userUuid' | 'organizationUuid'>,
+        projectUuid?: string,
     ): Promise<{
         adapter: ProjectAdapter;
         sshTunnel: SshTunnel<CreateWarehouseCredentials>;
     }> {
+        // Get numeric organization_id for filtering dbt models by organization folder
+        // (only if projectUuid is provided - not available during new project creation)
+        let organizationId: number | undefined;
+        if (projectUuid) {
+            organizationId = await this.projectModel.getOrganizationIdByProject(
+                projectUuid,
+            );
+            this.logger.info(`[DEBUG testProjectAdapter] organizationId for project ${projectUuid}: ${organizationId}`);
+        } else {
+            this.logger.info(`[DEBUG testProjectAdapter] No projectUuid provided (new project creation), skipping selector setup`);
+        }
+        
+        // Set selector to filter dbt models by organization folder
+        const dbtConnectionWithSelector = {
+            ...data.dbtConnection,
+            selector: organizationId 
+                ? `path:models/${organizationId}` 
+                : ('selector' in data.dbtConnection ? data.dbtConnection.selector : undefined),
+        };
+        this.logger.info(`[DEBUG testProjectAdapter] Selector set to: ${dbtConnectionWithSelector.selector || 'NONE'}`);
+        
         const sshTunnel = new SshTunnel(data.warehouseConnection);
         await sshTunnel.connect();
         const adapter = await projectAdapterFromConfig(
-            data.dbtConnection,
+            dbtConnectionWithSelector,
             sshTunnel.overrideCredentials,
             {
                 warehouseCatalog: undefined,
@@ -2063,6 +2100,7 @@ export class ProjectService extends BaseService {
         const organizationId = await this.projectModel.getOrganizationIdByProject(
             projectUuid,
         );
+        this.logger.info(`[DEBUG buildAdapter] organizationId for project ${projectUuid}: ${organizationId || 'NONE'}`);
         
         const cachedWarehouseCatalog =
             await this.projectModel.getWarehouseFromCache(projectUuid);
@@ -2153,6 +2191,8 @@ export class ProjectService extends BaseService {
                 ? `path:models/${organizationId}` 
                 : ('selector' in project.dbtConnection ? project.dbtConnection.selector : undefined),
         };
+        this.logger.info(`[DEBUG buildAdapter] Selector set to: ${dbtConnectionWithSelector.selector || 'NONE'}`);
+        this.logger.info(`[DEBUG buildAdapter] Full dbt connection type: ${project.dbtConnection.type}`);
 
         const adapter = await projectAdapterFromConfig(
             dbtConnectionWithSelector,
@@ -3967,10 +4007,11 @@ export class ProjectService extends BaseService {
             const explores = await adapter.compileAllExplores(trackingParams);
             
             // Run dbt to materialize models in the warehouse (create views/tables)
+            // Uses the selector configured for the organization to filter models
             if (adapter.runDbt) {
                 this.logger.info('Running dbt to materialize models...');
                 try {
-                    await adapter.runDbt(); // No selector - runs all models
+                    await adapter.runDbt();
                     this.logger.info('Successfully ran dbt models');
                 } catch (e) {
                     this.logger.warn(`Failed to run dbt models: ${e instanceof Error ? e.message : e}`);

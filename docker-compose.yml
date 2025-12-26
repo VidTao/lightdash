@@ -119,7 +119,8 @@ services:
       [
         "sh",
         "-c",
-        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt && dbt clean && dbt deps && dbt run --target dev && cd /usr/app/packages/backend && node dist/index.js"
+        "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/packages/backend && node dist/index.js"
+        # "echo 'Waiting for database...' && sleep 20 && cd /usr/app && pnpm -F backend migrate-production && cd /usr/app/dbt && dbt clean && dbt deps && dbt run --target dev && cd /usr/app/packages/backend && node dist/index.js"
       ]
     networks:
       - default
