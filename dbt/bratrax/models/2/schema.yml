@@ -322,3 +322,1143 @@ models:
             meta:
                 dimension:
                     type: string
+
+    - name: leadbyte_buyers_list
+      label: Leadbyte Buyers List
+      description: 'Leadbyte buyers list with account and contact information'
+      meta:
+          default_time_dimension:
+              field: Created
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ID
+            description: 'Buyer internal ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Name
+            description: 'Buyer name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: BID
+            description: 'Buyer business ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Created
+            description: 'Buyer creation timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: Balance
+            description: 'Account balance'
+            meta:
+                metrics:
+                    sum_balance:
+                        type: sum
+                        label: "Total Balance"
+                        round: 2
+                        format: "usd"
+                    avg_balance:
+                        type: average
+                        label: "Avg Balance"
+                        round: 2
+                        format: "usd"
+                dimension:
+                    type: number
+
+          - name: Street1
+            description: 'Address street line 1'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Street2
+            description: 'Address street line 2'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Town_city
+            description: 'Town or city'
+            meta:
+                dimension:
+                    type: string
+
+          - name: County
+            description: 'County'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Country
+            description: 'Country'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Postcode
+            description: 'Postal code'
+            meta:
+                dimension:
+                    type: string
+
+          - name: First_name
+            description: 'Contact first name'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Last_name
+            description: 'Contact last name'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Email
+            description: 'Contact email'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Account_Manager
+            description: 'Account manager ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Status
+            description: 'Buyer status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: source
+            description: 'Data source'
+            meta:
+                dimension:
+                    type: string
+
+          - name: schema_version
+            description: 'Schema version'
+            meta:
+                dimension:
+                    type: string
+
+          - name: batch_id
+            description: 'Batch ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: job_id
+            description: 'Job ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: stream
+            description: 'Stream identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: publish_time
+            description: 'Publish timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: processed_at
+            description: 'Processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+    - name: leadbyte_deliveries_list
+      label: Leadbyte Deliveries List
+      description: 'Leadbyte deliveries list with campaign and buyer information'
+      meta:
+          default_time_dimension:
+              field: Created
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ID
+            description: 'Delivery internal ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Created
+            description: 'Delivery creation date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: Reference
+            description: 'Delivery reference'
+            meta:
+                dimension:
+                    type: string
+
+          - name: status
+            description: 'Delivery status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: deliver_to
+            description: 'Delivery destination'
+            meta:
+                dimension:
+                    type: string
+
+          - name: advanced_distribution_only
+            description: 'Advanced distribution flag'
+            meta:
+                dimension:
+                    type: boolean
+
+          - name: payload
+            description: 'Delivery payload data'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_id
+            description: 'Buyer identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_name
+            description: 'Buyer name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_reference
+            description: 'Buyer reference'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_revenue
+            description: 'Buyer revenue amount'
+            meta:
+                metrics:
+                    sum_buyer_revenue:
+                        type: sum
+                        label: "Total Buyer Revenue"
+                        round: 2
+                        format: "usd"
+                    avg_buyer_revenue:
+                        type: average
+                        label: "Avg Buyer Revenue"
+                        round: 2
+                        format: "usd"
+                dimension:
+                    type: number
+
+          - name: Lead Buyer
+            description: 'Lead buyer information'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_id
+            description: 'Campaign identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_name
+            description: 'Campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_reference
+            description: 'Campaign reference'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Campaign
+            description: 'Campaign information'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Country
+            description: 'Country'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Action
+            description: 'Action type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Method
+            description: 'Method used'
+            meta:
+                dimension:
+                    type: string
+
+          - name: A_R_T
+            description: 'A_R_T value'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Revenue
+            description: 'Revenue amount'
+            meta:
+                metrics:
+                    sum_revenue:
+                        type: sum
+                        label: "Total Revenue"
+                        round: 2
+                        format: "usd"
+                    avg_revenue:
+                        type: average
+                        label: "Avg Revenue"
+                        round: 2
+                        format: "usd"
+                dimension:
+                    type: number
+
+          - name: Credit
+            description: 'Credit value'
+            meta:
+                metrics:
+                    sum_credit:
+                        type: sum
+                        label: "Total Credit"
+                dimension:
+                    type: number
+
+          - name: Cap
+            description: 'Cap limit'
+            meta:
+                metrics:
+                    sum_cap:
+                        type: sum
+                        label: "Total Cap"
+                dimension:
+                    type: number
+
+          - name: Total Cap
+            description: 'Total cap limit'
+            meta:
+                metrics:
+                    sum_total_cap:
+                        type: sum
+                        label: "Total Cap Limit"
+                dimension:
+                    type: number
+
+          - name: Monthly Cap
+            description: 'Monthly cap limit'
+            meta:
+                metrics:
+                    sum_monthly_cap:
+                        type: sum
+                        label: "Total Monthly Cap"
+                dimension:
+                    type: number
+
+          - name: Weekly Cap
+            description: 'Weekly cap limit'
+            meta:
+                metrics:
+                    sum_weekly_cap:
+                        type: sum
+                        label: "Total Weekly Cap"
+                dimension:
+                    type: number
+
+          - name: Daily Cap
+            description: 'Daily cap limit'
+            meta:
+                metrics:
+                    sum_daily_cap:
+                        type: sum
+                        label: "Total Daily Cap"
+                dimension:
+                    type: number
+
+          - name: Hourly Cap
+            description: 'Hourly cap limit'
+            meta:
+                metrics:
+                    sum_hourly_cap:
+                        type: sum
+                        label: "Total Hourly Cap"
+                dimension:
+                    type: number
+
+          - name: rules
+            description: 'Rules configuration (JSON)'
+            meta:
+                dimension:
+                    type: string
+
+          - name: schedule
+            description: 'Schedule configuration (JSON)'
+            meta:
+                dimension:
+                    type: string
+
+          - name: source
+            description: 'Data source'
+            meta:
+                dimension:
+                    type: string
+
+          - name: schema_version
+            description: 'Schema version'
+            meta:
+                dimension:
+                    type: string
+
+          - name: batch_id
+            description: 'Batch ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: job_id
+            description: 'Job ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: stream
+            description: 'Stream identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: metadata_timestamp
+            description: 'Metadata timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: publish_time
+            description: 'Publish timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: processed_at
+            description: 'Processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+    - name: leadbyte_suppliers_list
+      label: Leadbyte Suppliers List
+      description: 'Leadbyte suppliers list with account and contact information'
+      meta:
+          default_time_dimension:
+              field: Created
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ID
+            description: 'Supplier internal ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Name
+            description: 'Supplier name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: SID
+            description: 'Supplier business ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Created
+            description: 'Supplier creation date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: External ref_
+            description: 'External reference 1'
+            meta:
+                dimension:
+                    type: number
+
+          - name: External ref__2_
+            description: 'External reference 2'
+            meta:
+                dimension:
+                    type: number
+
+          - name: External ref__3_
+            description: 'External reference 3'
+            meta:
+                dimension:
+                    type: number
+
+          - name: External ref__4_
+            description: 'External reference 4'
+            meta:
+                dimension:
+                    type: number
+
+          - name: External ref__5_
+            description: 'External reference 5'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Street 1
+            description: 'Address street line 1'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Street 2
+            description: 'Address street line 2'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Town_city
+            description: 'Town or city'
+            meta:
+                dimension:
+                    type: number
+
+          - name: County
+            description: 'County'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Country
+            description: 'Country'
+            meta:
+                dimension:
+                    type: string
+
+          - name: Postcode
+            description: 'Postal code'
+            meta:
+                dimension:
+                    type: number
+
+          - name: First name
+            description: 'Contact first name'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Last name
+            description: 'Contact last name'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Email
+            description: 'Contact email'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Account Manager
+            description: 'Account manager ID'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Status
+            description: 'Supplier status'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Portal Access
+            description: 'Portal access flag'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Signed
+            description: 'Signed flag'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Signed Timestamp
+            description: 'Signed timestamp value'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Signed Browser
+            description: 'Signed browser info'
+            meta:
+                dimension:
+                    type: number
+
+          - name: Signed IP
+            description: 'Signed IP address'
+            meta:
+                dimension:
+                    type: number
+
+          - name: source
+            description: 'Data source'
+            meta:
+                dimension:
+                    type: string
+
+          - name: schema_version
+            description: 'Schema version'
+            meta:
+                dimension:
+                    type: string
+
+          - name: batch_id
+            description: 'Batch ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: job_id
+            description: 'Job ID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: stream
+            description: 'Stream identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: metadata_timestamp
+            description: 'Metadata timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: publish_time
+            description: 'Publish timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: processed_at
+            description: 'Processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+    - name: leadbyte_webhook_sold_unsold
+      label: Leadbyte Webhook Sold/Unsold
+      description: 'Leadbyte webhook sold/unsold lead tracking with supplier, buyer, campaign and delivery information'
+      meta:
+          default_time_dimension:
+              field: received_at_utc
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_id
+            description: 'Lead identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_email
+            description: 'Lead email address'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_fullname
+            description: 'Lead full name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_phone
+            description: 'Lead phone number'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_source
+            description: 'Lead source'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_c1
+            description: 'Lead custom field 1'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_c2
+            description: 'Lead custom field 2'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_c3
+            description: 'Lead custom field 3'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_sid
+            description: 'Lead SID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_ssid
+            description: 'Lead SSID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: received_at_utc
+            description: 'Lead received timestamp (UTC)'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: date
+            description: 'Lead date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: country
+            description: 'Country'
+            meta:
+                dimension:
+                    type: string
+
+          - name: state
+            description: 'State or region'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_id
+            description: 'Supplier identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_sid
+            description: 'Supplier SID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_name
+            description: 'Supplier name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_status
+            description: 'Supplier status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_commission
+            description: 'Supplier commission amount'
+            meta:
+                metrics:
+                    sum_supplier_commission:
+                        type: sum
+                        label: "Total Supplier Commission"
+                        round: 2
+                        format: "usd"
+                    avg_supplier_commission:
+                        type: average
+                        label: "Avg Supplier Commission"
+                        round: 2
+                        format: "usd"
+                dimension:
+                    type: number
+
+          - name: supplier_payout_type
+            description: 'Supplier payout type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_id
+            description: 'Buyer identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_bid
+            description: 'Buyer BID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buyer_name
+            description: 'Buyer name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_id
+            description: 'Campaign identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_name
+            description: 'Campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_reference
+            description: 'Campaign reference'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_currency
+            description: 'Campaign currency'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_delivery_model
+            description: 'Campaign delivery model'
+            meta:
+                dimension:
+                    type: string
+
+          - name: delivery_name
+            description: 'Delivery name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: delivery_status
+            description: 'Delivery status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: delivery_sent_at
+            description: 'Delivery sent timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: delivery_request
+            description: 'Delivery request information'
+            meta:
+                dimension:
+                    type: string
+
+          - name: revenue
+            description: 'Revenue amount'
+            meta:
+                metrics:
+                    sum_revenue:
+                        type: sum
+                        label: "Total Revenue"
+                        round: 2
+                        format: "usd"
+                    avg_revenue:
+                        type: average
+                        label: "Avg Revenue"
+                        round: 2
+                        format: "usd"
+                dimension:
+                    type: number
+
+          - name: record_type
+            description: 'Record type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: callback_type
+            description: 'Callback type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: attribute_tag
+            description: 'Attribute tag'
+            meta:
+                dimension:
+                    type: string
+
+          - name: processed_at
+            description: 'Processed timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: publish_time
+            description: 'Publish timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: processed_at_final
+            description: 'Final processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+    - name: leadbyte_webhook_valid_invalid
+      label: Leadbyte Webhook Valid/Invalid
+      description: 'Leadbyte webhook valid/invalid lead tracking with supplier and campaign information'
+      meta:
+          default_time_dimension:
+              field: received_at_utc
+              interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_id
+            description: 'Lead identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_email
+            description: 'Lead email address'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_fullname
+            description: 'Lead full name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_phone
+            description: 'Lead phone number'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_source
+            description: 'Lead source'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_c1
+            description: 'Lead custom field 1'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_c2
+            description: 'Lead custom field 2'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_c3
+            description: 'Lead custom field 3'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_sid
+            description: 'Lead SID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_ssid
+            description: 'Lead SSID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: received_at_utc
+            description: 'Lead received timestamp (UTC)'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: date
+            description: 'Lead date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals: true
+
+          - name: country
+            description: 'Country'
+            meta:
+                dimension:
+                    type: string
+
+          - name: state
+            description: 'State or region'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_id
+            description: 'Supplier identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_sid
+            description: 'Supplier SID'
+            meta:
+                dimension:
+                    type: string
+
+          - name: supplier_name
+            description: 'Supplier name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_id
+            description: 'Campaign identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_name
+            description: 'Campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_reference
+            description: 'Campaign reference'
+            meta:
+                dimension:
+                    type: string
+
+          - name: lead_request
+            description: 'Lead request information'
+            meta:
+                dimension:
+                    type: string
+
+          - name: record_type
+            description: 'Record type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: callback_type
+            description: 'Callback type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: attribute_tag
+            description: 'Attribute tag'
+            meta:
+                dimension:
+                    type: string
+
+          - name: processed_at
+            description: 'Processed timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: publish_time
+            description: 'Publish timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true
+
+          - name: processed_at_final
+            description: 'Final processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+                    time_intervals: true

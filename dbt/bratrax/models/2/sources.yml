@@ -22,4 +22,29 @@ sources:
             columns:
               - name: client_id
                 description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: leadbyte_buyers_list
+            description: 'Leadbyte buyers list with account and contact information with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: leadbyte_deliveries_list
+            description: 'Leadbyte deliveries list with campaign and buyer information with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: leadbyte_suppliers_list
+            description: 'Leadbyte suppliers list with account and contact information with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: leadbyte_webhook_sold_unsold
+            description: 'Leadbyte webhook sold/unsold lead tracking with supplier, buyer, campaign and delivery information with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: leadbyte_webhook_valid_invalid
+            description: 'Leadbyte webhook valid/invalid lead tracking with supplier and campaign information with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
 
