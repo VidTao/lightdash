@@ -3,7 +3,7 @@
 -- Slack Delivery model from bratrax-without-flattening.2.slack_delivery
 {{ config(
     materialized = 'view',
-    alias = 'slack_delivery_view'
+    alias = 'slack_allocation_view'
 ) }}
 
 SELECT
@@ -21,5 +21,5 @@ SELECT
     total_budget,
     total_spent,
     available
-FROM {{ source('production_tables_no_flat', 'slack_delivery') }}
+FROM {{ source('production_tables_no_flat', 'slack_allocation') }}
 

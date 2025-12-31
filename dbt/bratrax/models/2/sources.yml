@@ -7,13 +7,13 @@ sources:
       database: 'bratrax-without-flattening'
       schema: 'cod'
       tables:
-          - name: slack_delivery
-            description: 'Slack delivery tracking and budget management with client_id for multi-tenancy'
+          - name: slack_allocation
+            description: 'Slack allocation tracking and budget management with client_id for multi-tenancy'
             columns:
               - name: client_id
                 description: 'Client identifier for filtering (maps to organizationUuid)'
-          - name: slack_payment_delivery
-            description: 'Junction table linking payments to deliveries with allocation amounts with client_id for multi-tenancy'
+          - name: slack_payment_allocation
+            description: 'Junction table linking payments to allocations with allocation amounts with client_id for multi-tenancy'
             columns:
               - name: client_id
                 description: 'Client identifier for filtering (maps to organizationUuid)'

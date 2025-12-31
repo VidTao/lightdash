@@ -1,9 +1,9 @@
 version: 2
 
 models:
-    - name: slack_delivery
-      label: Slack Delivery
-      description: 'Slack delivery tracking and budget management'
+    - name: slack_allocation
+      label: Slack Allocation
+      description: 'Slack allocation tracking and budget management'
       meta:
           default_time_dimension:
               field: created_at
@@ -113,9 +113,9 @@ models:
                 dimension:
                     type: number
 
-    - name: slack_payment_delivery
-      label: Slack Payment Delivery
-      description: 'Junction table linking payments to deliveries with allocation amounts'
+    - name: slack_payment_allocation
+      label: Slack Payment Allocation
+      description: 'Junction table linking payments to allocations with allocation amounts'
       meta:
           default_time_dimension:
               field: created_at
