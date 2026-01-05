@@ -3,8 +3,8 @@ version: 2
 sources:
   - name: demo
     description: 'Primal Queen demo data for Funnel of the Week dashboard'
-    database: 'bratrax'
-    schema: 'demo'
+    database: 'bratrax-without-flattening'
+    schema: 'primal_queen'
     tables:
       - name: daily_metrics
         description: 'Daily North Star and input metrics time-series'
