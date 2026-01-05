@@ -38,6 +38,7 @@ SELECT
     revenue_bets,
     cac_bets,
     mrr_bets,
-    churn_bets
+    churn_bets,
+    client_id
 
 FROM {{ source('primal_queen', 'daily_metrics') }}

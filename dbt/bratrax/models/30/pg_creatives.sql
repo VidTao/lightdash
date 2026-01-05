@@ -24,6 +24,7 @@ SELECT
     -- Status
     is_active,
     fatigue_score,
-    days_active
+    days_active,
+    client_id
 
 FROM {{ source('primal_queen', 'creatives') }}

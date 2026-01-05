@@ -28,6 +28,7 @@ SELECT
     current_value,
 
     -- Blockers
-    blocker_description
+    blocker_description,
+    client_id
 
 FROM {{ source('primal_queen', 'actions') }}

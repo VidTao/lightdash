@@ -21,6 +21,7 @@ SELECT
 
     -- History
     last_status_change,
-    days_in_current_status
+    days_in_current_status,
+    client_id
 
 FROM {{ source('primal_queen', 'hypotheses') }}

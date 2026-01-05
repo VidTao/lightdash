@@ -26,6 +26,7 @@ SELECT
 
     -- Attribution
     attributed_revenue,
-    attributed_new_customers
+    attributed_new_customers,
+    client_id
 
 FROM {{ source('primal_queen', 'ad_spend') }}

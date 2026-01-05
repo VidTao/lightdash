@@ -21,6 +21,6 @@ SELECT
 
     -- Dependencies
     used_in,
-    depends_on
+    depends_on,
 
 FROM {{ source('primal_queen', 'entities') }}

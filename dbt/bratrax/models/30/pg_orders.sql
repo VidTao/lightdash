@@ -39,6 +39,7 @@ SELECT
     creative_id,
     utm_source,
     utm_medium,
-    utm_campaign
+    utm_campaign,
+    client_id
 
 FROM {{ source('primal_queen', 'orders') }}

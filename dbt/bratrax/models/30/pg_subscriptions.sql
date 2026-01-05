@@ -21,6 +21,7 @@ SELECT
 
     -- Churn tracking
     cancellation_reason,
-    months_active
+    months_active,
+    client_id
 
 FROM {{ source('primal_queen', 'subscriptions') }}

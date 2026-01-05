@@ -30,6 +30,7 @@ SELECT
     -- Acquisition
     acquisition_channel,
     acquisition_campaign,
-    first_touch_source
+    first_touch_source,
+    client_id
 
 FROM {{ source('primal_queen', 'customers') }}

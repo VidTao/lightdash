@@ -21,6 +21,7 @@ SELECT
 
     -- Status
     status,
-    resolved_at
+    resolved_at,
+    client_id 
 
 FROM {{ source('primal_queen', 'signals') }}
