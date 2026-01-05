@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: pq_actions
+  - name: actions
     label: Primal Queen Actions
     description: 'Action board items for tracking initiatives and progress'
     meta:
@@ -106,7 +106,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_ad_spend
+  - name: ad_spend
     label: Primal Queen Ad Spend
     description: 'Channel-level advertising spend and performance metrics'
     meta:
@@ -262,7 +262,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_creatives
+  - name: creatives
     label: Primal Queen Creatives
     description: 'Creative performance data (Extremistan domain)'
     meta:
@@ -398,7 +398,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_customers
+  - name: customers
     label: Primal Queen Customers
     description: 'Customer master data with lifetime metrics'
     meta:
@@ -547,7 +547,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_daily_metrics
+  - name: daily_metrics
     label: Primal Queen Daily Metrics
     description: 'Daily North Star and 7 input metrics for Primal Queen Strategic Command'
     meta:
@@ -829,7 +829,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_entities
+  - name: entities
     label: Primal Queen Entities
     description: '28 entity definitions with Bratrax philosophy and falsification logic'
     meta:
@@ -912,7 +912,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_hypotheses
+  - name: hypotheses
     label: Primal Queen Hypotheses
     description: 'H1-H6 hypothesis tracking for Bratrax philosophy with falsification logic'
     meta:
@@ -993,7 +993,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_orders
+  - name: orders
     label: Primal Queen Orders
     description: 'Transaction-level order data with revenue and attribution'
     meta:
@@ -1209,7 +1209,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_signals
+  - name: signals
     label: Primal Queen Signals
     description: 'Active signals feed for Bratrax dashboard'
     meta:
@@ -1290,7 +1290,7 @@ models:
           dimension:
             type: string
 
-  - name: pq_subscriptions
+  - name: subscriptions
     label: Primal Queen Subscriptions
     description: 'Subscription data for MRR tracking'
     meta:
