@@ -30,4 +30,4 @@ SELECT
     -- Blockers
     blocker_description
 
-FROM {{ source('demo', 'actions') }}
+FROM {{ source('primal_queen', 'actions') }}

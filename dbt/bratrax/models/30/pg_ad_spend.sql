@@ -28,4 +28,4 @@ SELECT
     attributed_revenue,
     attributed_new_customers
 
-FROM {{ source('demo', 'ad_spend') }}
+FROM {{ source('primal_queen', 'ad_spend') }}

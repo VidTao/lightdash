@@ -32,4 +32,4 @@ SELECT
     acquisition_campaign,
     first_touch_source
 
-FROM {{ source('demo', 'customers') }}
+FROM {{ source('primal_queen', 'customers') }}

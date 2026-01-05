@@ -26,4 +26,4 @@ SELECT
     fatigue_score,
     days_active
 
-FROM {{ source('demo', 'creatives') }}
+FROM {{ source('primal_queen', 'creatives') }}

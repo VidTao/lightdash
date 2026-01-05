@@ -1,7 +1,7 @@
 version: 2
 
 sources:
-  - name: demo
+  - name: primal_queen
     description: 'Primal Queen demo data for Funnel of the Week dashboard'
     database: 'bratrax-without-flattening'
     schema: 'primal_queen'

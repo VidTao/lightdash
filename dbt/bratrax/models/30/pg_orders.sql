@@ -41,4 +41,4 @@ SELECT
     utm_medium,
     utm_campaign
 
-FROM {{ source('demo', 'orders') }}
+FROM {{ source('primal_queen', 'orders') }}

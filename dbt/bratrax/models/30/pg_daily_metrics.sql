@@ -40,4 +40,4 @@ SELECT
     mrr_bets,
     churn_bets
 
-FROM {{ source('demo', 'daily_metrics') }}
+FROM {{ source('primal_queen', 'daily_metrics') }}

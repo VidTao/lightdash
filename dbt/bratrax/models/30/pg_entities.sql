@@ -23,4 +23,4 @@ SELECT
     used_in,
     depends_on
 
-FROM {{ source('demo', 'entities') }}
+FROM {{ source('primal_queen', 'entities') }}

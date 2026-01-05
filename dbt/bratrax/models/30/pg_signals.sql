@@ -23,4 +23,4 @@ SELECT
     status,
     resolved_at
 
-FROM {{ source('demo', 'signals') }}
+FROM {{ source('primal_queen', 'signals') }}

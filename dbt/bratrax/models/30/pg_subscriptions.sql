@@ -23,4 +23,4 @@ SELECT
     cancellation_reason,
     months_active
 
-FROM {{ source('demo', 'subscriptions') }}
+FROM {{ source('primal_queen', 'subscriptions') }}

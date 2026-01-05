@@ -23,4 +23,4 @@ SELECT
     last_status_change,
     days_in_current_status
 
-FROM {{ source('demo', 'hypotheses') }}
+FROM {{ source('primal_queen', 'hypotheses') }}
