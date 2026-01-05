@@ -1,8 +1,9 @@
--- Primal Queen Creatives
--- Powers: Creative performance (Extremistan domain)
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Creatives - Creative performance data (Extremistan domain)
 {{ config(
     materialized = 'view',
-    alias = 'pq_creatives'
+    alias = 'pq_creatives_view'
 ) }}
 
 SELECT
@@ -10,21 +11,15 @@ SELECT
     creative_name,
     creative_type,
     channel,
-
     launched_at,
-
-    -- Performance
     total_spend,
     total_conversions,
     total_revenue,
-
     cpa,
     roas,
-
-    -- Status
     is_active,
     fatigue_score,
     days_active,
     client_id
-
 FROM {{ source('primal_queen', 'creatives') }}
+

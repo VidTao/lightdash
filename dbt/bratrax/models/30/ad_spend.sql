@@ -1,32 +1,25 @@
--- Primal Queen Ad Spend
--- Powers: Channel performance analysis
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Ad Spend - Channel-level advertising spend and performance
 {{ config(
     materialized = 'view',
-    alias = 'pq_ad_spend'
+    alias = 'pq_ad_spend_view'
 ) }}
 
 SELECT
     date,
     channel,
-
-    -- Spend
     spend,
-
-    -- Volume
     impressions,
     clicks,
     conversions,
-
-    -- Calculated metrics
     cpm,
     cpc,
     ctr,
     conversion_rate,
     roas,
-
-    -- Attribution
     attributed_revenue,
     attributed_new_customers,
     client_id
-
 FROM {{ source('primal_queen', 'ad_spend') }}
+

@@ -1,27 +1,22 @@
--- Primal Queen Hypotheses
--- Powers: Hypotheses Tab - H1-H6 status tracking
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Hypotheses - H1-H6 hypothesis tracking for Bratrax philosophy
 {{ config(
     materialized = 'view',
-    alias = 'pq_hypotheses'
+    alias = 'pq_hypotheses_view'
 ) }}
 
 SELECT
     hypothesis_id,
     statement,
     status,
-
-    -- Linked metrics
     primary_metric,
     input_metrics,
-
-    -- Falsification
     falsifier_condition,
     current_value,
     threshold_value,
-
-    -- History
     last_status_change,
     days_in_current_status,
     client_id
-
 FROM {{ source('primal_queen', 'hypotheses') }}
+

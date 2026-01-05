@@ -1,8 +1,9 @@
--- Primal Queen Customers
--- Powers: Ontology Tab - Customer entities
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Customers - Customer master data with lifetime metrics
 {{ config(
     materialized = 'view',
-    alias = 'pq_customers'
+    alias = 'pq_customers_view'
 ) }}
 
 SELECT
@@ -12,25 +13,17 @@ SELECT
     last_name,
     created_at,
     first_order_date,
-
-    -- Customer type
     is_subscriber,
     subscription_status,
-
-    -- Location
     country_code,
     state_code,
     city,
-
-    -- Lifetime metrics
     total_orders,
     total_revenue,
     ltv,
-
-    -- Acquisition
     acquisition_channel,
     acquisition_campaign,
     first_touch_source,
     client_id
-
 FROM {{ source('primal_queen', 'customers') }}
+

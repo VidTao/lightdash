@@ -1,18 +1,15 @@
--- Primal Queen Daily Metrics
--- Powers: Overview Tab - North Star + 7 Input Metrics
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Daily Metrics - North Star and 7 Input Metrics
 {{ config(
     materialized = 'view',
-    alias = 'pq_daily_metrics'
+    alias = 'pq_daily_metrics_view'
 ) }}
 
 SELECT
     date,
-
-    -- North Star Metric
     contribution_margin,
     contribution_margin_pct_change,
-
-    -- 7 Input Metrics
     revenue,
     gross_margin_pct,
     cac,
@@ -20,8 +17,6 @@ SELECT
     payback_months,
     mrr,
     churn_rate_pct,
-
-    -- Supporting metrics
     new_customers,
     returning_customers,
     total_orders,
@@ -29,16 +24,12 @@ SELECT
     ad_spend,
     cogs,
     fulfillment_cost,
-
-    -- Domain classifications
     cac_domain,
     revenue_domain,
-
-    -- Active bets
     revenue_bets,
     cac_bets,
     mrr_bets,
     churn_bets,
     client_id
-
 FROM {{ source('primal_queen', 'daily_metrics') }}
+

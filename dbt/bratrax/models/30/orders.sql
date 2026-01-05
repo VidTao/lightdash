@@ -1,8 +1,9 @@
--- Primal Queen Orders
--- Powers: Transaction-level analysis
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Orders - Transaction-level order data
 {{ config(
     materialized = 'view',
-    alias = 'pq_orders'
+    alias = 'pq_orders_view'
 ) }}
 
 SELECT
@@ -10,30 +11,18 @@ SELECT
     customer_id,
     order_date,
     created_at,
-
-    -- Revenue
     gross_revenue,
     net_revenue,
     discount_amount,
     refund_amount,
-
-    -- Costs
     cogs,
     shipping_cost,
     payment_fees,
-
-    -- Derived
     contribution_margin,
-
-    -- Order type
     is_subscription,
     is_first_order,
-
-    -- Products
     product_skus,
     product_names,
-
-    -- Attribution
     channel,
     campaign,
     creative_id,
@@ -41,5 +30,5 @@ SELECT
     utm_medium,
     utm_campaign,
     client_id
-
 FROM {{ source('primal_queen', 'orders') }}
+

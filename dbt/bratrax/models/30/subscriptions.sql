@@ -1,8 +1,9 @@
--- Primal Queen Subscriptions
--- Powers: MRR and churn tracking
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Subscriptions - Subscription data for MRR tracking
 {{ config(
     materialized = 'view',
-    alias = 'pq_subscriptions'
+    alias = 'pq_subscriptions_view'
 ) }}
 
 SELECT
@@ -10,18 +11,13 @@ SELECT
     customer_id,
     created_at,
     status,
-
     monthly_value,
     billing_interval,
-
-    -- Lifecycle
     started_at,
     cancelled_at,
     pause_started_at,
-
-    -- Churn tracking
     cancellation_reason,
     months_active,
     client_id
-
 FROM {{ source('primal_queen', 'subscriptions') }}
+

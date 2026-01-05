@@ -1,27 +1,23 @@
--- Primal Queen Entities
--- Powers: Ontology Tab - 28 entity definitions with Bratrax philosophy
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Entities - 28 entity definitions with Bratrax philosophy
 {{ config(
     materialized = 'view',
-    alias = 'pq_entities'
+    alias = 'pq_entities_view'
 ) }}
 
 SELECT
     entity_id,
     entity_name,
     category,
-
     definition,
     source_system,
     formula,
-
-    -- Bratrax philosophy
     domain,
     confidence_pct,
     falsifier,
-
-    -- Dependencies
     used_in,
     depends_on,
     client_id
-
 FROM {{ source('primal_queen', 'entities') }}
+

@@ -1,11 +1,556 @@
 version: 2
 
 models:
+  - name: pq_actions
+    label: Primal Queen Actions
+    description: 'Action board items for tracking initiatives and progress'
+    meta:
+      default_time_dimension:
+        field: created_at
+        interval: DAY
+      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+    columns:
+      - name: action_id
+        description: 'Unique action identifier'
+        meta:
+          dimension:
+            type: string
+
+      - name: created_at
+        description: 'Action creation timestamp'
+        meta:
+          dimension:
+            type: timestamp
+            time_intervals: true
+
+      - name: title
+        description: 'Action title'
+        meta:
+          dimension:
+            type: string
+
+      - name: description
+        description: 'Action description'
+        meta:
+          dimension:
+            type: string
+
+      - name: category
+        description: 'Action category'
+        meta:
+          dimension:
+            type: string
+
+      - name: linked_hypothesis
+        description: 'Related hypothesis'
+        meta:
+          dimension:
+            type: string
+
+      - name: target_metric
+        description: 'Target metric for this action'
+        meta:
+          dimension:
+            type: string
+
+      - name: status
+        description: 'Action status'
+        meta:
+          dimension:
+            type: string
+
+      - name: owner_name
+        description: 'Owner name'
+        meta:
+          dimension:
+            type: string
+
+      - name: owner_initials
+        description: 'Owner initials'
+        meta:
+          dimension:
+            type: string
+
+      - name: progress_pct
+        description: 'Progress percentage (0-100)'
+        meta:
+          metrics:
+            avg_progress:
+              type: average
+              label: "Avg Progress %"
+              round: 0
+          dimension:
+            type: number
+
+      - name: target_value
+        description: 'Target value for metric'
+        meta:
+          dimension:
+            type: string
+
+      - name: current_value
+        description: 'Current value for metric'
+        meta:
+          dimension:
+            type: string
+
+      - name: blocker_description
+        description: 'Description of blockers'
+        meta:
+          dimension:
+            type: string
+
+      - name: client_id
+        description: 'Client identifier'
+        meta:
+          dimension:
+            type: string
+
+  - name: pq_ad_spend
+    label: Primal Queen Ad Spend
+    description: 'Channel-level advertising spend and performance metrics'
+    meta:
+      default_time_dimension:
+        field: date
+        interval: DAY
+      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+    columns:
+      - name: date
+        description: 'Date of ad spend'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: channel
+        description: 'Advertising channel'
+        meta:
+          dimension:
+            type: string
+
+      - name: spend
+        description: 'Daily ad spend'
+        meta:
+          metrics:
+            total_spend:
+              type: sum
+              label: "Total Ad Spend"
+              round: 2
+              format: "usd"
+            avg_spend:
+              type: average
+              label: "Avg Daily Spend"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: impressions
+        description: 'Ad impressions'
+        meta:
+          metrics:
+            total_impressions:
+              type: sum
+              label: "Total Impressions"
+          dimension:
+            type: number
+
+      - name: clicks
+        description: 'Ad clicks'
+        meta:
+          metrics:
+            total_clicks:
+              type: sum
+              label: "Total Clicks"
+          dimension:
+            type: number
+
+      - name: conversions
+        description: 'Conversions'
+        meta:
+          metrics:
+            total_conversions:
+              type: sum
+              label: "Total Conversions"
+          dimension:
+            type: number
+
+      - name: cpm
+        description: 'Cost per mille (thousand impressions)'
+        meta:
+          metrics:
+            avg_cpm:
+              type: average
+              label: "Avg CPM"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: cpc
+        description: 'Cost per click'
+        meta:
+          metrics:
+            avg_cpc:
+              type: average
+              label: "Avg CPC"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: ctr
+        description: 'Click-through rate'
+        meta:
+          metrics:
+            avg_ctr:
+              type: average
+              label: "Avg CTR"
+              round: 4
+              format: "percent"
+          dimension:
+            type: number
+
+      - name: conversion_rate
+        description: 'Conversion rate'
+        meta:
+          metrics:
+            avg_conversion_rate:
+              type: average
+              label: "Avg Conversion Rate"
+              round: 4
+              format: "percent"
+          dimension:
+            type: number
+
+      - name: roas
+        description: 'Return on Ad Spend'
+        meta:
+          metrics:
+            avg_roas:
+              type: average
+              label: "Avg ROAS"
+              round: 2
+          dimension:
+            type: number
+
+      - name: attributed_revenue
+        description: 'Revenue attributed to channel'
+        meta:
+          metrics:
+            total_attributed_revenue:
+              type: sum
+              label: "Total Attributed Revenue"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: attributed_new_customers
+        description: 'New customers attributed to channel'
+        meta:
+          metrics:
+            total_attributed_customers:
+              type: sum
+              label: "Total Attributed Customers"
+          dimension:
+            type: number
+
+      - name: client_id
+        description: 'Client identifier'
+        meta:
+          dimension:
+            type: string
+
+  - name: pq_creatives
+    label: Primal Queen Creatives
+    description: 'Creative performance data (Extremistan domain)'
+    meta:
+      default_time_dimension:
+        field: launched_at
+        interval: DAY
+      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+    columns:
+      - name: creative_id
+        description: 'Unique creative identifier'
+        meta:
+          dimension:
+            type: string
+
+      - name: creative_name
+        description: 'Creative name'
+        meta:
+          dimension:
+            type: string
+
+      - name: creative_type
+        description: 'Type of creative (ugc, produced, etc)'
+        meta:
+          dimension:
+            type: string
+
+      - name: channel
+        description: 'Advertising channel'
+        meta:
+          dimension:
+            type: string
+
+      - name: launched_at
+        description: 'Creative launch date'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: total_spend
+        description: 'Total spend on creative'
+        meta:
+          metrics:
+            sum_creative_spend:
+              type: sum
+              label: "Total Creative Spend"
+              round: 2
+              format: "usd"
+            avg_creative_spend:
+              type: average
+              label: "Avg Creative Spend"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: total_conversions
+        description: 'Total conversions from creative'
+        meta:
+          metrics:
+            sum_creative_conversions:
+              type: sum
+              label: "Total Conversions"
+          dimension:
+            type: number
+
+      - name: total_revenue
+        description: 'Total revenue from creative'
+        meta:
+          metrics:
+            sum_creative_revenue:
+              type: sum
+              label: "Total Creative Revenue"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: cpa
+        description: 'Cost per acquisition'
+        meta:
+          metrics:
+            avg_cpa:
+              type: average
+              label: "Avg CPA"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: roas
+        description: 'Return on Ad Spend'
+        meta:
+          metrics:
+            avg_creative_roas:
+              type: average
+              label: "Avg Creative ROAS"
+              round: 2
+          dimension:
+            type: number
+
+      - name: is_active
+        description: 'Whether creative is currently active'
+        meta:
+          dimension:
+            type: boolean
+
+      - name: fatigue_score
+        description: 'Creative fatigue score (0-100)'
+        meta:
+          metrics:
+            avg_fatigue_score:
+              type: average
+              label: "Avg Fatigue Score"
+              round: 0
+          dimension:
+            type: number
+
+      - name: days_active
+        description: 'Days creative has been active'
+        meta:
+          metrics:
+            avg_days_active:
+              type: average
+              label: "Avg Days Active"
+              round: 0
+          dimension:
+            type: number
+
+      - name: client_id
+        description: 'Client identifier'
+        meta:
+          dimension:
+            type: string
+
+  - name: pq_customers
+    label: Primal Queen Customers
+    description: 'Customer master data with lifetime metrics'
+    meta:
+      default_time_dimension:
+        field: created_at
+        interval: DAY
+      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+    columns:
+      - name: customer_id
+        description: 'Unique customer identifier'
+        meta:
+          dimension:
+            type: string
+
+      - name: email
+        description: 'Customer email address'
+        meta:
+          dimension:
+            type: string
+
+      - name: first_name
+        description: 'Customer first name'
+        meta:
+          dimension:
+            type: string
+
+      - name: last_name
+        description: 'Customer last name'
+        meta:
+          dimension:
+            type: string
+
+      - name: created_at
+        description: 'Customer account creation timestamp'
+        meta:
+          dimension:
+            type: timestamp
+            time_intervals: true
+
+      - name: first_order_date
+        description: 'Date of first order'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: is_subscriber
+        description: 'Whether customer has subscription'
+        meta:
+          dimension:
+            type: boolean
+
+      - name: subscription_status
+        description: 'Subscription status'
+        meta:
+          dimension:
+            type: string
+
+      - name: country_code
+        description: 'Country code'
+        meta:
+          dimension:
+            type: string
+
+      - name: state_code
+        description: 'State code'
+        meta:
+          dimension:
+            type: string
+
+      - name: city
+        description: 'City'
+        meta:
+          dimension:
+            type: string
+
+      - name: total_orders
+        description: 'Total lifetime orders'
+        meta:
+          metrics:
+            sum_customer_orders:
+              type: sum
+              label: "Total Customer Orders"
+            avg_orders_per_customer:
+              type: average
+              label: "Avg Orders per Customer"
+              round: 1
+          dimension:
+            type: number
+
+      - name: total_revenue
+        description: 'Total lifetime revenue'
+        meta:
+          metrics:
+            sum_customer_revenue:
+              type: sum
+              label: "Total Customer Revenue"
+              round: 2
+              format: "usd"
+            avg_revenue_per_customer:
+              type: average
+              label: "Avg Revenue per Customer"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: ltv
+        description: 'Customer lifetime value'
+        meta:
+          metrics:
+            sum_ltv:
+              type: sum
+              label: "Total LTV"
+              round: 2
+              format: "usd"
+            avg_ltv:
+              type: average
+              label: "Avg LTV"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: acquisition_channel
+        description: 'Channel that acquired customer'
+        meta:
+          dimension:
+            type: string
+
+      - name: acquisition_campaign
+        description: 'Campaign that acquired customer'
+        meta:
+          dimension:
+            type: string
+
+      - name: first_touch_source
+        description: 'First touch source'
+        meta:
+          dimension:
+            type: string
+
+      - name: client_id
+        description: 'Client identifier'
+        meta:
+          dimension:
+            type: string
+
   - name: pq_daily_metrics
+    label: Primal Queen Daily Metrics
     description: 'Daily North Star and 7 input metrics for Primal Queen Strategic Command'
     meta:
-      label: 'Daily Metrics'
-      group_label: 'Primal Queen'
       default_time_dimension:
         field: date
         interval: DAY
@@ -17,852 +562,350 @@ models:
           dimension:
             type: date
             time_intervals: true
+
       - name: contribution_margin
-        description: 'North Star - Revenue minus all variable costs'
+        description: 'North Star Metric - Revenue minus all variable costs'
         meta:
           metrics:
-            contribution_margin_total:
+            sum_contribution_margin:
               type: sum
-              label: 'Contribution Margin'
-              format: 'usd'
+              label: "Total Contribution Margin"
               round: 2
-            contribution_margin_avg:
+              format: "usd"
+            avg_contribution_margin:
               type: average
-              label: 'Avg Daily Contribution Margin'
-              format: 'usd'
+              label: "Avg Daily Contribution Margin"
               round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: contribution_margin_pct_change
         description: 'Percentage change in contribution margin'
         meta:
+          metrics:
+            avg_cm_pct_change:
+              type: average
+              label: "Avg CM % Change"
+              round: 2
+              format: "percent"
           dimension:
             type: number
+
       - name: revenue
         description: 'Daily gross revenue'
         meta:
           metrics:
-            revenue_total:
+            sum_revenue:
               type: sum
-              label: 'Revenue'
-              format: 'usd'
+              label: "Total Revenue"
               round: 2
+              format: "usd"
+            avg_revenue:
+              type: average
+              label: "Avg Daily Revenue"
+              round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: gross_margin_pct
         description: 'Gross margin percentage'
         meta:
           metrics:
-            gross_margin_avg:
+            avg_gross_margin_pct:
               type: average
-              label: 'Gross Margin %'
-              format: 'percent'
+              label: "Avg Gross Margin %"
+              round: 2
+              format: "percent"
           dimension:
             type: number
+
       - name: cac
         description: 'Customer Acquisition Cost (Extremistan)'
         meta:
           metrics:
-            cac_avg:
+            avg_cac:
               type: average
-              label: 'CAC'
-              format: 'usd'
+              label: "Avg CAC"
               round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: ltv_cac_ratio
         description: 'LTV to CAC ratio'
         meta:
           metrics:
-            ltv_cac_avg:
+            avg_ltv_cac_ratio:
               type: average
-              label: 'LTV:CAC Ratio'
-              format: 'number'
+              label: "Avg LTV:CAC Ratio"
+              round: 2
           dimension:
             type: number
+
       - name: payback_months
         description: 'Months to payback CAC'
         meta:
           metrics:
-            payback_avg:
+            avg_payback_months:
               type: average
-              label: 'Payback (months)'
-              format: 'number'
+              label: "Avg Payback (months)"
+              round: 1
           dimension:
             type: number
+
       - name: mrr
         description: 'Monthly Recurring Revenue'
         meta:
           metrics:
-            mrr_latest:
+            latest_mrr:
               type: max
-              label: 'MRR'
-              format: 'usd'
+              label: "Latest MRR"
               round: 2
+              format: "usd"
+            avg_mrr:
+              type: average
+              label: "Avg MRR"
+              round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: churn_rate_pct
         description: 'Subscription churn rate'
         meta:
           metrics:
-            churn_avg:
+            avg_churn_rate:
               type: average
-              label: 'Churn Rate %'
-              format: 'percent'
+              label: "Avg Churn Rate %"
+              round: 2
+              format: "percent"
           dimension:
             type: number
+
       - name: new_customers
         description: 'New customers acquired'
         meta:
           metrics:
-            new_customers_total:
+            sum_new_customers:
               type: sum
-              label: 'New Customers'
+              label: "Total New Customers"
           dimension:
             type: number
+
       - name: returning_customers
         description: 'Returning customers'
         meta:
           metrics:
-            returning_customers_total:
+            sum_returning_customers:
               type: sum
-              label: 'Returning Customers'
+              label: "Total Returning Customers"
           dimension:
             type: number
+
       - name: total_orders
         description: 'Total orders'
         meta:
           metrics:
-            orders_total:
+            sum_total_orders:
               type: sum
-              label: 'Total Orders'
+              label: "Total Orders"
           dimension:
             type: number
+
       - name: aov
         description: 'Average Order Value'
         meta:
           metrics:
-            aov_avg:
+            avg_aov:
               type: average
-              label: 'AOV'
-              format: 'usd'
+              label: "Avg AOV"
               round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: ad_spend
         description: 'Daily ad spend'
         meta:
           metrics:
-            ad_spend_total:
+            sum_ad_spend:
               type: sum
-              label: 'Ad Spend'
-              format: 'usd'
+              label: "Total Ad Spend"
               round: 2
+              format: "usd"
+            avg_ad_spend:
+              type: average
+              label: "Avg Daily Ad Spend"
+              round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: cogs
         description: 'Cost of goods sold'
         meta:
           metrics:
-            cogs_total:
+            sum_cogs:
               type: sum
-              label: 'Total COGS'
-              format: 'usd'
+              label: "Total COGS"
               round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: fulfillment_cost
         description: 'Fulfillment costs'
         meta:
           metrics:
-            fulfillment_cost_total:
+            sum_fulfillment_cost:
               type: sum
-              label: 'Total Fulfillment Cost'
-              format: 'usd'
+              label: "Total Fulfillment Cost"
               round: 2
+              format: "usd"
           dimension:
             type: number
+
       - name: cac_domain
-        description: 'Taleb domain classification for CAC'
+        description: 'Taleb domain classification for CAC (Mediocristan/Extremistan)'
         meta:
           dimension:
             type: string
+
       - name: revenue_domain
         description: 'Taleb domain classification for Revenue'
         meta:
           dimension:
             type: string
+
       - name: revenue_bets
-        description: 'Active revenue bets'
+        description: 'Number of active revenue bets'
         meta:
+          metrics:
+            avg_revenue_bets:
+              type: average
+              label: "Avg Revenue Bets"
+              round: 0
           dimension:
-            type: string
+            type: number
+
       - name: cac_bets
-        description: 'Active CAC bets'
+        description: 'Number of active CAC bets'
         meta:
+          metrics:
+            avg_cac_bets:
+              type: average
+              label: "Avg CAC Bets"
+              round: 0
           dimension:
-            type: string
+            type: number
+
       - name: mrr_bets
-        description: 'Active MRR bets'
+        description: 'Number of active MRR bets'
         meta:
+          metrics:
+            avg_mrr_bets:
+              type: average
+              label: "Avg MRR Bets"
+              round: 0
           dimension:
-            type: string
+            type: number
+
       - name: churn_bets
-        description: 'Active churn bets'
+        description: 'Number of active churn bets'
         meta:
+          metrics:
+            avg_churn_bets:
+              type: average
+              label: "Avg Churn Bets"
+              round: 0
           dimension:
-            type: string
+            type: number
+
       - name: client_id
         description: 'Client identifier'
         meta:
           dimension:
             type: string
 
-  - name: pq_customers
-    description: 'Customer master data with lifetime metrics'
+  - name: pq_entities
+    label: Primal Queen Entities
+    description: '28 entity definitions with Bratrax philosophy and falsification logic'
     meta:
-      label: 'Customers'
-      group_label: 'Primal Queen'
-      default_time_dimension:
-        field: created_at
-        interval: DAY
       sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
     columns:
-      - name: customer_id
-        description: 'Unique customer identifier'
-        meta:
-          dimension:
-            type: string
-      - name: email
-        description: 'Customer email address'
-        meta:
-          dimension:
-            type: string
-      - name: first_name
-        description: 'Customer first name'
-        meta:
-          dimension:
-            type: string
-      - name: last_name
-        description: 'Customer last name'
-        meta:
-          dimension:
-            type: string
-      - name: created_at
-        description: 'Customer account creation timestamp'
-        meta:
-          dimension:
-            type: timestamp
-            time_intervals: true
-      - name: first_order_date
-        description: 'Date of first order'
-        meta:
-          dimension:
-            type: date
-            time_intervals: true
-      - name: is_subscriber
-        description: 'Whether customer has subscription'
-        meta:
-          dimension:
-            type: boolean
-      - name: subscription_status
-        description: 'Subscription status'
-        meta:
-          dimension:
-            type: string
-      - name: country_code
-        description: 'Country code'
-        meta:
-          dimension:
-            type: string
-      - name: state_code
-        description: 'State code'
-        meta:
-          dimension:
-            type: string
-      - name: city
-        description: 'City'
-        meta:
-          dimension:
-            type: string
-      - name: total_orders
-        description: 'Customer lifetime orders'
-        meta:
-          metrics:
-            customer_orders_avg:
-              type: average
-              label: 'Avg Orders per Customer'
-          dimension:
-            type: number
-      - name: total_revenue
-        description: 'Customer lifetime revenue'
-        meta:
-          metrics:
-            customer_revenue_avg:
-              type: average
-              label: 'Avg Revenue per Customer'
-              format: 'usd'
-              round: 2
-            customer_revenue_total:
-              type: sum
-              label: 'Total Customer Revenue'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: ltv
-        description: 'Customer lifetime value'
-        meta:
-          metrics:
-            ltv_avg:
-              type: average
-              label: 'Average LTV'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: acquisition_channel
-        description: 'Channel that acquired customer'
-        meta:
-          dimension:
-            type: string
-      - name: acquisition_campaign
-        description: 'Campaign that acquired customer'
-        meta:
-          dimension:
-            type: string
-      - name: first_touch_source
-        description: 'First touch source'
-        meta:
-          dimension:
-            type: string
-      - name: client_id
-        description: 'Client identifier'
+      - name: entity_id
+        description: 'Unique entity identifier'
         meta:
           dimension:
             type: string
 
-  - name: pq_orders
-    description: 'Transaction-level order data'
-    meta:
-      label: 'Orders'
-      group_label: 'Primal Queen'
-      default_time_dimension:
-        field: order_date
-        interval: DAY
-      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-    columns:
-      - name: order_id
-        description: 'Unique order identifier'
-        meta:
-          metrics:
-            order_count:
-              type: count_distinct
-              label: 'Order Count'
-          dimension:
-            type: string
-      - name: customer_id
-        description: 'Customer identifier'
-        meta:
-          dimension:
-            type: string
-      - name: order_date
-        description: 'Date of order'
-        meta:
-          dimension:
-            type: date
-            time_intervals: true
-      - name: created_at
-        description: 'Order creation timestamp'
-        meta:
-          dimension:
-            type: timestamp
-            time_intervals: true
-      - name: gross_revenue
-        description: 'Order gross revenue'
-        meta:
-          metrics:
-            gross_revenue_total:
-              type: sum
-              label: 'Gross Revenue'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: net_revenue
-        description: 'Order net revenue'
-        meta:
-          metrics:
-            net_revenue_total:
-              type: sum
-              label: 'Net Revenue'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: discount_amount
-        description: 'Discount amount applied'
-        meta:
-          metrics:
-            discount_total:
-              type: sum
-              label: 'Total Discounts'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: refund_amount
-        description: 'Refund amount'
-        meta:
-          metrics:
-            refund_total:
-              type: sum
-              label: 'Total Refunds'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: cogs
-        description: 'Cost of goods sold'
-        meta:
-          metrics:
-            order_cogs_total:
-              type: sum
-              label: 'Total COGS'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: shipping_cost
-        description: 'Shipping cost'
-        meta:
-          metrics:
-            shipping_cost_total:
-              type: sum
-              label: 'Total Shipping Cost'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: payment_fees
-        description: 'Payment processing fees'
-        meta:
-          metrics:
-            payment_fees_total:
-              type: sum
-              label: 'Total Payment Fees'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: contribution_margin
-        description: 'Order contribution margin'
-        meta:
-          metrics:
-            order_cm_total:
-              type: sum
-              label: 'Order Contribution Margin'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: is_subscription
-        description: 'Whether order is subscription'
-        meta:
-          dimension:
-            type: boolean
-      - name: is_first_order
-        description: 'Whether first order for customer'
-        meta:
-          dimension:
-            type: boolean
-      - name: product_skus
-        description: 'Product SKUs in order'
-        meta:
-          dimension:
-            type: string
-      - name: product_names
-        description: 'Product names in order'
-        meta:
-          dimension:
-            type: string
-      - name: channel
-        description: 'Attribution channel'
-        meta:
-          dimension:
-            type: string
-      - name: campaign
-        description: 'Attribution campaign'
-        meta:
-          dimension:
-            type: string
-      - name: creative_id
-        description: 'Creative identifier'
-        meta:
-          dimension:
-            type: string
-      - name: utm_source
-        description: 'UTM source'
-        meta:
-          dimension:
-            type: string
-      - name: utm_medium
-        description: 'UTM medium'
-        meta:
-          dimension:
-            type: string
-      - name: utm_campaign
-        description: 'UTM campaign'
-        meta:
-          dimension:
-            type: string
-      - name: client_id
-        description: 'Client identifier'
+      - name: entity_name
+        description: 'Entity name'
         meta:
           dimension:
             type: string
 
-  - name: pq_subscriptions
-    description: 'Subscription data for MRR tracking'
-    meta:
-      label: 'Subscriptions'
-      group_label: 'Primal Queen'
-      default_time_dimension:
-        field: created_at
-        interval: DAY
-      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-    columns:
-      - name: subscription_id
-        description: 'Unique subscription identifier'
-        meta:
-          metrics:
-            subscription_count:
-              type: count_distinct
-              label: 'Subscription Count'
-          dimension:
-            type: string
-      - name: customer_id
-        description: 'Customer identifier'
-        meta:
-          dimension:
-            type: string
-      - name: created_at
-        description: 'Subscription creation timestamp'
-        meta:
-          dimension:
-            type: timestamp
-            time_intervals: true
-      - name: status
-        description: 'Subscription status'
-        meta:
-          dimension:
-            type: string
-      - name: monthly_value
-        description: 'Monthly subscription value'
-        meta:
-          metrics:
-            mrr_total:
-              type: sum
-              label: 'MRR'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: billing_interval
-        description: 'Billing interval'
-        meta:
-          dimension:
-            type: string
-      - name: started_at
-        description: 'Subscription start timestamp'
-        meta:
-          dimension:
-            type: timestamp
-            time_intervals: true
-      - name: cancelled_at
-        description: 'Subscription cancellation timestamp'
-        meta:
-          dimension:
-            type: timestamp
-            time_intervals: true
-      - name: pause_started_at
-        description: 'Subscription pause timestamp'
-        meta:
-          dimension:
-            type: timestamp
-            time_intervals: true
-      - name: cancellation_reason
-        description: 'Reason for cancellation'
-        meta:
-          dimension:
-            type: string
-      - name: months_active
-        description: 'Months subscription has been active'
-        meta:
-          metrics:
-            avg_subscription_length:
-              type: average
-              label: 'Avg Subscription Length (months)'
-          dimension:
-            type: number
-      - name: client_id
-        description: 'Client identifier'
+      - name: category
+        description: 'Entity category (core, financial, acquisition, derived, operations)'
         meta:
           dimension:
             type: string
 
-  - name: pq_ad_spend
-    description: 'Channel-level advertising spend and performance'
-    meta:
-      label: 'Ad Spend'
-      group_label: 'Primal Queen'
-      default_time_dimension:
-        field: date
-        interval: DAY
-      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-    columns:
-      - name: date
-        description: 'Date'
-        meta:
-          dimension:
-            type: date
-            time_intervals: true
-      - name: channel
-        description: 'Advertising channel'
-        meta:
-          dimension:
-            type: string
-      - name: spend
-        description: 'Daily spend'
-        meta:
-          metrics:
-            channel_spend_total:
-              type: sum
-              label: 'Ad Spend'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: impressions
-        description: 'Ad impressions'
-        meta:
-          metrics:
-            impressions_total:
-              type: sum
-              label: 'Impressions'
-          dimension:
-            type: number
-      - name: clicks
-        description: 'Ad clicks'
-        meta:
-          metrics:
-            clicks_total:
-              type: sum
-              label: 'Clicks'
-          dimension:
-            type: number
-      - name: conversions
-        description: 'Conversions'
-        meta:
-          metrics:
-            conversions_total:
-              type: sum
-              label: 'Conversions'
-          dimension:
-            type: number
-      - name: cpm
-        description: 'Cost per mille (thousand impressions)'
-        meta:
-          metrics:
-            cpm_avg:
-              type: average
-              label: 'Avg CPM'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: cpc
-        description: 'Cost per click'
-        meta:
-          metrics:
-            cpc_avg:
-              type: average
-              label: 'Avg CPC'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: ctr
-        description: 'Click-through rate'
-        meta:
-          metrics:
-            ctr_avg:
-              type: average
-              label: 'Avg CTR'
-              format: 'percent'
-          dimension:
-            type: number
-      - name: conversion_rate
-        description: 'Conversion rate'
-        meta:
-          metrics:
-            conversion_rate_avg:
-              type: average
-              label: 'Avg Conversion Rate'
-              format: 'percent'
-          dimension:
-            type: number
-      - name: roas
-        description: 'Return on Ad Spend'
-        meta:
-          metrics:
-            roas_avg:
-              type: average
-              label: 'ROAS'
-              format: 'number'
-          dimension:
-            type: number
-      - name: attributed_revenue
-        description: 'Revenue attributed to channel'
-        meta:
-          metrics:
-            attributed_revenue_total:
-              type: sum
-              label: 'Attributed Revenue'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: attributed_new_customers
-        description: 'New customers attributed to channel'
-        meta:
-          metrics:
-            attributed_customers_total:
-              type: sum
-              label: 'Attributed New Customers'
-          dimension:
-            type: number
-      - name: client_id
-        description: 'Client identifier'
+      - name: definition
+        description: 'Entity definition and description'
         meta:
           dimension:
             type: string
 
-  - name: pq_creatives
-    description: 'Creative performance data'
-    meta:
-      label: 'Creatives'
-      group_label: 'Primal Queen'
-      default_time_dimension:
-        field: launched_at
-        interval: DAY
-      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-    columns:
-      - name: creative_id
-        description: 'Unique creative identifier'
-        meta:
-          metrics:
-            creative_count:
-              type: count_distinct
-              label: 'Creative Count'
-          dimension:
-            type: string
-      - name: creative_name
-        description: 'Creative name'
+      - name: source_system
+        description: 'Source system for this entity'
         meta:
           dimension:
             type: string
-      - name: creative_type
-        description: 'Type of creative (ugc, produced, etc)'
+
+      - name: formula
+        description: 'Calculation formula'
+        meta:
+          dimension:
+            type: number
+
+      - name: domain
+        description: 'Taleb domain (mediocristan, transitional, extremistan)'
         meta:
           dimension:
             type: string
-      - name: channel
-        description: 'Channel'
+
+      - name: confidence_pct
+        description: 'Confidence percentage (0-100)'
+        meta:
+          metrics:
+            avg_confidence:
+              type: average
+              label: "Avg Confidence %"
+              round: 0
+          dimension:
+            type: number
+
+      - name: falsifier
+        description: 'Falsification condition'
         meta:
           dimension:
             type: string
-      - name: launched_at
-        description: 'Creative launch timestamp'
+
+      - name: used_in
+        description: 'Where this entity is used'
         meta:
           dimension:
-            type: timestamp
-            time_intervals: true
-      - name: total_spend
-        description: 'Total spend on creative'
+            type: string
+
+      - name: depends_on
+        description: 'Dependencies for this entity'
         meta:
-          metrics:
-            creative_spend_total:
-              type: sum
-              label: 'Creative Spend'
-              format: 'usd'
-              round: 2
           dimension:
             type: number
-      - name: total_conversions
-        description: 'Total conversions from creative'
-        meta:
-          metrics:
-            creative_conversions_total:
-              type: sum
-              label: 'Total Conversions'
-          dimension:
-            type: number
-      - name: total_revenue
-        description: 'Total revenue from creative'
-        meta:
-          metrics:
-            creative_revenue_total:
-              type: sum
-              label: 'Creative Revenue'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: cpa
-        description: 'Cost per acquisition'
-        meta:
-          metrics:
-            creative_cpa_avg:
-              type: average
-              label: 'CPA'
-              format: 'usd'
-              round: 2
-          dimension:
-            type: number
-      - name: roas
-        description: 'Creative ROAS'
-        meta:
-          metrics:
-            creative_roas_avg:
-              type: average
-              label: 'Creative ROAS'
-              format: 'number'
-          dimension:
-            type: number
-      - name: is_active
-        description: 'Whether creative is active'
-        meta:
-          dimension:
-            type: boolean
-      - name: fatigue_score
-        description: 'Creative fatigue (0-100)'
-        meta:
-          metrics:
-            avg_fatigue:
-              type: average
-              label: 'Avg Fatigue Score'
-          dimension:
-            type: number
-      - name: days_active
-        description: 'Days creative has been active'
-        meta:
-          metrics:
-            avg_days_active:
-              type: average
-              label: 'Avg Days Active'
-          dimension:
-            type: number
+
       - name: client_id
         description: 'Client identifier'
         meta:
@@ -870,10 +913,9 @@ models:
             type: string
 
   - name: pq_hypotheses
-    description: 'H1-H6 hypothesis tracking for Bratrax philosophy'
+    label: Primal Queen Hypotheses
+    description: 'H1-H6 hypothesis tracking for Bratrax philosophy with falsification logic'
     meta:
-      label: 'Hypotheses'
-      group_label: 'Primal Queen'
       default_time_dimension:
         field: last_status_change
         interval: DAY
@@ -884,52 +926,283 @@ models:
         meta:
           dimension:
             type: string
+
       - name: statement
         description: 'Hypothesis statement'
         meta:
           dimension:
             type: string
+
       - name: status
         description: 'Status (holding, stressed, breaking, validated)'
         meta:
           dimension:
             type: string
+
       - name: primary_metric
         description: 'Primary metric this hypothesis tracks'
         meta:
           dimension:
             type: string
+
       - name: input_metrics
         description: 'Input metrics for this hypothesis'
         meta:
           dimension:
             type: string
+
       - name: falsifier_condition
         description: 'Falsification condition'
         meta:
           dimension:
             type: string
+
       - name: current_value
         description: 'Current metric value'
         meta:
           dimension:
             type: number
+
       - name: threshold_value
         description: 'Threshold for falsification'
         meta:
           dimension:
             type: number
+
       - name: last_status_change
         description: 'Last status change timestamp'
         meta:
           dimension:
             type: timestamp
             time_intervals: true
+
       - name: days_in_current_status
         description: 'Days in current status'
         meta:
+          metrics:
+            avg_days_in_status:
+              type: average
+              label: "Avg Days in Status"
+              round: 0
           dimension:
             type: number
+
+      - name: client_id
+        description: 'Client identifier'
+        meta:
+          dimension:
+            type: string
+
+  - name: pq_orders
+    label: Primal Queen Orders
+    description: 'Transaction-level order data with revenue and attribution'
+    meta:
+      default_time_dimension:
+        field: order_date
+        interval: DAY
+      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+    columns:
+      - name: order_id
+        description: 'Unique order identifier'
+        meta:
+          metrics:
+            count_orders:
+              type: count_distinct
+              label: "Order Count"
+          dimension:
+            type: string
+
+      - name: customer_id
+        description: 'Customer identifier'
+        meta:
+          dimension:
+            type: string
+
+      - name: order_date
+        description: 'Date of order'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: created_at
+        description: 'Order creation timestamp'
+        meta:
+          dimension:
+            type: timestamp
+            time_intervals: true
+
+      - name: gross_revenue
+        description: 'Gross revenue'
+        meta:
+          metrics:
+            sum_gross_revenue:
+              type: sum
+              label: "Total Gross Revenue"
+              round: 2
+              format: "usd"
+            avg_gross_revenue:
+              type: average
+              label: "Avg Gross Revenue"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: net_revenue
+        description: 'Net revenue after discounts'
+        meta:
+          metrics:
+            sum_net_revenue:
+              type: sum
+              label: "Total Net Revenue"
+              round: 2
+              format: "usd"
+            avg_net_revenue:
+              type: average
+              label: "Avg Net Revenue"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: discount_amount
+        description: 'Discount amount'
+        meta:
+          metrics:
+            sum_discounts:
+              type: sum
+              label: "Total Discounts"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: refund_amount
+        description: 'Refund amount'
+        meta:
+          metrics:
+            sum_refunds:
+              type: sum
+              label: "Total Refunds"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: cogs
+        description: 'Cost of goods sold'
+        meta:
+          metrics:
+            sum_order_cogs:
+              type: sum
+              label: "Total COGS"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: shipping_cost
+        description: 'Shipping cost'
+        meta:
+          metrics:
+            sum_shipping:
+              type: sum
+              label: "Total Shipping Cost"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: payment_fees
+        description: 'Payment processing fees'
+        meta:
+          metrics:
+            sum_payment_fees:
+              type: sum
+              label: "Total Payment Fees"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: contribution_margin
+        description: 'Order contribution margin'
+        meta:
+          metrics:
+            sum_order_cm:
+              type: sum
+              label: "Total Order CM"
+              round: 2
+              format: "usd"
+            avg_order_cm:
+              type: average
+              label: "Avg Order CM"
+              round: 2
+              format: "usd"
+          dimension:
+            type: number
+
+      - name: is_subscription
+        description: 'Whether order is subscription'
+        meta:
+          dimension:
+            type: boolean
+
+      - name: is_first_order
+        description: 'Whether first order for customer'
+        meta:
+          dimension:
+            type: boolean
+
+      - name: product_skus
+        description: 'Product SKUs in order'
+        meta:
+          dimension:
+            type: string
+
+      - name: product_names
+        description: 'Product names in order'
+        meta:
+          dimension:
+            type: string
+
+      - name: channel
+        description: 'Attribution channel'
+        meta:
+          dimension:
+            type: string
+
+      - name: campaign
+        description: 'Attribution campaign'
+        meta:
+          dimension:
+            type: string
+
+      - name: creative_id
+        description: 'Creative identifier'
+        meta:
+          dimension:
+            type: string
+
+      - name: utm_source
+        description: 'UTM source'
+        meta:
+          dimension:
+            type: string
+
+      - name: utm_medium
+        description: 'UTM medium'
+        meta:
+          dimension:
+            type: string
+
+      - name: utm_campaign
+        description: 'UTM campaign'
+        meta:
+          dimension:
+            type: string
+
       - name: client_id
         description: 'Client identifier'
         meta:
@@ -937,229 +1210,188 @@ models:
             type: string
 
   - name: pq_signals
+    label: Primal Queen Signals
     description: 'Active signals feed for Bratrax dashboard'
     meta:
-      label: 'Signals'
-      group_label: 'Primal Queen'
       default_time_dimension:
         field: created_at
         interval: DAY
       sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
     columns:
       - name: signal_id
-        description: 'Signal ID'
+        description: 'Unique signal identifier'
         meta:
           dimension:
             type: string
+
       - name: created_at
-        description: 'Signal creation timestamp'
+        description: 'Signal creation timestamp (Unix timestamp)'
         meta:
           dimension:
-            type: timestamp
-            time_intervals: true
+            type: number
+
       - name: signal_type
         description: 'Type (risk, warning, opportunity)'
         meta:
           dimension:
             type: string
+
       - name: title
         description: 'Signal title'
         meta:
           dimension:
             type: string
+
       - name: description
         description: 'Signal description'
         meta:
           dimension:
             type: string
+
       - name: affected_hypothesis
         description: 'Related hypothesis'
         meta:
           dimension:
             type: string
+
       - name: affected_metric
         description: 'Affected metric'
         meta:
           dimension:
             type: string
+
       - name: current_value
         description: 'Current metric value'
         meta:
           dimension:
-            type: number
+            type: string
+
       - name: threshold_value
         description: 'Threshold value'
         meta:
           dimension:
-            type: number
+            type: string
+
       - name: status
         description: 'Signal status'
         meta:
           dimension:
             type: string
+
       - name: resolved_at
-        description: 'Signal resolution timestamp'
+        description: 'Signal resolution timestamp (Unix timestamp)'
         meta:
           dimension:
-            type: timestamp
-            time_intervals: true
+            type: number
+
       - name: client_id
         description: 'Client identifier'
         meta:
           dimension:
             type: string
 
-  - name: pq_actions
-    description: 'Action board items'
+  - name: pq_subscriptions
+    label: Primal Queen Subscriptions
+    description: 'Subscription data for MRR tracking'
     meta:
-      label: 'Actions'
-      group_label: 'Primal Queen'
       default_time_dimension:
         field: created_at
         interval: DAY
       sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
     columns:
-      - name: action_id
-        description: 'Action ID'
+      - name: subscription_id
+        description: 'Unique subscription identifier'
+        meta:
+          metrics:
+            count_subscriptions:
+              type: count_distinct
+              label: "Subscription Count"
+          dimension:
+            type: string
+
+      - name: customer_id
+        description: 'Customer identifier'
         meta:
           dimension:
             type: string
+
       - name: created_at
-        description: 'Action creation timestamp'
+        description: 'Subscription creation timestamp'
         meta:
           dimension:
             type: timestamp
             time_intervals: true
-      - name: title
-        description: 'Action title'
-        meta:
-          dimension:
-            type: string
-      - name: description
-        description: 'Action description'
-        meta:
-          dimension:
-            type: string
-      - name: category
-        description: 'Category (acquisition, retention, expansion)'
-        meta:
-          dimension:
-            type: string
-      - name: linked_hypothesis
-        description: 'Related hypothesis'
-        meta:
-          dimension:
-            type: string
-      - name: target_metric
-        description: 'Target metric for this action'
-        meta:
-          dimension:
-            type: string
+
       - name: status
-        description: 'Status (active, blocked, pending, completed)'
+        description: 'Subscription status (active, cancelled, paused)'
         meta:
           dimension:
             type: string
-      - name: owner_name
-        description: 'Owner name'
+
+      - name: monthly_value
+        description: 'Monthly subscription value'
         meta:
-          dimension:
-            type: string
-      - name: owner_initials
-        description: 'Owner initials'
-        meta:
-          dimension:
-            type: string
-      - name: progress_pct
-        description: 'Progress percentage'
-        meta:
+          metrics:
+            sum_mrr:
+              type: sum
+              label: "Total MRR"
+              round: 2
+              format: "usd"
+            avg_subscription_value:
+              type: average
+              label: "Avg Subscription Value"
+              round: 2
+              format: "usd"
           dimension:
             type: number
-      - name: target_value
-        description: 'Target value for metric'
-        meta:
-          dimension:
-            type: number
-      - name: current_value
-        description: 'Current value for metric'
-        meta:
-          dimension:
-            type: number
-      - name: blocker_description
-        description: 'Description of blockers'
+
+      - name: billing_interval
+        description: 'Billing interval (monthly, annual, etc)'
         meta:
           dimension:
             type: string
+
+      - name: started_at
+        description: 'Subscription start date'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: cancelled_at
+        description: 'Subscription cancellation date'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: pause_started_at
+        description: 'Subscription pause date'
+        meta:
+          dimension:
+            type: date
+            time_intervals: true
+
+      - name: cancellation_reason
+        description: 'Reason for cancellation'
+        meta:
+          dimension:
+            type: string
+
+      - name: months_active
+        description: 'Months subscription has been active'
+        meta:
+          metrics:
+            avg_subscription_length:
+              type: average
+              label: "Avg Subscription Length (months)"
+              round: 1
+          dimension:
+            type: number
+
       - name: client_id
         description: 'Client identifier'
         meta:
           dimension:
             type: string
 
-  - name: pq_entities
-    description: '28 entity definitions with Bratrax philosophy'
-    meta:
-      label: 'Entities'
-      group_label: 'Primal Queen'
-      sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
-    columns:
-      - name: entity_id
-        description: 'Entity ID'
-        meta:
-          dimension:
-            type: string
-      - name: entity_name
-        description: 'Entity name'
-        meta:
-          dimension:
-            type: string
-      - name: category
-        description: 'Category (core, financial, acquisition, derived, operations)'
-        meta:
-          dimension:
-            type: string
-      - name: definition
-        description: 'Entity definition'
-        meta:
-          dimension:
-            type: string
-      - name: source_system
-        description: 'Source system for this entity'
-        meta:
-          dimension:
-            type: string
-      - name: formula
-        description: 'Calculation formula'
-        meta:
-          dimension:
-            type: string
-      - name: domain
-        description: 'Taleb domain (mediocristan, transitional, extremistan)'
-        meta:
-          dimension:
-            type: string
-      - name: confidence_pct
-        description: 'Confidence percentage'
-        meta:
-          dimension:
-            type: number
-      - name: falsifier
-        description: 'Falsification condition'
-        meta:
-          dimension:
-            type: string
-      - name: used_in
-        description: 'Where this entity is used'
-        meta:
-          dimension:
-            type: string
-      - name: depends_on
-        description: 'Dependencies for this entity'
-        meta:
-          dimension:
-            type: string
-      - name: client_id
-        description: 'Client identifier'
-        meta:
-          dimension:
-            type: string

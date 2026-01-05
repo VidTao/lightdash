@@ -1,27 +1,23 @@
--- Primal Queen Signals
--- Powers: Signals Tab - Active signals feed
+-- @block_type: explore
+-- @model_type: table
+-- Primal Queen Signals - Active signals feed for Bratrax dashboard
 {{ config(
     materialized = 'view',
-    alias = 'pq_signals'
+    alias = 'pq_signals_view'
 ) }}
 
 SELECT
     signal_id,
     created_at,
-
     signal_type,
     title,
     description,
-
-    -- Context
     affected_hypothesis,
     affected_metric,
     current_value,
     threshold_value,
-
-    -- Status
     status,
     resolved_at,
-    client_id 
-
+    client_id
 FROM {{ source('primal_queen', 'signals') }}
+
