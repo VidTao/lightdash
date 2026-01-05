@@ -7,11 +7,6 @@ sources:
       database: 'bratrax-without-flattening'
       schema: 'production_tables'
       tables:
-          - name: orders
-            description: 'Orders data with client_id for multi-tenancy'
-            columns:
-              - name: client_id
-                description: 'Client identifier for filtering (maps to organizationUuid)'
           - name: ads
             description: 'Advertising data with client_id for multi-tenancy'
             columns:
