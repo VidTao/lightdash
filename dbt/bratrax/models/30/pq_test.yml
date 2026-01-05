@@ -1,0 +1,63 @@
+version: 2
+models:
+  - name: pq_test
+    description: SQL model for Pq test
+    meta:
+      label: Pq test
+    columns:
+      - name: title
+        meta:
+          dimension:
+            type: string
+      - name: status
+        meta:
+          dimension:
+            type: string
+      - name: category
+        meta:
+          dimension:
+            type: string
+      - name: action_id
+        meta:
+          dimension:
+            type: string
+      - name: created_at
+        meta:
+          dimension:
+            type: timestamp
+      - name: owner_name
+        meta:
+          dimension:
+            type: string
+      - name: description
+        meta:
+          dimension:
+            type: string
+      - name: progress_pct
+        meta:
+          dimension:
+            type: number
+      - name: target_value
+        meta:
+          dimension:
+            type: string
+      - name: current_value
+        meta:
+          dimension:
+            type: string
+      - name: target_metric
+        meta:
+          dimension:
+            type: string
+      - name: owner_initials
+        meta:
+          dimension:
+            type: string
+      - name: linked_hypothesis
+        meta:
+          dimension:
+            type: string
+      - name: blocker_description
+        meta:
+          dimension:
+            type: string
