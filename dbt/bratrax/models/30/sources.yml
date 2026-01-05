@@ -7,22 +7,52 @@ sources:
     schema: 'primal_queen'
     tables:
       - name: daily_metrics
-        description: 'Daily North Star and input metrics time-series'
+        description: 'Daily North Star and input metrics time-series with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: customers
-        description: 'Customer master data with lifetime metrics'
+        description: 'Customer master data with lifetime metrics with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: orders
-        description: 'Transaction-level order data'
+        description: 'Transaction-level order data with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: subscriptions
-        description: 'Subscription data for MRR tracking'
+        description: 'Subscription data for MRR tracking with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: ad_spend
-        description: 'Channel-level advertising spend and performance'
+        description: 'Channel-level advertising spend and performance with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: creatives
-        description: 'Creative performance data (Extremistan domain)'
+        description: 'Creative performance data (Extremistan domain) with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: hypotheses
-        description: 'H1-H6 hypothesis tracking'
+        description: 'H1-H6 hypothesis tracking with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: signals
-        description: 'Active signals feed'
+        description: 'Active signals feed with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: actions
-        description: 'Action board items'
+        description: 'Action board items with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'
       - name: entities
-        description: '28 entity definitions with Bratrax philosophy'
+        description: '28 entity definitions with Bratrax philosophy with client_id for multi-tenancy'
+        columns:
+          - name: client_id
+            description: 'Client identifier for filtering (maps to organizationUuid)'

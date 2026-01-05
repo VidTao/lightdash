@@ -22,5 +22,6 @@ SELECT
     -- Dependencies
     used_in,
     depends_on,
+    client_id
 
 FROM {{ source('primal_queen', 'entities') }}
