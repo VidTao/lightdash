@@ -1,0 +1,570 @@
+version: 2
+
+models:
+  - name: pq_daily_metrics
+    description: 'Daily North Star and 7 input metrics for Primal Queen Strategic Command'
+    meta:
+      label: 'Daily Metrics'
+      group_label: 'Primal Queen'
+    columns:
+      - name: date
+        description: 'Date of the metrics'
+        meta:
+          dimension:
+            type: date
+            time_intervals: ['DAY', 'WEEK', 'MONTH']
+      - name: contribution_margin
+        description: 'North Star - Revenue minus all variable costs'
+        meta:
+          metrics:
+            contribution_margin_total:
+              type: sum
+              label: 'Contribution Margin'
+              format: 'usd'
+            contribution_margin_avg:
+              type: average
+              label: 'Avg Daily Contribution Margin'
+              format: 'usd'
+      - name: revenue
+        description: 'Daily gross revenue'
+        meta:
+          metrics:
+            revenue_total:
+              type: sum
+              label: 'Revenue'
+              format: 'usd'
+      - name: gross_margin_pct
+        description: 'Gross margin percentage'
+        meta:
+          metrics:
+            gross_margin_avg:
+              type: average
+              label: 'Gross Margin %'
+              format: 'percent'
+      - name: cac
+        description: 'Customer Acquisition Cost (Extremistan)'
+        meta:
+          metrics:
+            cac_avg:
+              type: average
+              label: 'CAC'
+              format: 'usd'
+      - name: ltv_cac_ratio
+        description: 'LTV to CAC ratio'
+        meta:
+          metrics:
+            ltv_cac_avg:
+              type: average
+              label: 'LTV:CAC Ratio'
+              format: 'number'
+      - name: payback_months
+        description: 'Months to payback CAC'
+        meta:
+          metrics:
+            payback_avg:
+              type: average
+              label: 'Payback (months)'
+              format: 'number'
+      - name: mrr
+        description: 'Monthly Recurring Revenue'
+        meta:
+          metrics:
+            mrr_latest:
+              type: max
+              label: 'MRR'
+              format: 'usd'
+      - name: churn_rate_pct
+        description: 'Subscription churn rate'
+        meta:
+          metrics:
+            churn_avg:
+              type: average
+              label: 'Churn Rate %'
+              format: 'percent'
+      - name: new_customers
+        description: 'New customers acquired'
+        meta:
+          metrics:
+            new_customers_total:
+              type: sum
+              label: 'New Customers'
+      - name: total_orders
+        description: 'Total orders'
+        meta:
+          metrics:
+            orders_total:
+              type: sum
+              label: 'Total Orders'
+      - name: aov
+        description: 'Average Order Value'
+        meta:
+          metrics:
+            aov_avg:
+              type: average
+              label: 'AOV'
+              format: 'usd'
+      - name: ad_spend
+        description: 'Daily ad spend'
+        meta:
+          metrics:
+            ad_spend_total:
+              type: sum
+              label: 'Ad Spend'
+              format: 'usd'
+      - name: cac_domain
+        description: 'Taleb domain classification for CAC'
+        meta:
+          dimension:
+            type: string
+      - name: revenue_domain
+        description: 'Taleb domain classification for Revenue'
+        meta:
+          dimension:
+            type: string
+
+  - name: pq_customers
+    description: 'Customer master data with lifetime metrics'
+    meta:
+      label: 'Customers'
+      group_label: 'Primal Queen'
+    columns:
+      - name: customer_id
+        description: 'Unique customer identifier'
+        meta:
+          dimension:
+            type: string
+            hidden: true
+      - name: is_subscriber
+        description: 'Whether customer has subscription'
+        meta:
+          dimension:
+            type: boolean
+      - name: subscription_status
+        description: 'Subscription status'
+        meta:
+          dimension:
+            type: string
+      - name: acquisition_channel
+        description: 'Channel that acquired customer'
+        meta:
+          dimension:
+            type: string
+      - name: total_orders
+        description: 'Customer lifetime orders'
+        meta:
+          metrics:
+            customer_orders_avg:
+              type: average
+              label: 'Avg Orders per Customer'
+      - name: total_revenue
+        description: 'Customer lifetime revenue'
+        meta:
+          metrics:
+            customer_revenue_avg:
+              type: average
+              label: 'Avg Revenue per Customer'
+              format: 'usd'
+      - name: ltv
+        description: 'Customer lifetime value'
+        meta:
+          metrics:
+            ltv_avg:
+              type: average
+              label: 'Average LTV'
+              format: 'usd'
+
+  - name: pq_orders
+    description: 'Transaction-level order data'
+    meta:
+      label: 'Orders'
+      group_label: 'Primal Queen'
+    columns:
+      - name: order_id
+        description: 'Unique order identifier'
+        meta:
+          metrics:
+            order_count:
+              type: count_distinct
+              label: 'Order Count'
+      - name: order_date
+        description: 'Date of order'
+        meta:
+          dimension:
+            type: date
+            time_intervals: ['DAY', 'WEEK', 'MONTH']
+      - name: gross_revenue
+        description: 'Order gross revenue'
+        meta:
+          metrics:
+            gross_revenue_total:
+              type: sum
+              label: 'Gross Revenue'
+              format: 'usd'
+      - name: net_revenue
+        description: 'Order net revenue'
+        meta:
+          metrics:
+            net_revenue_total:
+              type: sum
+              label: 'Net Revenue'
+              format: 'usd'
+      - name: contribution_margin
+        description: 'Order contribution margin'
+        meta:
+          metrics:
+            order_cm_total:
+              type: sum
+              label: 'Order Contribution Margin'
+              format: 'usd'
+      - name: channel
+        description: 'Attribution channel'
+        meta:
+          dimension:
+            type: string
+      - name: is_subscription
+        description: 'Whether order is subscription'
+        meta:
+          dimension:
+            type: boolean
+      - name: is_first_order
+        description: 'Whether first order for customer'
+        meta:
+          dimension:
+            type: boolean
+
+  - name: pq_subscriptions
+    description: 'Subscription data for MRR tracking'
+    meta:
+      label: 'Subscriptions'
+      group_label: 'Primal Queen'
+    columns:
+      - name: subscription_id
+        description: 'Unique subscription identifier'
+        meta:
+          metrics:
+            subscription_count:
+              type: count_distinct
+              label: 'Subscription Count'
+      - name: status
+        description: 'Subscription status'
+        meta:
+          dimension:
+            type: string
+      - name: monthly_value
+        description: 'Monthly subscription value'
+        meta:
+          metrics:
+            mrr_total:
+              type: sum
+              label: 'MRR'
+              format: 'usd'
+              filters:
+                - status: 'active'
+      - name: cancellation_reason
+        description: 'Reason for cancellation'
+        meta:
+          dimension:
+            type: string
+      - name: months_active
+        description: 'Months subscription has been active'
+        meta:
+          metrics:
+            avg_subscription_length:
+              type: average
+              label: 'Avg Subscription Length (months)'
+
+  - name: pq_ad_spend
+    description: 'Channel-level advertising spend and performance'
+    meta:
+      label: 'Ad Spend'
+      group_label: 'Primal Queen'
+    columns:
+      - name: date
+        description: 'Date'
+        meta:
+          dimension:
+            type: date
+            time_intervals: ['DAY', 'WEEK', 'MONTH']
+      - name: channel
+        description: 'Advertising channel'
+        meta:
+          dimension:
+            type: string
+      - name: spend
+        description: 'Daily spend'
+        meta:
+          metrics:
+            channel_spend_total:
+              type: sum
+              label: 'Ad Spend'
+              format: 'usd'
+      - name: impressions
+        description: 'Ad impressions'
+        meta:
+          metrics:
+            impressions_total:
+              type: sum
+              label: 'Impressions'
+      - name: clicks
+        description: 'Ad clicks'
+        meta:
+          metrics:
+            clicks_total:
+              type: sum
+              label: 'Clicks'
+      - name: conversions
+        description: 'Conversions'
+        meta:
+          metrics:
+            conversions_total:
+              type: sum
+              label: 'Conversions'
+      - name: roas
+        description: 'Return on Ad Spend'
+        meta:
+          metrics:
+            roas_avg:
+              type: average
+              label: 'ROAS'
+              format: 'number'
+      - name: attributed_revenue
+        description: 'Revenue attributed to channel'
+        meta:
+          metrics:
+            attributed_revenue_total:
+              type: sum
+              label: 'Attributed Revenue'
+              format: 'usd'
+
+  - name: pq_creatives
+    description: 'Creative performance data'
+    meta:
+      label: 'Creatives'
+      group_label: 'Primal Queen'
+    columns:
+      - name: creative_id
+        description: 'Unique creative identifier'
+        meta:
+          metrics:
+            creative_count:
+              type: count_distinct
+              label: 'Creative Count'
+      - name: creative_name
+        description: 'Creative name'
+        meta:
+          dimension:
+            type: string
+      - name: creative_type
+        description: 'Type of creative (ugc, produced, etc)'
+        meta:
+          dimension:
+            type: string
+      - name: channel
+        description: 'Channel'
+        meta:
+          dimension:
+            type: string
+      - name: total_spend
+        description: 'Total spend on creative'
+        meta:
+          metrics:
+            creative_spend_total:
+              type: sum
+              label: 'Creative Spend'
+              format: 'usd'
+      - name: cpa
+        description: 'Cost per acquisition'
+        meta:
+          metrics:
+            creative_cpa_avg:
+              type: average
+              label: 'CPA'
+              format: 'usd'
+      - name: roas
+        description: 'Creative ROAS'
+        meta:
+          metrics:
+            creative_roas_avg:
+              type: average
+              label: 'Creative ROAS'
+              format: 'number'
+      - name: fatigue_score
+        description: 'Creative fatigue (0-100)'
+        meta:
+          metrics:
+            avg_fatigue:
+              type: average
+              label: 'Avg Fatigue Score'
+      - name: is_active
+        description: 'Whether creative is active'
+        meta:
+          dimension:
+            type: boolean
+
+  - name: pq_hypotheses
+    description: 'H1-H6 hypothesis tracking for Bratrax philosophy'
+    meta:
+      label: 'Hypotheses'
+      group_label: 'Primal Queen'
+    columns:
+      - name: hypothesis_id
+        description: 'Hypothesis ID (H1-H6)'
+        meta:
+          dimension:
+            type: string
+      - name: statement
+        description: 'Hypothesis statement'
+        meta:
+          dimension:
+            type: string
+      - name: status
+        description: 'Status (holding, stressed, breaking, validated)'
+        meta:
+          dimension:
+            type: string
+      - name: primary_metric
+        description: 'Primary metric this hypothesis tracks'
+        meta:
+          dimension:
+            type: string
+      - name: current_value
+        description: 'Current metric value'
+        meta:
+          dimension:
+            type: number
+      - name: threshold_value
+        description: 'Threshold for falsification'
+        meta:
+          dimension:
+            type: number
+      - name: days_in_current_status
+        description: 'Days in current status'
+        meta:
+          dimension:
+            type: number
+
+  - name: pq_signals
+    description: 'Active signals feed for Bratrax dashboard'
+    meta:
+      label: 'Signals'
+      group_label: 'Primal Queen'
+    columns:
+      - name: signal_id
+        description: 'Signal ID'
+        meta:
+          dimension:
+            type: string
+      - name: signal_type
+        description: 'Type (risk, warning, opportunity)'
+        meta:
+          dimension:
+            type: string
+      - name: title
+        description: 'Signal title'
+        meta:
+          dimension:
+            type: string
+      - name: description
+        description: 'Signal description'
+        meta:
+          dimension:
+            type: string
+      - name: affected_hypothesis
+        description: 'Related hypothesis'
+        meta:
+          dimension:
+            type: string
+      - name: status
+        description: 'Signal status'
+        meta:
+          dimension:
+            type: string
+
+  - name: pq_actions
+    description: 'Action board items'
+    meta:
+      label: 'Actions'
+      group_label: 'Primal Queen'
+    columns:
+      - name: action_id
+        description: 'Action ID'
+        meta:
+          dimension:
+            type: string
+      - name: title
+        description: 'Action title'
+        meta:
+          dimension:
+            type: string
+      - name: category
+        description: 'Category (acquisition, retention, expansion)'
+        meta:
+          dimension:
+            type: string
+      - name: linked_hypothesis
+        description: 'Related hypothesis'
+        meta:
+          dimension:
+            type: string
+      - name: status
+        description: 'Status (active, blocked, pending, completed)'
+        meta:
+          dimension:
+            type: string
+      - name: owner_initials
+        description: 'Owner initials'
+        meta:
+          dimension:
+            type: string
+      - name: progress_pct
+        description: 'Progress percentage'
+        meta:
+          dimension:
+            type: number
+
+  - name: pq_entities
+    description: '28 entity definitions with Bratrax philosophy'
+    meta:
+      label: 'Entities'
+      group_label: 'Primal Queen'
+    columns:
+      - name: entity_id
+        description: 'Entity ID'
+        meta:
+          dimension:
+            type: string
+      - name: entity_name
+        description: 'Entity name'
+        meta:
+          dimension:
+            type: string
+      - name: category
+        description: 'Category (core, financial, acquisition, derived, operations)'
+        meta:
+          dimension:
+            type: string
+      - name: domain
+        description: 'Taleb domain (mediocristan, transitional, extremistan)'
+        meta:
+          dimension:
+            type: string
+      - name: confidence_pct
+        description: 'Confidence percentage'
+        meta:
+          dimension:
+            type: number
+      - name: definition
+        description: 'Entity definition'
+        meta:
+          dimension:
+            type: string
+      - name: formula
+        description: 'Calculation formula'
+        meta:
+          dimension:
+            type: string
+      - name: falsifier
+        description: 'Falsification condition'
+        meta:
+          dimension:
+            type: string

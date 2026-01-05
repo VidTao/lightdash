@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: demo
+    description: 'Primal Queen demo data for Funnel of the Week dashboard'
+    database: 'bratrax'
+    schema: 'demo'
+    tables:
+      - name: daily_metrics
+        description: 'Daily North Star and input metrics time-series'
+      - name: customers
+        description: 'Customer master data with lifetime metrics'
+      - name: orders
+        description: 'Transaction-level order data'
+      - name: subscriptions
+        description: 'Subscription data for MRR tracking'
+      - name: ad_spend
+        description: 'Channel-level advertising spend and performance'
+      - name: creatives
+        description: 'Creative performance data (Extremistan domain)'
+      - name: hypotheses
+        description: 'H1-H6 hypothesis tracking'
+      - name: signals
+        description: 'Active signals feed'
+      - name: actions
+        description: 'Action board items'
+      - name: entities
+        description: '28 entity definitions with Bratrax philosophy'
