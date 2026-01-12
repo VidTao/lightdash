@@ -17,7 +17,6 @@ SELECT
     payload,
     buyer_id,
     buyer_name,
-    buyer_reference,
     buyer_revenue,
     `Lead Buyer`,
     campaign_id,

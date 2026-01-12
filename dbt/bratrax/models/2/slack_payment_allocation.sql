@@ -8,7 +8,7 @@
 
 SELECT
     client_id,
-    payment_delivery_id,
+    payment_allocation_id,
     payment_id,
     allocation_id,
     amount,

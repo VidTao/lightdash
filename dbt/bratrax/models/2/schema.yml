@@ -128,7 +128,7 @@ models:
                 dimension:
                     type: string
 
-          - name: payment_delivery_id
+          - name: payment_allocation_id
             description: 'Unique payment delivery record identifier'
             meta:
                 dimension:
@@ -559,13 +559,6 @@ models:
             meta:
                 dimension:
                     type: string
-
-          - name: buyer_reference
-            description: 'Buyer reference'
-            meta:
-                dimension:
-                    type: string
-
           - name: buyer_revenue
             description: 'Buyer revenue amount'
             meta:
