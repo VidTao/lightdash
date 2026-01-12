@@ -16,7 +16,10 @@ SELECT
     c.company_name,
     alloc.geos AS state,
     alloc.channel,
-    alloc.status,
+    CASE 
+        WHEN active_camp.allocation_id IS NOT NULL THEN 'active'
+        ELSE 'inactive'
+    END AS status,
     
     -- Allocation Type & Payment Info (from most recent payment)
     alloc_type.allocation_type,
@@ -44,8 +47,7 @@ FROM (
         buyer_id,
         bid,
         geos,
-        channel,
-        status
+        channel
     FROM `bratrax-without-flattening`.`cod`.`slack_allocation`
 ) alloc
 
