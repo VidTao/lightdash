@@ -1,0 +1,55 @@
+version: 2
+models:
+  - name: payments_allocations
+    description: SQL model for Payments allocations
+    meta:
+      label: Payments allocations
+    columns:
+      - name: bid
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: fee_amount
+        meta:
+          dimension:
+            type: number
+      - name: net_amount
+        meta:
+          dimension:
+            type: number
+      - name: payment_id
+        meta:
+          dimension:
+            type: string
+      - name: company_name
+        meta:
+          dimension:
+            type: string
+      - name: gross_amount
+        meta:
+          dimension:
+            type: number
+      - name: payment_type
+        meta:
+          dimension:
+            type: string
+      - name: invoice_number
+        meta:
+          dimension:
+            type: string
+      - name: payment_method
+        meta:
+          dimension:
+            type: string
+      - name: payment_date_day
+        meta:
+          dimension:
+            type: timestamp
+      - name: allocation_summary
+        meta:
+          dimension:
+            type: string
