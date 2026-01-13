@@ -1,6 +1,6 @@
 version: 2
 models:
-  - name: payments_x_allocations
+  - name: payments_allocations
     description: SQL model for Payments x allocations
     meta:
       label: Payments x allocations
