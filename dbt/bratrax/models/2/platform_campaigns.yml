@@ -1,0 +1,63 @@
+version: 2
+models:
+  - name: platform_campaigns
+    description: SQL model for Platform campaigns
+    meta:
+      label: Platform campaigns
+    columns:
+      - name: bid
+        meta:
+          dimension:
+            type: string
+      - name: status
+        meta:
+          dimension:
+            type: string
+      - name: channel
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: account_id
+        meta:
+          dimension:
+            type: string
+      - name: created_at
+        meta:
+          dimension:
+            type: timestamp
+      - name: campaign_id
+        meta:
+          dimension:
+            type: string
+      - name: total_spend
+        meta:
+          dimension:
+            type: number
+      - name: daily_budget
+        meta:
+          dimension:
+            type: number
+      - name: allocation_id
+        meta:
+          dimension:
+            type: string
+      - name: campaign_name
+        meta:
+          dimension:
+            type: string
+      - name: campaign_type
+        meta:
+          dimension:
+            type: string
+      - name: campaign_limit
+        meta:
+          dimension:
+            type: number
+      - name: lifetime_budget
+        meta:
+          dimension:
+            type: number
