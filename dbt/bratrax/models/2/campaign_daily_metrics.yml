@@ -1,0 +1,43 @@
+version: 2
+models:
+  - name: campaign_daily_metrics
+    description: SQL model for Campaign daily metrics
+    meta:
+      label: Campaign daily metrics
+    columns:
+      - name: cpl
+        meta:
+          dimension:
+            type: number
+      - name: date
+        meta:
+          dimension:
+            type: date
+      - name: leads
+        meta:
+          dimension:
+            type: number
+      - name: spend
+        meta:
+          dimension:
+            type: number
+      - name: clicks
+        meta:
+          dimension:
+            type: number
+      - name: channel
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: campaign_id
+        meta:
+          dimension:
+            type: string
+      - name: impressions
+        meta:
+          dimension:
+            type: number
