@@ -119,4 +119,4 @@ SELECT
     m.cpl
 FROM unified_metrics m
 INNER JOIN `bratrax-without-flattening.cod.platform_campaigns` pc 
-    ON m.campaign_id = pc.campaign_id;
+    ON m.campaign_id = pc.campaign_id
