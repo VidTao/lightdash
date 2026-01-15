@@ -137,4 +137,4 @@ LEFT JOIN (
     GROUP BY campaign_id
 ) spend ON c.campaign_id = spend.campaign_id
 WHERE c.client_id IS NOT NULL
-ORDER BY c.created_at DESC;
+ORDER BY c.created_at DESC
