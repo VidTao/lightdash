@@ -95,7 +95,7 @@ LEFT JOIN (
 LEFT JOIN (
     SELECT 
         allocation_id, 
-        MAX(campaign_limit)+10 AS campaign_limit
+        MAX(campaign_limit) AS campaign_limit
     FROM `bratrax-without-flattening`.`cod`.`platform_campaigns`
     WHERE LOWER(status) = 'active'
     GROUP BY allocation_id
