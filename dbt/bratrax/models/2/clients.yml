@@ -1,0 +1,51 @@
+version: 2
+models:
+  - name: clients
+    description: SQL model for Clients
+    meta:
+      label: Clients
+    columns:
+      - name: bid
+        meta:
+          dimension:
+            type: string
+      - name: status
+        meta:
+          dimension:
+            type: string
+      - name: buyer_id
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: created_at
+        meta:
+          dimension:
+            type: number
+      - name: company_name
+        meta:
+          dimension:
+            type: string
+      - name: contact_name
+        meta:
+          dimension:
+            type: string
+      - name: contact_email
+        meta:
+          dimension:
+            type: number
+      - name: account_manager
+        meta:
+          dimension:
+            type: number
+      - name: current_balance
+        meta:
+          dimension:
+            type: number
+      - name: relationship_types
+        meta:
+          dimension:
+            type: string
