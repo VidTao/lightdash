@@ -1,10 +1,8 @@
--- @block_type: explore
--- @model_type: table
--- Clients - Client and buyer information with relationship types
-{{ config(
-    materialized = 'view',
-    alias = 'clients_view'
-) }}
+{{
+  config(
+    tags=['created-by-lightdash']
+  )
+}}
 
 WITH buyer_base AS (
     SELECT DISTINCT
