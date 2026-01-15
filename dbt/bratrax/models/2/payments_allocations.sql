@@ -4,7 +4,7 @@
     tags=['created-by-lightdash']
   )
 }}
-  
+
 SELECT
     -- Primary Keys / Dimensions
     payments.client_id,
