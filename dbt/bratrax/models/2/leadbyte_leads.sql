@@ -136,7 +136,7 @@ FROM valid_invalid vi
 LEFT JOIN sold_unsold su
   ON vi.lead_id = su.lead_id
 LEFT JOIN `bratrax-without-flattening.cod.us_states_view` st
-  ON vi.state_raw = st.state_raw;
+  ON vi.state_raw = st.state_raw
 
 
 -- ============================================================

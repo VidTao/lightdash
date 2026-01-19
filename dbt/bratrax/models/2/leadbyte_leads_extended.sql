@@ -136,4 +136,4 @@ LEFT JOIN `bratrax-without-flattening.cod.leadbyte_deliveries_list` d
   ON su.delivery_name = d.Reference
 
 LEFT JOIN `bratrax-without-flattening.cod.us_states_view` st
-  ON COALESCE(su.state, vi.state) = st.state_raw;
+  ON COALESCE(su.state, vi.state) = st.state_raw
