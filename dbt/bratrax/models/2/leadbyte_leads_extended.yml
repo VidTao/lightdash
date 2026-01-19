@@ -1,0 +1,251 @@
+version: 2
+models:
+  - name: leadbyte_leads_extended
+    description: SQL model for Leadbyte leads extended
+    meta:
+      label: Leadbyte leads extended
+    columns:
+      - name: date
+        meta:
+          dimension:
+            type: date
+      - name: country
+        meta:
+          dimension:
+            type: string
+      - name: is_sold
+        meta:
+          dimension:
+            type: boolean
+      - name: lead_c1
+        meta:
+          dimension:
+            type: string
+      - name: lead_c2
+        meta:
+          dimension:
+            type: string
+      - name: lead_c3
+        meta:
+          dimension:
+            type: string
+      - name: lead_id
+        meta:
+          dimension:
+            type: string
+      - name: revenue
+        meta:
+          dimension:
+            type: number
+      - name: buyer_id
+        meta:
+          dimension:
+            type: string
+      - name: lead_sid
+        meta:
+          dimension:
+            type: string
+      - name: buyer_bid
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: lead_ssid
+        meta:
+          dimension:
+            type: string
+      - name: state_raw
+        meta:
+          dimension:
+            type: string
+      - name: buyer_name
+        meta:
+          dimension:
+            type: string
+      - name: deliver_to
+        meta:
+          dimension:
+            type: string
+      - name: lead_email
+        meta:
+          dimension:
+            type: string
+      - name: lead_phone
+        meta:
+          dimension:
+            type: string
+      - name: state_code
+        meta:
+          dimension:
+            type: string
+      - name: state_name
+        meta:
+          dimension:
+            type: string
+      - name: campaign_id
+        meta:
+          dimension:
+            type: string
+      - name: delivery_id
+        meta:
+          dimension:
+            type: string
+      - name: lead_source
+        meta:
+          dimension:
+            type: string
+      - name: lead_status
+        meta:
+          dimension:
+            type: string
+      - name: supplier_id
+        meta:
+          dimension:
+            type: string
+      - name: delivery_cap
+        meta:
+          dimension:
+            type: number
+      - name: lead_request
+        meta:
+          dimension:
+            type: string
+      - name: processed_at
+        meta:
+          dimension:
+            type: timestamp
+      - name: publish_time
+        meta:
+          dimension:
+            type: timestamp
+      - name: supplier_sid
+        meta:
+          dimension:
+            type: string
+      - name: attribute_tag
+        meta:
+          dimension:
+            type: string
+      - name: campaign_name
+        meta:
+          dimension:
+            type: string
+      - name: delivery_name
+        meta:
+          dimension:
+            type: string
+      - name: lead_fullname
+        meta:
+          dimension:
+            type: string
+      - name: supplier_name
+        meta:
+          dimension:
+            type: string
+      - name: in_sold_unsold
+        meta:
+          dimension:
+            type: boolean
+      - name: delivery_credit
+        meta:
+          dimension:
+            type: number
+      - name: delivery_status
+        meta:
+          dimension:
+            type: string
+      - name: received_at_utc
+        meta:
+          dimension:
+            type: timestamp
+      - name: supplier_status
+        meta:
+          dimension:
+            type: string
+      - name: delivery_request
+        meta:
+          dimension:
+            type: string
+      - name: delivery_sent_at
+        meta:
+          dimension:
+            type: timestamp
+      - name: in_valid_invalid
+        meta:
+          dimension:
+            type: boolean
+      - name: campaign_currency
+        meta:
+          dimension:
+            type: string
+      - name: campaign_reference
+        meta:
+          dimension:
+            type: string
+      - name: delivery_daily_cap
+        meta:
+          dimension:
+            type: number
+      - name: delivery_total_cap
+        meta:
+          dimension:
+            type: number
+      - name: processed_at_final
+        meta:
+          dimension:
+            type: timestamp
+      - name: delivery_hourly_cap
+        meta:
+          dimension:
+            type: number
+      - name: delivery_weekly_cap
+        meta:
+          dimension:
+            type: number
+      - name: supplier_commission
+        meta:
+          dimension:
+            type: number
+      - name: allocation_reference
+        meta:
+          dimension:
+            type: string
+      - name: delivery_monthly_cap
+        meta:
+          dimension:
+            type: number
+      - name: supplier_payout_type
+        meta:
+          dimension:
+            type: string
+      - name: delivery_buyer_revenue
+        meta:
+          dimension:
+            type: number
+      - name: delivery_config_status
+        meta:
+          dimension:
+            type: string
+      - name: validation_record_type
+        meta:
+          dimension:
+            type: string
+      - name: campaign_delivery_model
+        meta:
+          dimension:
+            type: string
+      - name: distribution_record_type
+        meta:
+          dimension:
+            type: string
+      - name: validation_callback_type
+        meta:
+          dimension:
+            type: string
+      - name: distribution_callback_type
+        meta:
+          dimension:
+            type: string
