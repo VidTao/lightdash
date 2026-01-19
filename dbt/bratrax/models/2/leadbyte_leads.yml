@@ -1,6 +1,6 @@
 version: 2
 models:
-  - name: leadbyte_leads_extended
+  - name: leadbyte_leads
     description: SQL model for Leadbyte leads extended
     meta:
       label: Leadbyte leads extended
