@@ -59,11 +59,11 @@ SELECT
   su.campaign_delivery_model,
   
   -- ============================================================
-  -- Buyer Info (from sold_unsold only)
+  -- Buyer Info (from sold_unsold, enriched from clients)
   -- ============================================================
   su.buyer_id,
   su.buyer_bid,
-  su.buyer_name,
+  COALESCE(c.company_name, su.buyer_name) AS buyer_name,
   
   -- ============================================================
   -- Delivery Info (from sold_unsold + deliveries_list)
@@ -103,8 +103,9 @@ SELECT
   -- Lead Status (Derived)
   -- ============================================================
   CASE 
-    WHEN su.lead_id IS NULL THEN 'Validation Only'
-    WHEN su.revenue > 0 THEN 'Sold'
+    WHEN COALESCE(su.campaign_reference, vi.campaign_reference) LIKE '%DISQUALIFIED%' THEN 'Disqualified'
+    WHEN su.lead_id IS NOT NULL AND su.revenue > 0 THEN 'Sold - PPL'
+    WHEN su.lead_id IS NOT NULL THEN 'Sold - Retainer'
     ELSE 'Unsold'
   END AS lead_status,
   
@@ -113,7 +114,11 @@ SELECT
   -- ============================================================
   vi.lead_id IS NOT NULL AS in_valid_invalid,
   su.lead_id IS NOT NULL AS in_sold_unsold,
-  su.revenue > 0 AS is_sold,
+  CASE
+    WHEN COALESCE(su.campaign_reference, vi.campaign_reference) LIKE '%DISQUALIFIED%' THEN FALSE
+    WHEN su.lead_id IS NOT NULL THEN TRUE
+    ELSE FALSE
+  END AS is_sold,
   
   -- ============================================================
   -- Metadata
@@ -137,3 +142,6 @@ LEFT JOIN `bratrax-without-flattening.cod.leadbyte_deliveries_list` d
 
 LEFT JOIN `bratrax-without-flattening.cod.us_states_view` st
   ON COALESCE(su.state, vi.state) = st.state_raw
+
+LEFT JOIN `bratrax-without-flattening.cod.clients` c
+  ON su.buyer_id = c.buyer_id
