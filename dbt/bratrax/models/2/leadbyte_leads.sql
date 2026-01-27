@@ -139,6 +139,7 @@ FULL OUTER JOIN `bratrax-without-flattening.cod.leadbyte_webhook_sold_unsold` su
 
 LEFT JOIN `bratrax-without-flattening.cod.leadbyte_deliveries_list` d
   ON su.delivery_name = d.Reference
+  AND d.status = 'Active'
 
 LEFT JOIN `bratrax-without-flattening.cod.us_states_view` st
   ON COALESCE(su.state, vi.state) = st.state_raw
