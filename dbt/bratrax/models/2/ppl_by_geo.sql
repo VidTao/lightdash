@@ -26,9 +26,17 @@ FROM (
       COALESCE(sm.state_code, 'UNMAPPED') AS state_code,
       COALESCE(sm.state_name, 'Unmapped Spend') AS state_name,
       fb.spend
-    FROM `bratrax-without-flattening.cod.facebook_adsinsights_geo` fb
+    FROM (
+      SELECT 
+        campaign_id,
+        date_start,
+        region,
+        SUM(spend) AS spend
+      FROM `bratrax-without-flattening.cod.facebook_adsinsights_geo`
+      GROUP BY campaign_id, date_start, region
+    ) fb
     LEFT JOIN `bratrax-without-flattening.cod.ref_state_mapping` sm
-      ON fb.region = sm.state_name
+      ON fb.region = sm.state_raw
     INNER JOIN `bratrax-without-flattening.cod.platform_campaigns` pc
       ON fb.campaign_id = pc.campaign_id
     WHERE pc.campaign_type = 'ppl'
@@ -40,8 +48,16 @@ FROM (
       g.date AS date,
       COALESCE(sm.state_code, 'UNMAPPED') AS state_code,
       COALESCE(sm.state_name, 'Unmapped Spend') AS state_name,
-      g.cost_micros / 1000000.0 AS spend
-    FROM `bratrax-without-flattening.cod.google_geo_performance_report` g
+      g.spend
+    FROM (
+      SELECT 
+        campaign_id,
+        date,
+        geo_target_region,
+        SUM(cost_micros) / 1000000.0 AS spend
+      FROM `bratrax-without-flattening.cod.google_geo_performance_report`
+      GROUP BY campaign_id, date, geo_target_region
+    ) g
     LEFT JOIN `bratrax-without-flattening.cod.ref_state_mapping` sm
       ON g.geo_target_region = sm.state_raw
     INNER JOIN `bratrax-without-flattening.cod.platform_campaigns` pc
