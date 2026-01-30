@@ -1,0 +1,31 @@
+version: 2
+models:
+  - name: ppl_by_geo
+    description: SQL model for Ppl by geo
+    meta:
+      label: Ppl by geo
+    columns:
+      - name: date
+        meta:
+          dimension:
+            type: date
+      - name: leads
+        meta:
+          dimension:
+            type: number
+      - name: spend
+        meta:
+          dimension:
+            type: number
+      - name: revenue
+        meta:
+          dimension:
+            type: number
+      - name: state_code
+        meta:
+          dimension:
+            type: string
+      - name: state_name
+        meta:
+          dimension:
+            type: string
