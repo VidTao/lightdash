@@ -1,0 +1,55 @@
+version: 2
+models:
+  - name: drasko_test
+    description: SQL model for Drasko test
+    meta:
+      label: Drasko test
+    columns:
+      - name: user_id
+        meta:
+          dimension:
+            type: string
+      - name: language
+        meta:
+          dimension:
+            type: string
+      - name: search_id
+        meta:
+          dimension:
+            type: number
+      - name: country_id
+        meta:
+          dimension:
+            type: number
+      - name: updated_at
+        meta:
+          dimension:
+            type: string
+      - name: inserted_at
+        meta:
+          dimension:
+            type: string
+      - name: search_term
+        meta:
+          dimension:
+            type: string
+      - name: search_type
+        meta:
+          dimension:
+            type: string
+      - name: videos_type
+        meta:
+          dimension:
+            type: string
+      - name: category_ids
+        meta:
+          dimension:
+            type: string
+      - name: duration_less_than
+        meta:
+          dimension:
+            type: number
+      - name: duration_more_than
+        meta:
+          dimension:
+            type: number
