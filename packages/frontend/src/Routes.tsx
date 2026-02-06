@@ -10,6 +10,7 @@ import PinterestCallback from './bratrax-implementation/callbacks/PinterestCallb
 import ShopifyConnectCallback from './bratrax-implementation/callbacks/ShopifyConnectCallback';
 import ShopifySuccessCallback from './bratrax-implementation/callbacks/ShopifySuccessCallback';
 import StripeCallback from './bratrax-implementation/callbacks/StripeCallback';
+import TikTokAdsCallback from './bratrax-implementation/callbacks/TikTokAdsCallback';
 import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
 import StoreSettings from './bratrax-implementation/pages/Settings';
 import TermsOfService from './bratrax-implementation/pages/TermsOfService';
@@ -388,6 +389,10 @@ const CALLBACK_ROUTES: RouteObject[] = [
     {
         path: '/stripe/callback',
         element: <StripeCallback />,
+    },
+    {
+        path: '/tiktok-ads/callback',
+        element: <TikTokAdsCallback />,
     },
 ];
 

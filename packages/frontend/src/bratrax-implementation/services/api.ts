@@ -614,6 +614,37 @@ export class ApiService {
         }
     };
 
+    getTikTokAdsAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/tiktok-ads/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting TikTok Ads auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateTikTokAdsTokensDataAndSaveinBQ = async (
+        code: string,
+        state: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/tiktok-ads/insertTokensData`,
+                {
+                    code: code,
+                    state: state,
+                },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating TikTok Ads tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

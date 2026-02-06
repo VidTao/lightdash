@@ -16,6 +16,7 @@ import PinterestConnector from '../platforms/PinterestConnector';
 import ShopifyConnector from '../platforms/ShopifyConnector';
 import StripeConnector from '../platforms/StripeConnector';
 import TaboolaConnector from '../platforms/TaboolaConnector';
+import { TikTokAdsConnector } from '../platforms/TikTokAdsConnector';
 import { apiService } from '../services/api';
 
 const Dashboard = () => {
@@ -158,6 +159,13 @@ const Dashboard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                         <TaboolaConnector crmConnections={crmConnections['Taboola'] || []} platformConnection={platformConnections['Taboola']} isLoading={platformLoading} />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <TikTokAdsConnector 
+                            adConnections={adConnections['TikTokAds'] || []}
+                            platformConnection={platformConnections['TikTokAds']}
+                            isLoading={adLoading || platformLoading}
+                        />
                     </Box>
                 </SimpleGrid>
             </Container>
