@@ -1,37 +1,19 @@
+import { colorsTuple } from '@mantine-8/core';
 import {
     rem,
     type ColorScheme,
     type MantineThemeOverride,
     type Tuple,
 } from '@mantine/core';
+import type {} from 'csstype';
+// eslint-disable-next-line css-modules/no-unused-class
+import styles from './styles/mantine-overrides/tooltip.module.css';
 
 type ColorTuple = Tuple<string, 10>;
 
 const lightModeColors = {
-    background: [
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-    ] as ColorTuple,
-    foreground: [
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-    ] as ColorTuple,
+    background: colorsTuple('#FEFEFE') as ColorTuple,
+    foreground: colorsTuple('#1A1B1E') as ColorTuple,
 
     ldDark: [
         '#C9C9C9',
@@ -61,55 +43,88 @@ const lightModeColors = {
 };
 
 const darkModeColors = {
-    background: [
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-        '#1A1B1E',
-    ] as ColorTuple,
-    foreground: [
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-        '#FEFEFE',
-    ] as ColorTuple,
+    background: colorsTuple('#1A1B1E') as ColorTuple,
+    foreground: colorsTuple('#FEFEFE') as ColorTuple,
 
     ldDark: [
-        '#f3f5ff',
-        '#d8e0e2',
-        '#c0c7c9',
-        '#a8aeb0',
-        '#909597',
-        '#787c7e',
-        '#606365',
-        '#484a4c',
-        '#303133',
-        '#18181a',
+        '#101113',
+        '#141517',
+        '#1A1B1E',
+        '#25262b',
+        '#2C2E33',
+        '#373A40',
+        '#5c5f66',
+        '#909296',
+        '#A6A7AB',
+        '#C1C2C5',
     ] as ColorTuple,
     ldGray: [
-        '#2e2e32',
-        '#414145',
-        '#545458',
-        '#67676b',
-        '#7a7a7e',
-        '#8d8d91',
-        '#a0a0a4',
-        '#b3b3b7',
-        '#c6c6ca',
-        '#d9d9df',
+        '#28282c',
+        '#343437',
+        '#404044',
+        '#4d4d4f',
+        '#59595c',
+        '#77777c',
+        '#858588',
+        '#949498',
+        '#a2a2a7',
+        '#b0b0bd',
     ] as ColorTuple,
+};
+
+// Colors used for conditional formatting in dark mode
+export const DARK_MODE_COLORS = {
+    SUBTLE_GRAY: darkModeColors.ldDark[4],
+    CONTRAST_GRAY: darkModeColors.ldDark[6],
+} as const;
+
+export interface LightdashFieldColors {
+    /** CSS variable for background color (auto-switches for dark/light modes) */
+    bg: string;
+    /** CSS variable for hover background color */
+    bgHover: string;
+    /** CSS variable for text color */
+    color: string;
+    /** CSS variable for column header text color */
+    columnHeaderColor: string;
+    /** Mantine color token for component color property */
+    mantineColor: string;
+}
+
+export const LD_FIELD_COLORS = {
+    dimension: {
+        bg: 'light-dark(#EDF0FD, #202539)',
+        bgHover: 'light-dark(#4b69ef28, #4b69ef35)',
+        color: 'light-dark(#3b5bdb, #95aaf0)',
+        columnHeaderColor: 'light-dark(#1c2b67, #93acff)',
+        mantineColor: 'dimension',
+    },
+    metric: {
+        bg: 'light-dark(#FBE9E0, #3E2F1A)',
+        bgHover: 'light-dark(#e8590c30, #81510d75)',
+        color: 'light-dark(#de7f0b, #e08a20)',
+        columnHeaderColor: 'light-dark(#502e06, #de7f0b)',
+        mantineColor: 'metric',
+    },
+    calculation: {
+        bg: 'light-dark(#EBF5ED, #1D3525)',
+        bgHover: 'light-dark(#2f9e4428, #23753565)',
+        color: 'light-dark(#2b8a3e, #38af4d)',
+        columnHeaderColor: 'light-dark(#1b5326, #48b95d)',
+        mantineColor: 'calculation',
+    },
+    DEFAULT: {
+        bg: 'var(--mantine-color-gray-light)',
+        bgHover: 'var(--mantine-color-gray-light-hover)',
+        color: 'var(--mantine-color-gray-light-color)',
+        columnHeaderColor: 'var(--mantine-color-gray-light-color)',
+        mantineColor: 'ldGray',
+    },
+} satisfies {
+    dimension: LightdashFieldColors;
+    metric: LightdashFieldColors;
+    calculation: LightdashFieldColors;
+    DEFAULT: LightdashFieldColors;
 };
 
 export const getMantineThemeOverride = (
@@ -150,6 +165,7 @@ export const getMantineThemeOverride = (
         },
 
         fontFamily: [
+            'Inter',
             '-apple-system',
             'BlinkMacSystemFont',
             'Segoe UI',
@@ -173,6 +189,7 @@ export const getMantineThemeOverride = (
         shadows: {
             subtle: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
             heavy: '0px 12px 16px -4px rgba(10, 13, 18, 0.08), 0px 4px 6px -2px rgba(10, 13, 18, 0.03), 0px 2px 2px -1px rgba(10, 13, 18, 0.04)',
+            bottomFade: '0 0 0 1px #bec1c426',
         },
 
         components: {
@@ -180,18 +197,19 @@ export const getMantineThemeOverride = (
                 variants: {
                     darkPrimary: (theme) => ({
                         root: {
-                            background: `var(--mantine-color-ldDark-9)`,
+                            background: `var(--mantine-color-foreground-0)`,
                             borderRadius: theme.radius.md,
-                            color: `var(--mantine-color-ldDark-0)`,
+                            color: `var(--mantine-color-ldGray-0)`,
+                            boxShadow: `inset 0 -2px 0 0 color-mix(in srgb, var(--mantine-color-ldDark-0) 40%, transparent)`, // glossy effect
                             ...theme.fn.hover({
-                                background: `var(--mantine-color-ldDark-8)`,
+                                background: `color-mix(in srgb, var(--mantine-color-foreground-0) 80%, transparent)`,
                             }),
                             '&[data-loading]': {
                                 boxShadow: theme.shadows.subtle,
                             },
                             '&[data-disabled]': {
                                 boxShadow: theme.shadows.subtle,
-                                color: `var(--mantine-color-ldDark-5)`,
+                                color: `color-mix(in srgb, var(--mantine-color-foreground-0) 50%, transparent)`,
                             },
                         },
                     }),
@@ -206,6 +224,9 @@ export const getMantineThemeOverride = (
             },
 
             Tooltip: {
+                classNames: {
+                    tooltip: styles.tooltipMantine6,
+                },
                 defaultProps: {
                     withArrow: true,
                 },
@@ -275,6 +296,7 @@ export const getMantineThemeOverride = (
             transitionTimingFunction: 'ease-in-out',
             transitionDuration: 200, // in ms
             chartFont: 'Inter, sans-serif',
+            ldField: LD_FIELD_COLORS,
             explorerItemBg: {
                 dimension: {
                     light: '#d2dbe9',
@@ -304,7 +326,10 @@ export const getMantineThemeOverride = (
             },
 
             'html, body': {
-                backgroundColor: theme.colors.ldGray[0],
+                backgroundColor:
+                    theme.colorScheme === 'dark'
+                        ? theme.colors.ldDark[0]
+                        : theme.colors.ldGray[0],
             },
 
             body: {
@@ -324,10 +349,6 @@ export const getMantineThemeOverride = (
                 fontWeight: 600,
             },
 
-            '.react-draggable.react-draggable-dragging .tile-base': {
-                border: `1px solid ${theme.colors.blue[5]}`,
-            },
-
             '.ace_editor.ace_autocomplete': {
                 width: '500px',
             },
@@ -335,9 +356,19 @@ export const getMantineThemeOverride = (
                 fontFamily:
                     "Menlo, 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace",
             },
+            '.wmde-markdown, .wmde-markdown-var': {
+                fontFamily: theme.fontFamily,
+            },
             '@keyframes fadeIn': {
                 from: { opacity: 0 },
                 to: { opacity: 1 },
             },
+            ...(theme.colorScheme === 'dark'
+                ? {
+                      '[class*="mantine-"][data-with-border]': {
+                          borderColor: theme.colors.ldDark[4],
+                      },
+                  }
+                : undefined),
         }),
-    } satisfies MantineThemeOverride);
+    }) satisfies MantineThemeOverride;

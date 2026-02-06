@@ -2,6 +2,7 @@ import {
     AnyType,
     ApiErrorPayload,
     ApiJobStatusResponse,
+    ApiReassignSchedulerOwnerResponse,
     ApiScheduledJobsResponse,
     ApiSchedulerAndTargetsResponse,
     ApiSchedulerLogsResponse,
@@ -9,9 +10,9 @@ import {
     ApiSchedulerRunsResponse,
     ApiSchedulersResponse,
     ApiTestSchedulerResponse,
+    AuthorizationError,
     KnexPaginateArgs,
-    ParameterError,
-    SchedulerFormat,
+    ReassignSchedulerOwnerRequest,
     SchedulerJobStatus,
     SchedulerRunStatus,
 } from '@lightdash/common';
@@ -53,6 +54,7 @@ const VALID_DESTINATIONS = ['email', 'slack', 'msteams', 'gsheets'] as const;
 export class SchedulerController extends BaseController {
     /**
      * Get scheduled logs
+     * @summary Get scheduler logs
      * @param req express request
      * @param projectUuid The uuid of the project
      * @param pageSize number of items per page
@@ -217,7 +219,82 @@ export class SchedulerController extends BaseController {
     }
 
     /**
+     * List all schedulers for the current user across all projects with pagination, search, sorting, and filtering
+     * @summary List user schedulers
+     * @param req express request
+     * @param pageSize number of items per page
+     * @param page page number
+     * @param searchQuery search query to filter schedulers by name
+     * @param sortBy column to sort by
+     * @param sortDirection sort direction (asc or desc)
+     * @param formats filter by scheduler formats (comma-separated)
+     * @param resourceType filter by resource type (chart or dashboard)
+     * @param resourceUuids filter by resource UUIDs (comma-separated)
+     * @param destinations filter by destination types (comma-separated: email, slack, msteams)
+     * @param includeLatestRun include latest run information for each scheduler
+     */
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('user-schedulers')
+    @OperationId('listUserSchedulers')
+    async getUserSchedulers(
+        @Request() req: express.Request,
+        @Query() pageSize?: number,
+        @Query() page?: number,
+        @Query() searchQuery?: string,
+        @Query() sortBy?: 'name' | 'createdAt',
+        @Query() sortDirection?: 'asc' | 'desc',
+        @Query() formats?: string,
+        @Query() resourceType?: 'chart' | 'dashboard',
+        @Query() resourceUuids?: string,
+        @Query() destinations?: string,
+        @Query() includeLatestRun?: boolean,
+    ): Promise<ApiSchedulersResponse> {
+        this.setStatus(200);
+        let paginateArgs: KnexPaginateArgs | undefined;
+
+        if (pageSize && page) {
+            paginateArgs = {
+                page,
+                pageSize,
+            };
+        }
+
+        let sort: { column: string; direction: 'asc' | 'desc' } | undefined;
+        if (sortBy && sortDirection) {
+            sort = {
+                column: sortBy,
+                direction: sortDirection,
+            };
+        }
+
+        return {
+            status: 'ok',
+            results: await this.services
+                .getSchedulerService()
+                .getUserSchedulers(
+                    req.user!,
+                    paginateArgs,
+                    searchQuery,
+                    sort,
+                    {
+                        formats: formats ? formats.split(',') : undefined,
+                        resourceType,
+                        resourceUuids: resourceUuids
+                            ? resourceUuids.split(',')
+                            : undefined,
+                        destinations: destinations
+                            ? destinations.split(',')
+                            : undefined,
+                    },
+                    includeLatestRun,
+                ),
+        };
+    }
+
+    /**
      * List all schedulers with pagination, search, sorting, and filtering
+     * @summary List schedulers
      * @param req express request
      * @param projectUuid
      * @param pageSize number of items per page
@@ -296,6 +373,7 @@ export class SchedulerController extends BaseController {
 
     /**
      * Get a scheduler
+     * @summary Get scheduler
      * @param schedulerUuid The uuid of the scheduler to update
      * @param req express request
      */
@@ -318,6 +396,7 @@ export class SchedulerController extends BaseController {
 
     /**
      * Update a scheduler
+     * @summary Update scheduler
      * @param schedulerUuid The uuid of the scheduler to update
      * @param req express request
      * @param body the new scheduler data
@@ -346,6 +425,7 @@ export class SchedulerController extends BaseController {
 
     /**
      * Set scheduler enabled
+     * @summary Update scheduler enabled status
      * @param schedulerUuid The uuid of the scheduler to update
      * @param req express request
      * @param body the enabled flag
@@ -373,7 +453,46 @@ export class SchedulerController extends BaseController {
     }
 
     /**
+     * Reassign ownership of multiple schedulers
+     * @summary Reassign scheduler owner
+     * @param projectUuid The uuid of the project
+     * @param req express request
+     * @param body the scheduler UUIDs and new owner UUID
+     */
+    @Middlewares([
+        allowApiKeyAuthentication,
+        isAuthenticated,
+        unauthorisedInDemo,
+    ])
+    @SuccessResponse('200', 'Success')
+    @Patch('/{projectUuid}/reassign-owner')
+    @OperationId('reassignSchedulerOwner')
+    async reassignOwner(
+        @Path() projectUuid: string,
+        @Request() req: express.Request,
+        @Body() body: ReassignSchedulerOwnerRequest,
+    ): Promise<ApiReassignSchedulerOwnerResponse> {
+        if (!req.user) {
+            throw new AuthorizationError('User session not found');
+        }
+
+        this.setStatus(200);
+        return {
+            status: 'ok',
+            results: await this.services
+                .getSchedulerService()
+                .reassignSchedulerOwner(
+                    req.user,
+                    projectUuid,
+                    body.schedulerUuids,
+                    body.newOwnerUserUuid,
+                ),
+        };
+    }
+
+    /**
      * Delete a scheduler
+     * @summary Delete scheduler
      * @param schedulerUuid The uuid of the scheduler to delete
      * @param req express request
      */
@@ -404,6 +523,7 @@ export class SchedulerController extends BaseController {
 
     /**
      * Get scheduled jobs
+     * @summary Get scheduled jobs
      * @param schedulerUuid The uuid of the scheduler to update
      * @param req express request
      */
@@ -427,6 +547,7 @@ export class SchedulerController extends BaseController {
     /**
      * Get a generic job status
      * This method can be used when polling from the frontend
+     * @summary Get scheduler job status
      * @param jobId the jobId for the status to check
      * @param req express request
      */
@@ -453,6 +574,7 @@ export class SchedulerController extends BaseController {
 
     /**
      * Send a scheduler now before saving it
+     * @summary Send scheduler
      * @param req express request
      * @param body the create scheduler data
      */

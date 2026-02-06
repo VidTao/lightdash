@@ -1,14 +1,13 @@
 import { AgentToolOutput, assertUnreachable, Explore } from '@lightdash/common';
 import * as Sentry from '@sentry/node';
 import {
-    generateObject,
+    APICallError,
     generateText,
-    NoSuchToolError,
     smoothStream,
     stepCountIs,
     streamText,
-    ToolCallRepairFunction,
-    ToolSet,
+    StreamTextResult,
+    type Output,
 } from 'ai';
 import Logger from '../../../../logging/logger';
 import { getSystemPromptV2 } from '../prompts/systemV2';
@@ -26,6 +25,7 @@ import type {
     AiStreamAgentResponseArgs,
 } from '../types/aiAgent';
 import { AgentContext } from '../utils/AgentContext';
+import { getUserFacingErrorMessage } from '../utils/errorMessages';
 
 const createAiAgentLogger =
     (debugLoggingEnabled: boolean) => (context: string, message: string) => {
@@ -62,75 +62,7 @@ const getAgentTelemetryConfig = (
             threadUuid,
             promptUuid,
         },
-    } as const);
-
-const getRepairToolCall =
-    (args: AiAgentArgs, tools: ToolSet): ToolCallRepairFunction<typeof tools> =>
-    async ({ messages: conversationHistory, error, toolCall, inputSchema }) => {
-        const logger = createAiAgentLogger(args.debugLoggingEnabled);
-        logger(
-            'Repair Tool Call',
-            `Attempting to repair tool call: ${toolCall.toolName}`,
-        );
-        logger(
-            'Repair Tool Call',
-            `Original tool call arguments: ${JSON.stringify(toolCall.input)}`,
-        );
-        if (error) {
-            logger('Repair Tool Call', `Error encountered: ${error.message}`);
-        }
-        if (NoSuchToolError.isInstance(error)) {
-            logger(
-                'Repair Tool Call',
-                `No such tool error for ${toolCall.toolName}. Returning null.`,
-            );
-            return null;
-        }
-
-        const tool = tools[toolCall.toolName as keyof typeof tools];
-        if (!tool) {
-            if (args.debugLoggingEnabled) {
-                Logger.warn(
-                    `[AiAgent][Repair Tool Call] Tool ${toolCall.toolName} not found in available tools.`,
-                );
-            }
-            return null; // Should ideally not happen if NoSuchToolError is handled
-        }
-
-        // TODO: extract this as separate agent
-        logger(
-            'Repair Tool Call',
-            `Generating repaired object for tool: ${toolCall.toolName}`,
-        );
-        const { object: repairedArgs } = await generateObject({
-            model: args.model,
-            schema: tool.inputSchema,
-            messages: [
-                ...conversationHistory,
-                {
-                    role: 'system',
-                    content: [
-                        `The model tried to call the tool "${toolCall.toolName}"` +
-                            ` with the following arguments:`,
-                        JSON.stringify(toolCall.input),
-                        `The tool accepts the following schema:`,
-                        JSON.stringify(inputSchema(toolCall)),
-                        'Please fix the arguments.',
-                    ].join('\n'),
-                },
-            ],
-            experimental_telemetry: getAgentTelemetryConfig(
-                'generateAgentResponse/repairToolCall',
-                args,
-            ),
-        });
-
-        logger(
-            'Repair Tool Call',
-            `Repaired arguments: ${JSON.stringify(repairedArgs)}`,
-        );
-        return { ...toolCall, args: JSON.stringify(repairedArgs) };
-    };
+    }) as const;
 
 const getAgentTools = (
     args: AiAgentArgs,
@@ -161,7 +93,7 @@ const getAgentTools = (
 
     const runQuery = getRunQuery({
         updateProgress: dependencies.updateProgress,
-        runMiniMetricQuery: dependencies.runMiniMetricQuery,
+        runAsyncQuery: dependencies.runAsyncQuery,
         getPrompt: dependencies.getPrompt,
         sendFile: dependencies.sendFile,
         createOrUpdateArtifact: dependencies.createOrUpdateArtifact,
@@ -284,7 +216,6 @@ export const generateAgentResponse = async ({
             tools,
             messages,
             experimental_context: new AgentContext(availableExplores),
-            experimental_repairToolCall: getRepairToolCall(args, tools),
             onStepFinish: async (step) => {
                 for (const toolCall of step.toolCalls) {
                     if (toolCall) {
@@ -400,12 +331,24 @@ export const generateAgentResponse = async ({
 
         return result.text;
     } catch (error) {
+        const errorMessage =
+            error instanceof Error ? error.message : 'Unknown error';
+
         Logger.error(
-            `[AiAgent][Generate Agent Response] Error during agent response generation: ${
-                error instanceof Error ? error.message : 'Unknown error'
-            }`,
+            `[AiAgent][Generate Agent Response] Error during agent response generation: ${errorMessage}`,
         );
         Sentry.captureException(error);
+
+        const userFacingMessage = getUserFacingErrorMessage(
+            error,
+            'Something went wrong while generating the response. Please try again.',
+        );
+
+        await dependencies.updatePrompt({
+            promptUuid: args.promptUuid,
+            errorMessage: userFacingMessage,
+        });
+
         throw error;
     }
 };
@@ -416,7 +359,8 @@ export const streamAgentResponse = async ({
 }: {
     args: AiStreamAgentResponseArgs;
     dependencies: AiAgentDependencies;
-}) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}): Promise<StreamTextResult<any, Output.Output>> => {
     const logger = createAiAgentLogger(args.debugLoggingEnabled);
     logger(
         'Stream Agent Response',
@@ -449,7 +393,6 @@ export const streamAgentResponse = async ({
             tools,
             messages,
             experimental_context: new AgentContext(availableExplores),
-            experimental_repairToolCall: getRepairToolCall(args, tools),
             onChunk: (event) => {
                 // Track time to first chunk (any type) - only once
                 if (firstChunkTime === null) {
@@ -487,6 +430,15 @@ export const streamAgentResponse = async ({
                                 promptId: args.promptUuid,
                             },
                         });
+
+                        if (event.chunk.invalid) {
+                            Sentry.captureException(event.chunk.error, {
+                                tags: {
+                                    errorType: 'AiAgentToolCallInvalid',
+                                },
+                            });
+                            break;
+                        }
 
                         void dependencies
                             .storeToolCall({
@@ -563,39 +515,19 @@ export const streamAgentResponse = async ({
                 }
             },
             onStepFinish: (step) => {
-                const reasoningsToStore = step.reasoning
-                    .map((reasoning) => {
-                        if (
-                            reasoning.text &&
-                            reasoning.text.length > 0 &&
-                            'providerMetadata' in reasoning &&
-                            typeof reasoning.providerMetadata === 'object' &&
-                            reasoning.providerMetadata !== null &&
-                            'openai' in reasoning.providerMetadata &&
-                            typeof reasoning.providerMetadata.openai ===
-                                'object' &&
-                            reasoning.providerMetadata.openai !== null &&
-                            'itemId' in reasoning.providerMetadata.openai &&
-                            typeof reasoning.providerMetadata.openai.itemId ===
-                                'string'
-                        ) {
-                            return {
-                                reasoningId:
-                                    reasoning.providerMetadata.openai.itemId,
-                                text: reasoning.text,
-                            };
-                        }
-                        return null;
-                    })
-                    .filter((r) => r !== null);
-
-                if (reasoningsToStore.length > 0) {
+                if (step.reasoningText && step.reasoningText.length > 0) {
                     logger(
                         'On Step Finish',
-                        `Storing ${reasoningsToStore.length} reasoning parts for Prompt UUID ${args.promptUuid}`,
+                        `Storing reasoning text for Prompt UUID ${args.promptUuid}`,
                     );
                     void dependencies
-                        .storeReasoning(args.promptUuid, reasoningsToStore)
+                        .storeReasoning(args.promptUuid, [
+                            {
+                                // TODO :: this works for now, but we need to find a better way to capture the reasoning id from `providerMetadata`
+                                reasoningId: crypto.randomUUID(),
+                                text: step.reasoningText,
+                            },
+                        ])
                         .catch((error) => {
                             Logger.error(
                                 'On Step Finish',
@@ -656,17 +588,28 @@ export const streamAgentResponse = async ({
                 delayInMs: 20,
                 chunking: 'line',
             }),
-            onError: (error) => {
+            onError: ({ error }) => {
                 console.error(error);
+                const errorMessage =
+                    error instanceof Error ? error.message : 'Unknown error';
+
                 Logger.error(
-                    `[AiAgent][Stream Agent Response] Error during streaming: ${
-                        error instanceof Error ? error.message : 'Unknown error'
-                    }`,
+                    `[AiAgent][Stream Agent Response] Error during streaming: ${errorMessage}`,
                 );
                 Sentry.captureException(error, {
                     tags: {
                         errorType: 'AiAgentStreamError',
                     },
+                });
+
+                const userFacingMessage = getUserFacingErrorMessage(
+                    error,
+                    'Something went wrong while streaming the response. Please try again.',
+                );
+
+                void dependencies.updatePrompt({
+                    promptUuid: args.promptUuid,
+                    errorMessage: userFacingMessage,
                 });
             },
             experimental_telemetry: getAgentTelemetryConfig(
@@ -678,16 +621,28 @@ export const streamAgentResponse = async ({
         logger('Stream Agent Response', 'Returning stream result.');
         return result;
     } catch (error) {
+        const errorMessage =
+            error instanceof Error ? error.message : 'Unknown error';
+
         Logger.error(
-            `[AiAgent][Stream Agent Response] Fatal error before stream could start: ${
-                error instanceof Error ? error.message : 'Unknown error'
-            }`,
+            `[AiAgent][Stream Agent Response] Fatal error before stream could start: ${errorMessage}`,
         );
         Sentry.captureException(error, {
             tags: {
                 errorType: 'AiAgentStreamError',
             },
         });
+
+        const userFacingMessage = getUserFacingErrorMessage(
+            error,
+            'Something went wrong while processing your request. Please try again.',
+        );
+
+        await dependencies.updatePrompt({
+            promptUuid: args.promptUuid,
+            errorMessage: userFacingMessage,
+        });
+
         throw error;
     }
 };

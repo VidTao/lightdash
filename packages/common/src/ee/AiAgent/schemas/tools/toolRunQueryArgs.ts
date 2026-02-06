@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import { AiResultType } from '../../types';
-import { customMetricsSchema } from '../customMetrics';
+import {
+    customMetricsSchema,
+    customMetricsSchemaTransformed,
+} from '../customMetrics';
 import { getFieldIdSchema } from '../fieldId';
 import { filtersSchemaTransformed, filtersSchemaV2 } from '../filters';
 import { baseOutputMetadataSchema } from '../outputMetadata';
@@ -159,7 +161,6 @@ Configuration Tips:
 `;
 
 export const toolRunQueryArgsSchema = createToolSchema({
-    type: AiResultType.QUERY_RESULT,
     description: TOOL_RUN_QUERY_DESCRIPTION,
 })
     .extend({
@@ -183,6 +184,7 @@ export const toolRunQueryArgsSchemaTransformed = toolRunQueryArgsSchema
     .transform((data) => ({
         ...data,
         filters: filtersSchemaTransformed.parse(data.filters),
+        customMetrics: customMetricsSchemaTransformed.parse(data.customMetrics),
     }));
 
 export type ToolRunQueryArgsTransformed = z.infer<

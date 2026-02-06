@@ -16,6 +16,8 @@ node_modules/
 /packages/e2e/cypress/videos/**/*
 /packages/e2e/cypress/downloads/**/*
 /packages/e2e/cypress/artifacts/**/*
+# Content as code e2e tests
+packages/e2e/lightdash 
 
 # eval reports
 /packages/backend/eval-reports/**/*
@@ -38,6 +40,7 @@ node_modules/
 /packages/warehouses/dist
 /packages/sdk/dist
 /packages/sdk-test-app/dist
+/packages/backend/src/ee/services/McpService/mcp-chart-app/dist
 
 # CLI binary build artifacts
 /packages/cli/bundle/
@@ -110,3 +113,7 @@ data/
 CLAUDE.local.md
 credentials/
 http-client.private.env.json
+
+
+# turbo
+.turbo

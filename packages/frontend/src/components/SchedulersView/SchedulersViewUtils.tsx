@@ -43,16 +43,40 @@ export type SchedulerColumnName =
     | 'deliveryStarted'
     | 'status';
 
+export const getSchedulerIconRaw = (item: { format: SchedulerFormat }) => {
+    switch (item.format) {
+        case SchedulerFormat.CSV:
+            return IconCsv;
+        case SchedulerFormat.XLSX:
+            return IconFileTypeXls;
+        case SchedulerFormat.IMAGE:
+            return IconPhoto;
+        case SchedulerFormat.GSHEETS:
+            return GSheetsIconFilled;
+        default:
+            return assertUnreachable(
+                item.format,
+                'Resource type not supported',
+            );
+    }
+};
+
 export const getSchedulerIcon = (item: { format: SchedulerFormat }) => {
     switch (item.format) {
         case SchedulerFormat.CSV:
-            return <IconBox icon={IconCsv} color="indigo.6" />;
+            return (
+                <IconBox icon={getSchedulerIconRaw(item)} color="indigo.6" />
+            );
         case SchedulerFormat.XLSX:
-            return <IconBox icon={IconFileTypeXls} color="indigo.6" />;
+            return (
+                <IconBox icon={getSchedulerIconRaw(item)} color="indigo.6" />
+            );
         case SchedulerFormat.IMAGE:
-            return <IconBox icon={IconPhoto} color="indigo.6" />;
+            return (
+                <IconBox icon={getSchedulerIconRaw(item)} color="indigo.6" />
+            );
         case SchedulerFormat.GSHEETS:
-            return <IconBox icon={GSheetsIconFilled} color="green" />;
+            return <IconBox icon={getSchedulerIconRaw(item)} color="green" />;
         default:
             return assertUnreachable(
                 item.format,
@@ -105,8 +129,14 @@ export const getLogStatusIconWithoutTooltip = (
 
 export const getSchedulerLink = (
     item: SchedulerItem | SchedulerRun,
-    projectUuid: string,
+    fallbackProjectUuid?: string | null,
 ) => {
+    // Use item's projectUuid if available (only on SchedulerItem), otherwise fall back to the provided one
+    const projectUuid =
+        ('projectUuid' in item ? item.projectUuid : undefined) ??
+        fallbackProjectUuid ??
+        '';
+
     const paramName =
         'thresholds' in item && item.thresholds && item.thresholds.length > 0
             ? 'threshold_uuid'
@@ -133,7 +163,14 @@ export const getSchedulerLink = (
           }`
         : `/projects/${projectUuid}/dashboards/${item.dashboardUuid}/view/?${paramName}=${item.schedulerUuid}`;
 };
-export const getItemLink = (item: SchedulerItem, projectUuid: string) => {
+
+export const getItemLink = (
+    item: SchedulerItem,
+    fallbackProjectUuid?: string | null,
+) => {
+    // Use item's projectUuid if available, otherwise fall back to the provided one
+    const projectUuid = item.projectUuid ?? fallbackProjectUuid ?? '';
+
     return item.savedChartUuid
         ? `/projects/${projectUuid}/saved/${item.savedChartUuid}/view`
         : `/projects/${projectUuid}/dashboards/${item.dashboardUuid}/view`;
@@ -142,7 +179,30 @@ export const getItemLink = (item: SchedulerItem, projectUuid: string) => {
 export const formatTime = (date: Date) =>
     dayjs(date).format('YYYY/MM/DD hh:mm A');
 
-export const formatTaskName = (task: string): string => {
+export const formatTaskName = (task: string, targetCount?: number): string => {
+    const taskLower = task.toLowerCase();
+    if (taskLower.includes('slackbatch')) {
+        return targetCount
+            ? `Slack (${targetCount} ${
+                  targetCount === 1 ? 'target' : 'targets'
+              })`
+            : 'Slack Notifications';
+    }
+    if (taskLower.includes('emailbatch')) {
+        return targetCount
+            ? `Email (${targetCount} ${
+                  targetCount === 1 ? 'target' : 'targets'
+              })`
+            : 'Email Notifications';
+    }
+    if (taskLower.includes('msteamsbatch')) {
+        return targetCount
+            ? `MS Teams (${targetCount} ${
+                  targetCount === 1 ? 'target' : 'targets'
+              })`
+            : 'MS Teams Notifications';
+    }
+
     // Convert camelCase to Title Case with spaces
     // e.g., "sendSlackNotification" → "Send Slack Notification"
     return task

@@ -10,14 +10,16 @@ import {
     Title,
 } from '@mantine-8/core';
 import { IconInfoCircle } from '@tabler/icons-react';
-import { type FC } from 'react';
+import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext, useParams } from 'react-router';
 import { LightdashUserAvatar } from '../../../components/Avatar';
 import MantineIcon from '../../../components/common/MantineIcon';
+import { getModelKey } from '../../../components/common/ModelSelector/utils';
 import { AgentChatInput } from '../../features/aiCopilot/components/ChatElements/AgentChatInput';
 import { ChatElementsUtils } from '../../features/aiCopilot/components/ChatElements/utils';
 import { DefaultAgentButton } from '../../features/aiCopilot/components/DefaultAgentButton/DefaultAgentButton';
 import { SuggestedQuestions } from '../../features/aiCopilot/components/SuggestedQuestions/SuggestedQuestions';
+import { useModelOptions } from '../../features/aiCopilot/hooks/useModelOptions';
 import {
     useCreateAgentThreadMutation,
     useVerifiedQuestions,
@@ -33,10 +35,65 @@ const AiAgentNewThreadPage: FC = () => {
         projectUuid,
         agentUuid,
     );
+    const { data: modelOptions } = useModelOptions({ projectUuid, agentUuid });
 
-    const onSubmit = (prompt: string) => {
-        void createAgentThread({ prompt });
-    };
+    const [selectedModelKey, setSelectedModelKey] = useState<string | null>(
+        null,
+    );
+    const [extendedThinking, setExtendedThinking] = useState(false);
+
+    const handleSelectedModelKeyChange = useCallback(
+        (modelKey: string) => {
+            setSelectedModelKey(modelKey);
+            const model = modelOptions?.find(
+                (m) => getModelKey(m) === modelKey,
+            );
+            if (model && !model.supportsReasoning) {
+                setExtendedThinking(false);
+            }
+        },
+        [modelOptions, setExtendedThinking],
+    );
+
+    // Initialize to default model when data loads
+    useEffect(() => {
+        if (modelOptions && !selectedModelKey) {
+            const defaultModel = modelOptions.find((m) => m.default);
+            if (defaultModel) {
+                handleSelectedModelKeyChange(getModelKey(defaultModel));
+            }
+        }
+    }, [modelOptions, selectedModelKey, handleSelectedModelKeyChange]);
+
+    // Only enable extended thinking toggle when selected model supports reasoning
+    const selectedModel = useMemo(
+        () => modelOptions?.find((m) => getModelKey(m) === selectedModelKey),
+        [modelOptions, selectedModelKey],
+    );
+    const showExtendedThinking = selectedModel?.supportsReasoning ?? false;
+
+    const onSubmit = useCallback(
+        (prompt: string) => {
+            void createAgentThread({
+                prompt,
+                modelConfig: selectedModel
+                    ? {
+                          modelName: selectedModel.name,
+                          modelProvider: selectedModel.provider,
+                          reasoning: showExtendedThinking
+                              ? extendedThinking
+                              : undefined,
+                      }
+                    : undefined,
+            });
+        },
+        [
+            createAgentThread,
+            selectedModel,
+            showExtendedThinking,
+            extendedThinking,
+        ],
+    );
 
     return (
         <Center h="100%">
@@ -128,6 +185,17 @@ const AiAgentNewThreadPage: FC = () => {
                         onSubmit={onSubmit}
                         loading={isCreatingThread}
                         placeholder={`Ask ${agent.name} anything about your data...`}
+                        models={modelOptions}
+                        selectedModelId={selectedModelKey}
+                        onModelChange={handleSelectedModelKeyChange}
+                        extendedThinking={
+                            showExtendedThinking ? extendedThinking : undefined
+                        }
+                        onExtendedThinkingChange={
+                            showExtendedThinking
+                                ? setExtendedThinking
+                                : undefined
+                        }
                     />
                 </Stack>
             </Stack>

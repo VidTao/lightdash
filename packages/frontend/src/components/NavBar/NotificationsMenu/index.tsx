@@ -1,5 +1,8 @@
-import { NotificationResourceType } from '@lightdash/common';
-import { Button, Indicator, Menu } from '@mantine/core';
+import {
+    NotificationResourceType,
+    ValidationErrorType,
+} from '@lightdash/common';
+import { Button, getDefaultZIndex, Indicator, Menu } from '@mantine-8/core';
 import { IconBell } from '@tabler/icons-react';
 import { type FC } from 'react';
 import { useDashboardCommentsCheck } from '../../../features/comments';
@@ -14,6 +17,7 @@ import {
 } from '../../../hooks/validation/useValidation';
 import useApp from '../../../providers/App/useApp';
 import MantineIcon from '../../common/MantineIcon';
+import classes from './NotificationsMenu.module.css';
 import { ValidationErrorNotification } from './ValidationErrorNotification';
 
 export const NotificationsMenu: FC<{ projectUuid: string }> = ({
@@ -23,11 +27,15 @@ export const NotificationsMenu: FC<{ projectUuid: string }> = ({
 
     // Validator notifications
     const { data: validationData } = useValidation(projectUuid, user, false);
+    // Ignore non-blocking chart configuration warnings in the header count
+    const validationErrors = validationData?.filter(
+        (v) => v.errorType !== ValidationErrorType.ChartConfiguration,
+    );
     const canUserManageValidations = useValidationUserAbility(projectUuid);
     const [hasReadValidationNotification, setHasReadValidationNotification] =
         useValidationNotificationChecker();
     const hasValidationNotifications =
-        validationData && validationData.length > 0;
+        validationErrors && validationErrors.length > 0;
 
     // Dashboard comments notifications
     const { canViewDashboardComments } = useDashboardCommentsCheck(user?.data);
@@ -69,6 +77,8 @@ export const NotificationsMenu: FC<{ projectUuid: string }> = ({
             position="bottom-end"
             arrowOffset={16}
             offset={-2}
+            zIndex={getDefaultZIndex('max')}
+            portalProps={{ target: '#navbar-header' }}
         >
             <Menu.Target>
                 <Button
@@ -77,10 +87,7 @@ export const NotificationsMenu: FC<{ projectUuid: string }> = ({
                     size="xs"
                     // NOTE: Set validation notification as read (Local Storage)
                     onClick={setHasReadValidationNotification}
-                    sx={{
-                        // NOTE: Revert overflow so badge doesn't get cropped off
-                        '.mantine-Button-label': { overflow: 'revert' },
-                    }}
+                    classNames={{ label: classes.buttonLabel }}
                 >
                     <Indicator
                         size={12}
@@ -96,7 +103,7 @@ export const NotificationsMenu: FC<{ projectUuid: string }> = ({
                 {hasValidationNotifications && (
                     <ValidationErrorNotification
                         projectUuid={projectUuid}
-                        validationData={validationData}
+                        validationData={validationErrors}
                     />
                 )}
                 {hasDashboardCommentsNotifications && (

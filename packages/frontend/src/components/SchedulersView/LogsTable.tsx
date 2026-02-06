@@ -40,20 +40,14 @@ import {
 } from 'react';
 import { Link } from 'react-router';
 import ConfirmSendNowModal from '../../features/scheduler/components/ConfirmSendNowModal';
-import {
-    useLogsFilters,
-    type DestinationType,
-} from '../../features/scheduler/hooks/useLogsFilters';
+import { useLogsFilters } from '../../features/scheduler/hooks/useLogsFilters';
 import {
     useFetchRunLogs,
     useSchedulerRuns,
     useSendNowSchedulerByUuid,
 } from '../../features/scheduler/hooks/useScheduler';
-import useHealth from '../../hooks/health/useHealth';
-import { useGetSlack } from '../../hooks/slack/useSlack';
 import LoadingState from '../common/LoadingState';
 import MantineIcon from '../common/MantineIcon';
-import ResourceEmptyState from '../common/ResourceView/ResourceEmptyState';
 import { LogsTopToolbar } from './LogsTopToolbar';
 import RunDetailsModal from './RunDetailsModal';
 import {
@@ -64,7 +58,7 @@ import {
 } from './SchedulersViewUtils';
 
 type LogsTableProps = {
-    projectUuid: string;
+    projectUuid?: string;
     getSlackChannelName: (channelId: string) => string | null;
 };
 
@@ -122,7 +116,7 @@ const LogsTable: FC<LogsTableProps> = ({
 
     const { data, fetchNextPage, isError, isFetching, isLoading } =
         useSchedulerRuns({
-            projectUuid,
+            projectUuid: projectUuid!,
             paginateArgs: { page: 1, pageSize: fetchSize },
             searchQuery: debouncedSearchAndFilters.search,
             sortBy: 'scheduledTime',
@@ -169,12 +163,8 @@ const LogsTable: FC<LogsTableProps> = ({
 
     // Scroll to top when filters change
     useEffect(() => {
-        if (rowVirtualizerInstanceRef.current) {
-            try {
-                rowVirtualizerInstanceRef.current.scrollToIndex(0);
-            } catch (e) {
-                console.error(e);
-            }
+        if (tableContainerRef.current) {
+            tableContainerRef.current.scrollTop = 0;
         }
     }, [debouncedSearchAndFilters]);
 
@@ -182,6 +172,24 @@ const LogsTable: FC<LogsTableProps> = ({
     useEffect(() => {
         fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
+
+    // Re-measure virtualizer when container becomes visible (fixes virtualization when switching tabs)
+    // Note: depends on isLoading because the table container only exists after loading completes
+    useEffect(() => {
+        const container = tableContainerRef.current;
+        if (!container) return;
+
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.contentRect.height > 0) {
+                    rowVirtualizerInstanceRef.current?.measure?.();
+                }
+            }
+        });
+
+        resizeObserver.observe(container);
+        return () => resizeObserver.disconnect();
+    }, [isLoading]);
 
     const theme = useMantineTheme();
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -223,39 +231,6 @@ const LogsTable: FC<LogsTableProps> = ({
         },
         [childLogsMap, fetchRunLogsMutation],
     );
-
-    const health = useHealth();
-    const slack = useGetSlack();
-    const organizationHasSlack = !!slack.data?.organizationUuid;
-
-    // Compute available destinations based on integrations
-    const availableDestinations = useMemo<DestinationType[]>(() => {
-        const destinations: DestinationType[] = [];
-        if (health.data?.hasEmailClient) {
-            destinations.push('email');
-        }
-        if (organizationHasSlack) {
-            destinations.push('slack');
-        }
-        if (health.data?.hasMicrosoftTeams) {
-            destinations.push('msteams');
-        }
-        return destinations;
-    }, [health.data, organizationHasSlack]);
-
-    // Compute available users from runs (only users who created schedulers)
-    const availableUsers = useMemo(() => {
-        const userMap = new Map<string, { userUuid: string; name: string }>();
-        schedulerRunsData?.forEach((run) => {
-            userMap.set(run.createdByUserUuid, {
-                userUuid: run.createdByUserUuid,
-                name: run.createdByUserName,
-            });
-        });
-        return Array.from(userMap.values()).sort((a, b) =>
-            a.name.localeCompare(b.name),
-        );
-    }, [schedulerRunsData]);
 
     // Compute available schedulers from runs (unique schedulers)
     const availableSchedulers = useMemo(() => {
@@ -309,7 +284,7 @@ const LogsTable: FC<LogsTableProps> = ({
                             <Stack gap="two">
                                 <Anchor
                                     component={Link}
-                                    to={getSchedulerLink(run, projectUuid)}
+                                    to={getSchedulerLink(run, projectUuid!)}
                                     target="_blank"
                                 >
                                     <Tooltip
@@ -374,7 +349,7 @@ const LogsTable: FC<LogsTableProps> = ({
                                         SchedulerJobStatus.COMPLETED,
                                         theme,
                                     )}
-                                    <Text fz="xs" c="gray.7">
+                                    <Text fz="xs" c="ldGray.7">
                                         Completed successfully
                                     </Text>
                                 </>
@@ -384,7 +359,7 @@ const LogsTable: FC<LogsTableProps> = ({
                                         SchedulerJobStatus.ERROR,
                                         theme,
                                     )}
-                                    <Text fz="xs" c="gray.7">
+                                    <Text fz="xs" c="ldGray.7">
                                         Failed
                                     </Text>
                                 </>
@@ -398,7 +373,7 @@ const LogsTable: FC<LogsTableProps> = ({
                                             color: theme.colors.orange[6],
                                         }}
                                     />
-                                    <Text fz="xs" c="gray.7">
+                                    <Text fz="xs" c="ldGray.7">
                                         Partial failure
                                     </Text>
                                 </>
@@ -408,7 +383,7 @@ const LogsTable: FC<LogsTableProps> = ({
                                         SchedulerJobStatus.STARTED,
                                         theme,
                                     )}
-                                    <Text fz="xs" c="gray.7">
+                                    <Text fz="xs" c="ldGray.7">
                                         Running
                                     </Text>
                                 </>
@@ -418,7 +393,7 @@ const LogsTable: FC<LogsTableProps> = ({
                                         SchedulerJobStatus.SCHEDULED,
                                         theme,
                                     )}
-                                    <Text fz="xs" c="gray.7">
+                                    <Text fz="xs" c="ldGray.7">
                                         Scheduled
                                     </Text>
                                 </>
@@ -441,7 +416,7 @@ const LogsTable: FC<LogsTableProps> = ({
                 Cell: ({ row }) => {
                     const { run } = row.original;
                     return (
-                        <Text fz="xs" c="gray.6">
+                        <Text fz="xs" c="ldGray.6">
                             {formatTime(run.scheduledTime)}
                         </Text>
                     );
@@ -461,7 +436,7 @@ const LogsTable: FC<LogsTableProps> = ({
                 Cell: ({ row }) => {
                     const { run } = row.original;
                     return (
-                        <Text fz="xs" c="gray.6">
+                        <Text fz="xs" c="ldGray.6">
                             {formatTime(run.createdAt)}
                         </Text>
                     );
@@ -471,6 +446,7 @@ const LogsTable: FC<LogsTableProps> = ({
                 accessorKey: 'actions',
                 header: '',
                 enableSorting: false,
+                enableResizing: false,
                 size: 60,
                 Cell: ({ row }) => {
                     const { run } = row.original;
@@ -545,7 +521,7 @@ const LogsTable: FC<LogsTableProps> = ({
     const table = useMantineReactTable({
         columns,
         data: tableData,
-        enableColumnResizing: false,
+        enableColumnResizing: true,
         enableRowNumbers: false,
         enablePagination: false,
         enableFilters: false,
@@ -561,6 +537,7 @@ const LogsTable: FC<LogsTableProps> = ({
         enableBottomToolbar: false,
         renderTopToolbar: () => (
             <LogsTopToolbar
+                projectUuid={projectUuid}
                 search={search}
                 setSearch={setSearch}
                 selectedStatuses={selectedStatuses}
@@ -575,8 +552,6 @@ const LogsTable: FC<LogsTableProps> = ({
                 currentResultsCount={totalFetched}
                 hasActiveFilters={hasActiveFilters}
                 resetFilters={resetFilters}
-                availableUsers={availableUsers}
-                availableDestinations={availableDestinations}
                 availableSchedulers={availableSchedulers}
             />
         ),
@@ -601,11 +576,14 @@ const LogsTable: FC<LogsTableProps> = ({
             withColumnBorders: Boolean(tableData.length),
         },
         mantineTableHeadCellProps: (props) => {
-            const isFirstColumn =
-                props.table.getAllColumns().indexOf(props.column) === 0;
             const isLastColumn =
                 props.table.getAllColumns().indexOf(props.column) ===
                 props.table.getAllColumns().length - 1;
+
+            const isAnyColumnResizing = props.table
+                .getAllColumns()
+                .some((c) => c.getIsResizing());
+            const canResize = props.column.getCanResize();
 
             return {
                 bg: 'ldGray.0',
@@ -613,23 +591,41 @@ const LogsTable: FC<LogsTableProps> = ({
                 pos: 'relative',
                 style: {
                     userSelect: 'none',
+                    justifyContent: 'center',
                     padding: `${theme.spacing.xs} ${theme.spacing.xl}`,
+                    borderTop: `1px solid ${theme.colors.ldGray[2]}`,
                     borderBottom: `1px solid ${theme.colors.ldGray[2]}`,
                     borderRight: props.column.getIsResizing()
                         ? `2px solid ${theme.colors.blue[3]}`
                         : `1px solid ${
-                              isLastColumn || isFirstColumn
+                              isLastColumn
                                   ? 'transparent'
                                   : theme.colors.ldGray[2]
                           }`,
-                    borderTop: 'none',
                     borderLeft: 'none',
+                },
+                sx: {
+                    '&:hover': canResize
+                        ? {
+                              borderRight: !isAnyColumnResizing
+                                  ? `2px solid ${theme.colors.blue[3]} !important`
+                                  : undefined,
+                              transition: `border-right ${theme.other.transitionDuration}ms ${theme.other.transitionTimingFunction}`,
+                          }
+                        : {},
                 },
             };
         },
         mantineTableHeadRowProps: {
             sx: {
                 boxShadow: 'none',
+                'th > div > div:last-child': {
+                    top: -10,
+                    right: -5,
+                },
+                'th > div > div:last-child > .mantine-Divider-root': {
+                    border: 'none',
+                },
             },
         },
         mantineTableBodyCellProps: () => {
@@ -661,15 +657,6 @@ const LogsTable: FC<LogsTableProps> = ({
 
     if (isLoading) {
         return <LoadingState title="Loading run history" />;
-    }
-
-    if (totalDBRowCount === 0) {
-        return (
-            <ResourceEmptyState
-                title="No scheduled delivery runs yet"
-                description="Scheduled deliveries will appear here once they run. Check back later or hit the refresh button."
-            />
-        );
     }
 
     return (

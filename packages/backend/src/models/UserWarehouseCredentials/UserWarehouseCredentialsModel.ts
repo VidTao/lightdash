@@ -1,5 +1,9 @@
 import {
+    assertUnreachable,
     NotFoundError,
+    SnowflakeAuthenticationType,
+    snowflakeSsoUserCredentialsSchema,
+    SnowflakeTokenError,
     UnexpectedServerError,
     UpsertUserWarehouseCredentials,
     UserWarehouseCredentials,
@@ -68,10 +72,18 @@ export class UserWarehouseCredentialsModel {
                         user: credentialsWithSecrets.user,
                     };
                     break;
-                default:
+                case WarehouseTypes.BIGQUERY:
+                case WarehouseTypes.DATABRICKS:
+                case WarehouseTypes.ATHENA:
                     credentials = {
                         type: credentialsWithSecrets.type,
                     };
+                    break;
+                default:
+                    return assertUnreachable(
+                        credentialsWithSecrets,
+                        'Unknown warehouse type',
+                    );
             }
         } catch (e) {
             throw new UnexpectedServerError(
@@ -176,11 +188,32 @@ export class UserWarehouseCredentialsModel {
             userUuid,
             warehouseType,
         );
+
         if (credentials) {
-            return this.convertToUserWarehouseCredentialsWithSecrets(
-                credentials,
-            );
+            const credentialsWithSecrets =
+                this.convertToUserWarehouseCredentialsWithSecrets(credentials);
+
+            // Validate Snowflake SSO credentials with Zod schema
+            // This ensures refreshToken is present and token field is not allowed
+            if (
+                credentialsWithSecrets.credentials.type ===
+                    WarehouseTypes.SNOWFLAKE &&
+                credentialsWithSecrets.credentials.authenticationType ===
+                    SnowflakeAuthenticationType.SSO
+            ) {
+                const result = snowflakeSsoUserCredentialsSchema.safeParse(
+                    credentialsWithSecrets.credentials,
+                );
+                if (!result.success) {
+                    throw new SnowflakeTokenError(
+                        `Please reauthenticate to access snowflake`,
+                    );
+                }
+            }
+
+            return credentialsWithSecrets;
         }
+
         return undefined;
     }
 

@@ -6,6 +6,7 @@ import {
     NotImplementedError,
     PartitionColumn,
     SupportedDbtAdapter,
+    TimeIntervalUnit,
     WarehouseCatalog,
     WarehouseResults,
     WarehouseSqlBuilder,
@@ -19,8 +20,7 @@ import { type WarehouseClient } from '../types';
 
 export default abstract class WarehouseBaseClient<
     T extends CreateWarehouseCredentials,
-> implements WarehouseClient
-{
+> implements WarehouseClient {
     credentials: T;
 
     protected sqlBuilder: WarehouseSqlBuilder;
@@ -65,7 +65,7 @@ export default abstract class WarehouseBaseClient<
 
     abstract streamQuery(
         query: string,
-        streamCallback: (data: WarehouseResults) => void,
+        streamCallback: (data: WarehouseResults) => void | Promise<void>,
         options: {
             values?: AnyType[];
             queryParams?: Record<string, AnyType>;
@@ -82,19 +82,19 @@ export default abstract class WarehouseBaseClient<
             tags,
             timezone,
         }: WarehouseExecuteAsyncQueryArgs,
-        resultsStreamCallback: (
+        resultsStreamCallback?: (
             rows: WarehouseResults['rows'],
             fields: WarehouseResults['fields'],
-        ) => void,
+        ) => void | Promise<void>,
     ): Promise<WarehouseExecuteAsyncQuery> {
         let rowCount = 0;
 
         const startTime = performance.now();
         await this.streamQuery(
             sql,
-            ({ rows, fields }) => {
+            async ({ rows, fields }) => {
                 rowCount = (rowCount ?? 0) + rows.length;
-                resultsStreamCallback(rows, fields);
+                await resultsStreamCallback?.(rows, fields);
             },
             {
                 values,
@@ -210,5 +210,27 @@ export default abstract class WarehouseBaseClient<
 
     escapeString(value: string): string {
         return this.sqlBuilder.escapeString(value);
+    }
+
+    castToTimestamp(date: Date): string {
+        return this.sqlBuilder.castToTimestamp(date);
+    }
+
+    getIntervalSql(value: number, unit: TimeIntervalUnit): string {
+        return this.sqlBuilder.getIntervalSql(value, unit);
+    }
+
+    getTimestampDiffSeconds(
+        startTimestampSql: string,
+        endTimestampSql: string,
+    ): string {
+        return this.sqlBuilder.getTimestampDiffSeconds(
+            startTimestampSql,
+            endTimestampSql,
+        );
+    }
+
+    getMedianSql(valueSql: string): string {
+        return this.sqlBuilder.getMedianSql(valueSql);
     }
 }

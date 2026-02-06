@@ -2,9 +2,7 @@ import { subject } from '@casl/ability';
 import { FeatureFlags, isTimeZone } from '@lightdash/common';
 import { Badge, Box, Button, Group, Tooltip } from '@mantine/core';
 import { IconAlertCircle, IconArrowLeft } from '@tabler/icons-react';
-import { useFeatureFlagEnabled } from 'posthog-js/react';
 import { memo, useEffect, useMemo, type FC } from 'react';
-import { useParams } from 'react-router';
 import useEmbed from '../../../ee/providers/Embed/useEmbed';
 import {
     explorerActions,
@@ -19,6 +17,8 @@ import {
 import useDashboardStorage from '../../../hooks/dashboard/useDashboardStorage';
 import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
 import { getExplorerUrlFromCreateSavedChartVersion } from '../../../hooks/useExplorerRoute';
+import { useProjectUuid } from '../../../hooks/useProjectUuid';
+import { useClientFeatureFlag } from '../../../hooks/useServerOrClientFeatureFlag';
 import useCreateInAnySpaceAccess from '../../../hooks/user/useCreateInAnySpaceAccess';
 import { Can } from '../../../providers/Ability';
 import { useAbilityContext } from '../../../providers/Ability/useAbilityContext';
@@ -32,7 +32,7 @@ import SaveChartButton from '../SaveChartButton';
 import QueryWarnings from './QueryWarnings';
 
 const ExplorerHeader: FC = memo(() => {
-    const { projectUuid } = useParams<{ projectUuid: string }>();
+    const projectUuid = useProjectUuid();
     const { user } = useApp();
     const { onBackToDashboard } = useEmbed();
     const ability = useAbilityContext();
@@ -127,8 +127,7 @@ const ExplorerHeader: FC = memo(() => {
         };
     }, [getHasDashboardChanges]);
 
-    // FEATURE FLAG: this component doesn't appear when the feature flag is disabled
-    const userTimeZonesEnabled = useFeatureFlagEnabled(
+    const userTimeZonesEnabled = useClientFeatureFlag(
         FeatureFlags.EnableUserTimezones,
     );
 

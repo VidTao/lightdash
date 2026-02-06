@@ -1,22 +1,22 @@
 import {
-    ChartType,
     FeatureFlags,
-    isCustomDimension,
-    isDimension,
+    hasUnusedDimensions,
+    hasUnusedTableCalculations,
     type ChartConfig,
     type ItemsMap,
     type MetricQuery,
+    type PivotConfiguration,
 } from '@lightdash/common';
 import { Badge, List, Tooltip } from '@mantine-8/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import isEqual from 'lodash/isEqual';
 import { useMemo, type FC } from 'react';
-import { useFeatureFlag } from '../../../hooks/useFeatureFlagEnabled';
 import { type InfiniteQueryResults } from '../../../hooks/useQueryResults';
+import { useServerFeatureFlag } from '../../../hooks/useServerOrClientFeatureFlag';
 import MantineIcon from '../../common/MantineIcon';
 
 export type PivotMismatchWarningProps = {
-    pivotDimensions: string[] | undefined;
+    dirtyPivotConfiguration: PivotConfiguration | undefined;
     chartConfig: ChartConfig;
     resultsData: Pick<
         InfiniteQueryResults,
@@ -30,25 +30,28 @@ export type PivotMismatchWarningProps = {
 };
 
 const VisualizationWarning: FC<PivotMismatchWarningProps> = ({
-    pivotDimensions,
+    dirtyPivotConfiguration,
     chartConfig,
     resultsData,
     isLoading,
     maxColumnLimit,
 }) => {
-    const { data: useSqlPivotResults } = useFeatureFlag(
+    const { data: useSqlPivotResults } = useServerFeatureFlag(
         FeatureFlags.UseSqlPivotResults,
     );
 
     const dirtyPivotDimensions = useMemo(
-        () => pivotDimensions ?? [],
-        [pivotDimensions],
+        () =>
+            (dirtyPivotConfiguration?.groupByColumns ?? []).map(
+                (c: { reference: string }) => c.reference,
+            ),
+        [dirtyPivotConfiguration],
     );
 
     const isQueryFetching = Boolean(
         resultsData?.isInitialLoading ||
-            resultsData?.isFetchingFirstPage ||
-            resultsData?.isFetchingRows,
+        resultsData?.isFetchingFirstPage ||
+        resultsData?.isFetchingRows,
     );
 
     // Determine if pivot column limit has been exceeded
@@ -84,39 +87,33 @@ const VisualizationWarning: FC<PivotMismatchWarningProps> = ({
 
     // Determine if query includes dimensions not used in the cartesian chart config
     const shouldShowUnusedDims = useMemo(() => {
-        // Don't show when not using cartesian charts
-        if (chartConfig?.type !== ChartType.CARTESIAN) {
-            return false;
-        }
-
-        const itemsMap = resultsData?.fields;
-        const layout = chartConfig.config?.layout as
-            | { xField?: string; yField?: string[] }
-            | undefined;
-        const usedDims = new Set<string>();
-
-        const maybeAddIfDimension = (field?: string) => {
-            if (!field || !itemsMap) return;
-            const item = itemsMap[field];
-            if ((item && isDimension(item)) || isCustomDimension(item))
-                usedDims.add(field);
-        };
-
-        maybeAddIfDimension(layout?.xField);
-        (layout?.yField ?? []).forEach((f) => maybeAddIfDimension(f));
-        (dirtyPivotDimensions ?? []).forEach((f) => usedDims.add(f));
-
-        const metricQueryDims = resultsData?.metricQuery?.dimensions ?? [];
-        const unusedQueryDimensions = metricQueryDims.filter(
-            (d) => !usedDims.has(d),
-        );
-        return unusedQueryDimensions.length > 0;
+        return hasUnusedDimensions({
+            chartType: chartConfig.type,
+            chartConfig: chartConfig.config,
+            pivotDimensions: dirtyPivotDimensions,
+            queryDimensions: resultsData?.metricQuery?.dimensions ?? [],
+        });
     }, [
         resultsData?.metricQuery?.dimensions,
-        resultsData?.fields,
         chartConfig?.type,
         chartConfig.config,
         dirtyPivotDimensions,
+    ]);
+
+    // Determine if query includes table calculations not used in the cartesian chart config
+    const shouldShowUnusedTableCalcs = useMemo(() => {
+        const tableCalcNames =
+            resultsData?.metricQuery?.tableCalculations?.map((tc) => tc.name) ??
+            [];
+        return hasUnusedTableCalculations({
+            chartType: chartConfig.type,
+            chartConfig: chartConfig.config,
+            queryTableCalculations: tableCalcNames,
+        });
+    }, [
+        resultsData?.metricQuery?.tableCalculations,
+        chartConfig?.type,
+        chartConfig.config,
     ]);
 
     // Determine how many messages to show
@@ -128,6 +125,11 @@ const VisualizationWarning: FC<PivotMismatchWarningProps> = ({
         if (shouldShowUnusedDims) {
             _messages.push(
                 'Your query includes dimensions that are not used in the chart configuration (x-axis, y-axis, or group by). Remove them from the query to avoid incorrect results.',
+            );
+        }
+        if (shouldShowUnusedTableCalcs) {
+            _messages.push(
+                'Your query includes table calculations that are not used in the chart configuration (x-axis or y-axis). Remove them from the query to avoid incorrect results unless you are using them intentionally.',
             );
         }
         if (shouldShowPivotMismatch) {
@@ -146,6 +148,7 @@ const VisualizationWarning: FC<PivotMismatchWarningProps> = ({
         isQueryFetching,
         shouldShowPivotMismatch,
         shouldShowUnusedDims,
+        shouldShowUnusedTableCalcs,
         shouldShowPivotColumnLimit,
         maxColumnLimit,
     ]);

@@ -38,6 +38,7 @@ const BASE_ROLE_SCOPES = {
         'manage:Explore',
         'manage:ChangeCsvResults',
         'create:ScheduledDeliveries',
+        'manage:ScheduledDeliveries@self',
         'create:DashboardComments',
         'manage:GoogleSheets',
 
@@ -57,7 +58,6 @@ const BASE_ROLE_SCOPES = {
         'manage:Space@public', // For non-private spaces
         'manage:Job',
         'manage:PinnedItems',
-        'manage:ScheduledDeliveries',
         'manage:DashboardComments',
         'manage:Tags',
 
@@ -73,10 +73,13 @@ const BASE_ROLE_SCOPES = {
         'manage:SqlRunner',
         'manage:Validation',
         'manage:CompileProject',
-        'create:Project', // Preview projects
+        'create:Project@preview', // Preview projects
         'delete:Project@self', // Preview projects created by user
         'update:Project',
+        'update:Project@self',
         'view:JobStatus', // All jobs in project
+        'view:SourceCode',
+        'manage:SourceCode',
 
         // Enterprise scopes
         'manage:SpotlightTableConfig',
@@ -95,6 +98,7 @@ const BASE_ROLE_SCOPES = {
         'manage:SavedChart', // All saved charts
         'view:AiAgentThread', // All threads in project
         'manage:AiAgentThread', // All threads in project
+        'manage:ScheduledDeliveries',
     ],
 } as const;
 

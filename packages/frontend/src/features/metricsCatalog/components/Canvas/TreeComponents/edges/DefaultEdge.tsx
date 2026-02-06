@@ -1,16 +1,24 @@
-import { useMantineTheme } from '@mantine/core';
-import { BaseEdge, getSimpleBezierPath, type EdgeProps } from '@xyflow/react';
+import { type CatalogMetricsTreeEdgeSource } from '@lightdash/common';
+import {
+    BaseEdge,
+    getSimpleBezierPath,
+    type Edge,
+    type EdgeProps,
+} from '@xyflow/react';
 import type { FC } from 'react';
 
-const DefaultEdge: FC<EdgeProps> = ({
+type DefaultEdgeData = Edge<{
+    createdFrom?: CatalogMetricsTreeEdgeSource;
+}>;
+
+const DefaultEdge: FC<EdgeProps<DefaultEdgeData>> = ({
     sourceX,
     sourceY,
     targetX,
     targetY,
-    selected,
+    markerEnd,
     ...props
 }) => {
-    const theme = useMantineTheme();
     const [edgePath] = getSimpleBezierPath({
         sourceX,
         sourceY,
@@ -18,17 +26,7 @@ const DefaultEdge: FC<EdgeProps> = ({
         targetY,
     });
 
-    return (
-        <BaseEdge
-            {...props}
-            path={edgePath}
-            style={{
-                stroke: selected
-                    ? theme.colors.blue[4]
-                    : theme.colors.ldGray[3],
-            }}
-        />
-    );
+    return <BaseEdge {...props} path={edgePath} markerEnd={markerEnd} />;
 };
 
 export default DefaultEdge;

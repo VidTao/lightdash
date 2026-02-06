@@ -685,13 +685,9 @@ export const pivotQueryResults = ({
                     }
                     const keys = row
                         .slice(0, colIndex + 1)
-                        .reduce<string[]>(
-                            (acc, l) =>
-                                l.type === 'value'
-                                    ? [...acc, String(l.value.raw)]
-                                    : acc,
-                            [],
-                        );
+                        .reduce<
+                            string[]
+                        >((acc, l) => (l.type === 'value' ? [...acc, String(l.value.raw)] : acc), []);
                     const cellWithSpan: PivotData['headerValues'][number][number] =
                         {
                             ...cell,
@@ -922,10 +918,11 @@ export const convertSqlPivotedRowsToPivotData = ({
         ({ referenceField }) => !hiddenMetricFieldIds.includes(referenceField),
     );
 
-    // Get unique base metrics from valuesColumns
-    const baseMetricsArray = Array.from(
-        new Set(filteredValuesColumns.map((col) => col.referenceField)),
-    );
+    // Get unique base metrics from valuesColumns, preserving order
+    const baseMetricsArray = filteredValuesColumns
+        .map((col) => col.referenceField)
+        .filter((field, index, self) => self.indexOf(field) === index)
+        .sort((a, b) => columnOrder.indexOf(a) - columnOrder.indexOf(b));
 
     const headerValueTypes = getHeaderValueTypes({
         metricsAsRows: pivotConfig.metricsAsRows,

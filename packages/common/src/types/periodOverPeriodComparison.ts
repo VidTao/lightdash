@@ -1,3 +1,11 @@
+import { v4 as uuidv4 } from 'uuid';
+import { getItemId } from '../utils/item';
+import { timeFrameConfigs } from '../utils/timeFrames';
+import { type Metric } from './field';
+import {
+    isPeriodOverPeriodAdditionalMetric,
+    type AdditionalMetric,
+} from './metricQuery';
 import { TimeFrames } from './timeFrames';
 
 type PreviousPeriod = {
@@ -51,26 +59,153 @@ export const isSupportedPeriodOverPeriodGranularity = (
     granularity: TimeFrames,
 ) => validPeriodOverPeriodGranularities.includes(granularity);
 
-/**
- * Suffix used for period-over-period comparison columns.
- * This is the single source of truth for the PoP column naming convention.
- */
-export const POP_PREVIOUS_PERIOD_SUFFIX = '_previous';
+const hashStringToBase36 = (input: string): string => {
+    // Deterministic, non-cryptographic hash (no deps).
+    // Polynomial rolling hash modulo a large prime (lint-safe: no bitwise ops).
+    const MODULUS = 2_147_483_647; // 2^31 - 1
+    const BASE = 31;
 
-/**
- * Gets the PoP field ID for a base metric field ID.
- * @param baseFieldId - The field ID of the base metric (e.g., "orders_total_revenue")
- * @returns The PoP field ID (e.g., "orders_total_revenue_previous")
- */
-export const getPopFieldId = (baseFieldId: string): string =>
-    `${baseFieldId}${POP_PREVIOUS_PERIOD_SUFFIX}`;
+    let hash = 0;
+    for (let i = 0; i < input.length; i += 1) {
+        hash = (hash * BASE + input.charCodeAt(i)) % MODULUS;
+    }
 
-/**
- * Gets the base field ID from a PoP field ID.
- * @param fieldId - The field ID to check
- * @returns The base field ID if this is a PoP field, null otherwise
- */
-export const getBaseFieldIdFromPop = (fieldId: string): string | null =>
-    fieldId.endsWith(POP_PREVIOUS_PERIOD_SUFFIX)
-        ? fieldId.slice(0, -POP_PREVIOUS_PERIOD_SUFFIX.length)
-        : null;
+    // pad for nicer/consistent suffix length
+    return hash.toString(36).padStart(6, '0');
+};
+
+export const hashPopComparisonConfigKeyToSuffix = (configKey: string): string =>
+    hashStringToBase36(configKey).padStart(8, '0');
+
+export const buildPopAdditionalMetricName = ({
+    baseMetricName,
+    timeDimensionId,
+    granularity,
+    periodOffset,
+}: {
+    baseMetricName: string;
+    timeDimensionId: string;
+    granularity: TimeFrames;
+    periodOffset: number;
+}) =>
+    `${baseMetricName}__pop__${String(granularity).toLowerCase()}_${periodOffset}__${hashStringToBase36(
+        `${timeDimensionId}|${granularity}|${periodOffset}`,
+    )}`;
+
+export const getPopPeriodLabel = (
+    granularity: TimeFrames,
+    periodOffset: number,
+) => {
+    const label = timeFrameConfigs[granularity]?.getLabel() || granularity;
+    return periodOffset === 1
+        ? `Previous ${String(label).toLowerCase()}`
+        : `${periodOffset} ${String(label).toLowerCase()}s ago`;
+};
+
+export const getPopComparisonConfigKey = ({
+    timeDimensionId,
+    granularity,
+    periodOffset,
+}: {
+    timeDimensionId: string;
+    granularity: TimeFrames;
+    periodOffset: number;
+}): string =>
+    JSON.stringify([
+        'pop:v1',
+        timeDimensionId,
+        granularity,
+        periodOffset,
+    ] as const);
+
+export const hasPeriodOverPeriodAdditionalMetricWithConfig = ({
+    additionalMetrics,
+    baseMetricId,
+    timeDimensionId,
+    granularity,
+    periodOffset,
+}: {
+    additionalMetrics: AdditionalMetric[];
+    baseMetricId: string;
+    timeDimensionId: string;
+    granularity: TimeFrames;
+    periodOffset: number;
+}): boolean =>
+    additionalMetrics.some(
+        (am) =>
+            isPeriodOverPeriodAdditionalMetric(am) &&
+            am.baseMetricId === baseMetricId &&
+            am.timeDimensionId === timeDimensionId &&
+            am.granularity === granularity &&
+            am.periodOffset === periodOffset,
+    );
+
+export const buildPopAdditionalMetric = ({
+    metric,
+    timeDimensionId,
+    granularity,
+    periodOffset,
+}: {
+    metric: Pick<
+        Metric,
+        | 'table'
+        | 'name'
+        | 'label'
+        | 'description'
+        | 'type'
+        | 'sql'
+        | 'round'
+        | 'compact'
+        | 'format'
+    >;
+    timeDimensionId: string;
+    granularity: TimeFrames;
+    periodOffset: number;
+}): { additionalMetric: AdditionalMetric; metricId: string } => {
+    const baseMetricId = getItemId(metric);
+    const popName = buildPopAdditionalMetricName({
+        baseMetricName: metric.name,
+        timeDimensionId,
+        granularity,
+        periodOffset,
+    });
+    const popMetricId = getItemId({ table: metric.table, name: popName });
+
+    const additionalMetric: AdditionalMetric = {
+        uuid: uuidv4(),
+        table: metric.table,
+        name: popName,
+        label: `${metric.label} (${getPopPeriodLabel(
+            granularity,
+            periodOffset,
+        )})`,
+        description: metric.description,
+        type: metric.type,
+        sql: metric.sql,
+        hidden: true,
+        round: metric.round,
+        compact: metric.compact,
+        format: metric.format,
+        generationType: 'periodOverPeriod',
+        baseMetricId,
+        timeDimensionId,
+        granularity,
+        periodOffset,
+    };
+
+    return { additionalMetric, metricId: popMetricId };
+};
+
+// Granularity order from finest to coarsest (lower index = finer)
+const GRANULARITY_ORDER: TimeFrames[] = [
+    TimeFrames.DAY,
+    TimeFrames.WEEK,
+    TimeFrames.MONTH,
+    TimeFrames.QUARTER,
+    TimeFrames.YEAR,
+];
+
+export const getGranularityRank = (granularity: TimeFrames): number => {
+    const index = GRANULARITY_ORDER.indexOf(granularity);
+    return index === -1 ? Infinity : index;
+};

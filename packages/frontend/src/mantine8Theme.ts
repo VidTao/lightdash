@@ -4,12 +4,15 @@ import {
     Loader,
     Modal,
     MultiSelect,
+    PasswordInput,
     Pill,
+    PillsInput,
     ScrollArea,
     Select,
     TagsInput,
     Textarea,
     TextInput,
+    Tooltip,
     type ButtonVariant,
     type DefaultMantineColor,
     type MantineColorsTuple,
@@ -19,6 +22,8 @@ import {
 import { type ColorScheme } from '@mantine/styles';
 import { DotsLoader } from './ee/features/aiCopilot/components/ChatElements/DotsLoader/DotsLoader';
 import { getMantineThemeOverride as getMantine6ThemeOverride } from './mantineTheme';
+// eslint-disable-next-line css-modules/no-unused-class
+import styles from './styles/mantine-overrides/tooltip.module.css';
 
 declare module '@mantine-8/core' {
     export interface ButtonProps {
@@ -54,6 +59,10 @@ const subtleInputStyles = (theme: MantineTheme) => ({
         color: theme.colors.ldGray[7],
         marginBottom: theme.spacing.xxs,
     },
+    pill: {
+        background: theme.colors.ldGray[1],
+        color: theme.colors.ldGray[9],
+    },
 });
 
 export const getMantine8ThemeOverride = (
@@ -81,6 +90,8 @@ export const getMantine8ThemeOverride = (
         spacing: {
             ...legacyTheme.spacing,
             xxs: `0.125rem`,
+            // Large padding for page bottoms to allow scrolling past last elements
+            emptySpace: `6rem`,
         },
 
         components: {
@@ -128,7 +139,7 @@ export const getMantine8ThemeOverride = (
                             root: {
                                 '--button-bg': theme.colors.ldDark[9],
                                 '--button-hover': theme.colors.ldDark[8],
-                                '--button-color': theme.colors.ldDark[0],
+                                '--button-color': theme.colors.ldGray[0],
                                 '--button-bd': `none`,
                             },
                         };
@@ -139,7 +150,6 @@ export const getMantine8ThemeOverride = (
                     root: {
                         fontFamily: theme.fontFamily,
                         fontWeight: 500,
-                        borderRadius: theme.radius.md,
                     },
                 }),
                 defaultProps: {
@@ -156,7 +166,10 @@ export const getMantine8ThemeOverride = (
                     },
                 }),
             }),
-            Tooltip: {
+            Tooltip: Tooltip.extend({
+                classNames: {
+                    tooltip: styles.tooltip,
+                },
                 defaultProps: {
                     openDelay: 200,
                     withinPortal: true,
@@ -165,7 +178,7 @@ export const getMantine8ThemeOverride = (
                     maw: 250,
                     fz: 'xs',
                 },
-            },
+            }),
             Popover: {
                 defaultProps: {
                     withinPortal: true,
@@ -208,7 +221,16 @@ export const getMantine8ThemeOverride = (
                 },
             }),
 
+            PasswordInput: PasswordInput.extend({
+                defaultProps: {
+                    radius: 'md',
+                },
+            }),
+
             Textarea: Textarea.extend({
+                defaultProps: {
+                    radius: 'md',
+                },
                 vars: (theme, props) => {
                     if (props.variant === 'subtle')
                         return subtleInputStyles(theme);
@@ -219,6 +241,14 @@ export const getMantine8ThemeOverride = (
                 vars: (theme, props) => {
                     if (props.variant === 'subtle')
                         return subtleInputStyles(theme);
+                    return {};
+                },
+            }),
+            PillsInput: PillsInput.extend({
+                vars: (theme, props) => {
+                    if (props.variant === 'subtle') {
+                        return subtleInputStyles(theme);
+                    }
                     return {};
                 },
             }),
@@ -235,7 +265,6 @@ export const getMantine8ThemeOverride = (
             Modal: Modal.extend({
                 styles: () => ({
                     header: {
-                        borderBottom: `1px solid var(--mantine-color-ldGray-4)`,
                         paddingBottom: 'var(--mantine-spacing-sm)',
                     },
                     body: {

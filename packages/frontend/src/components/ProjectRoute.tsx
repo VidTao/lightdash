@@ -2,7 +2,8 @@ import { subject } from '@casl/ability';
 import React, { useEffect, type FC } from 'react';
 import { Navigate, useParams } from 'react-router';
 import ErrorState from '../components/common/ErrorState';
-import { useProjects } from '../hooks/useProjects';
+import { useActiveProjectUuid } from '../hooks/useActiveProject';
+import { useProject } from '../hooks/useProject';
 import { Can } from '../providers/Ability';
 import useApp from '../providers/App/useApp';
 import PageSpinner from './PageSpinner';
@@ -12,7 +13,8 @@ import { ProjectContextService } from './ProjectContextService';
 const ProjectRoute: FC<React.PropsWithChildren> = ({ children }) => {
     const { user } = useApp();
     const { projectUuid } = useParams();
-    const { data: projects, isInitialLoading, isError, error } = useProjects();
+    const { activeProjectUuid, isLoading: isInitialLoading } =
+        useActiveProjectUuid({ refetchOnMount: true });
 
     useEffect(() => {
         if (projectUuid) {
@@ -26,6 +28,7 @@ const ProjectRoute: FC<React.PropsWithChildren> = ({ children }) => {
         };
     }, [projectUuid]);
 
+    const { data: project, isError, error } = useProject(activeProjectUuid);
     if (isInitialLoading) {
         return <PageSpinner />;
     }
@@ -34,7 +37,7 @@ const ProjectRoute: FC<React.PropsWithChildren> = ({ children }) => {
         return <ErrorState error={error.error} />;
     }
 
-    if (!projects || projects.length <= 0) {
+    if (!project) {
         return <Navigate to="/no-access" />;
     }
 

@@ -33,8 +33,13 @@ export default function mockHealthResponse(
         pylon: {
             appId: '',
         },
+        headway: {
+            enabled: false,
+        },
         siteUrl: 'http://localhost:3000',
         staticIp: '',
+        signupUrl: undefined,
+        helpMenuUrl: undefined,
         posthog: undefined,
         query: {
             maxPageSize: 2500,
@@ -42,13 +47,14 @@ export default function mockHealthResponse(
             defaultLimit: 500,
             csvCellsLimit: 100,
         },
+        dashboard: {
+            maxTilesPerTab: 50,
+            maxTabsPerDashboard: 20,
+        },
         pivotTable: {
             maxColumnLimit: 100,
         },
         hasSlack: false,
-        slack: {
-            multiAgentChannelEnabled: false,
-        },
         auth: {
             disablePasswordAuthentication: false,
             google: {
@@ -105,8 +111,12 @@ export default function mockHealthResponse(
         ai: {
             analyticsProjectUuid: undefined,
             analyticsDashboardUuid: undefined,
+            isAmbientAiEnabled: false,
         },
         echarts6: {
+            enabled: false,
+        },
+        funnelBuilder: {
             enabled: false,
         },
         ...overrides,

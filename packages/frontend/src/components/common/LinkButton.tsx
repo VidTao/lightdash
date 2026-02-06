@@ -1,4 +1,4 @@
-import { Button, type ButtonProps } from '@mantine/core';
+import { Button, type ButtonProps } from '@mantine-8/core';
 import { IconTelescope, type Icon } from '@tabler/icons-react';
 import React, { type FC } from 'react';
 import { useNavigate } from 'react-router';
@@ -6,7 +6,7 @@ import { type EventData } from '../../providers/Tracking/types';
 import useTracking from '../../providers/Tracking/useTracking';
 import MantineIcon from './MantineIcon';
 
-export interface LinkButtonProps extends Omit<ButtonProps, 'leftIcon'> {
+export interface LinkButtonProps extends Omit<ButtonProps, 'leftSection'> {
     href: string;
     trackingEvent?: EventData;
     target?: React.HTMLAttributeAnchorTarget;
@@ -25,16 +25,16 @@ const LinkButton: FC<LinkButtonProps> = ({
     ...rest
 }) => {
     const navigate = useNavigate();
-    const { track } = useTracking();
+    const tracking = useTracking({ failSilently: true });
 
     return (
         <Button
             variant="subtle"
             {...rest}
             component="a"
-            compact
+            size="compact-sm"
             href={href}
-            leftIcon={leftIcon && <MantineIcon icon={leftIcon} />}
+            leftSection={leftIcon && <MantineIcon icon={leftIcon} />}
             target={target}
             onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
                 if (
@@ -49,7 +49,7 @@ const LinkButton: FC<LinkButtonProps> = ({
 
                 onClick?.(e);
 
-                if (trackingEvent) track(trackingEvent);
+                if (trackingEvent && tracking) tracking.track(trackingEvent);
             }}
         />
     );

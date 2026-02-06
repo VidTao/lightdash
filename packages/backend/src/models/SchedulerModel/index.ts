@@ -21,6 +21,7 @@ import {
     SchedulerTaskName,
     SchedulerWithLogs,
     UpdateSchedulerAndTargets,
+    UserSchedulersSummary,
     isChartScheduler,
     isCreateSchedulerMsTeamsTarget,
     isCreateSchedulerSlackTarget,
@@ -35,9 +36,16 @@ import {
 } from '@lightdash/common';
 import { Knex } from 'knex';
 import { DatabaseError } from 'pg';
-import { DashboardsTableName } from '../../database/entities/dashboards';
+import {
+    DashboardsTableName,
+    DbDashboard,
+} from '../../database/entities/dashboards';
+import { OrganizationTableName } from '../../database/entities/organizations';
 import { ProjectTableName } from '../../database/entities/projects';
-import { SavedChartsTableName } from '../../database/entities/savedCharts';
+import {
+    DbSavedChart,
+    SavedChartsTableName,
+} from '../../database/entities/savedCharts';
 import {
     SchedulerDb,
     SchedulerEmailTargetDb,
@@ -51,7 +59,7 @@ import {
     SchedulerTableName,
 } from '../../database/entities/scheduler';
 import { SpaceTableName } from '../../database/entities/spaces';
-import { UserTableName } from '../../database/entities/users';
+import { DbUser, UserTableName } from '../../database/entities/users';
 import KnexPaginate from '../../database/pagination';
 import { getColumnMatchRegexQuery } from '../SearchModel/utils/search';
 
@@ -59,6 +67,9 @@ type SelectScheduler = SchedulerDb & {
     created_by_name: string | null;
     saved_chart_name: string | null;
     dashboard_name: string | null;
+    project_uuid?: string | null;
+    project_name?: string | null;
+    project_scheduler_timezone?: string | null;
 };
 
 type SchedulerModelArguments = {
@@ -90,6 +101,8 @@ export class SchedulerModel {
             createdByName: scheduler.created_by_name,
             cron: scheduler.cron,
             timezone: scheduler.timezone ?? undefined,
+            projectSchedulerTimezone:
+                scheduler.project_scheduler_timezone ?? undefined,
             savedChartUuid: scheduler.saved_chart_uuid,
             savedChartName: scheduler.saved_chart_name,
             dashboardUuid: scheduler.dashboard_uuid,
@@ -104,6 +117,8 @@ export class SchedulerModel {
             notificationFrequency: scheduler.notification_frequency,
             selectedTabs: scheduler.selected_tabs,
             includeLinks: scheduler.include_links,
+            projectUuid: scheduler.project_uuid ?? undefined,
+            projectName: scheduler.project_name ?? undefined,
         } as Scheduler;
     }
 
@@ -248,8 +263,33 @@ export class SchedulerModel {
             destinations?: string[];
         };
     }): Promise<KnexPaginatedData<SchedulerAndTargets[]>> {
-        let baseQuery = SchedulerModel.getBaseSchedulerQuery(this.database);
-
+        let baseQuery = this.database(SchedulerTableName)
+            .select<SelectScheduler[]>(
+                `${SchedulerTableName}.*`,
+                this.database.raw(
+                    `(${UserTableName}.first_name || ' ' || ${UserTableName}.last_name) as created_by_name`,
+                ),
+                `${SavedChartsTableName}.name as saved_chart_name`,
+                `${DashboardsTableName}.name as dashboard_name`,
+                `${ProjectTableName}.project_uuid as project_uuid`,
+                `${ProjectTableName}.name as project_name`,
+                `${ProjectTableName}.scheduler_timezone as project_scheduler_timezone`,
+            )
+            .leftJoin(
+                UserTableName,
+                `${UserTableName}.user_uuid`,
+                `${SchedulerTableName}.created_by`,
+            )
+            .leftJoin(
+                SavedChartsTableName,
+                `${SavedChartsTableName}.saved_query_uuid`,
+                `${SchedulerTableName}.saved_chart_uuid`,
+            )
+            .leftJoin(
+                DashboardsTableName,
+                `${DashboardsTableName}.dashboard_uuid`,
+                `${SchedulerTableName}.dashboard_uuid`,
+            );
         // Apply search query if present
         if (searchQuery) {
             baseQuery = getColumnMatchRegexQuery(baseQuery, searchQuery, [
@@ -355,6 +395,13 @@ export class SchedulerModel {
         // Create a union of two queries: one for saved charts and one for dashboards
         let schedulerCharts = baseQuery
             .clone()
+            .whereNotNull(`${SchedulerTableName}.saved_chart_uuid`);
+
+        let schedulerDashboards = baseQuery
+            .clone()
+            .whereNotNull(`${SchedulerTableName}.dashboard_uuid`);
+
+        schedulerCharts = schedulerCharts
             // Join to get the dashboard that the chart belongs to (if any)
             .leftJoin(
                 { [dashboardChartsJoinTable]: DashboardsTableName },
@@ -376,12 +423,9 @@ export class SchedulerModel {
                 ProjectTableName,
                 `${ProjectTableName}.project_id`,
                 `${SpaceTableName}.project_id`,
-            )
-            .where(`${ProjectTableName}.project_uuid`, projectUuid)
-            .whereNotNull(`${SchedulerTableName}.saved_chart_uuid`);
+            );
 
-        let schedulerDashboards = baseQuery
-            .clone()
+        schedulerDashboards = schedulerDashboards
             .leftJoin(
                 SpaceTableName,
                 `${SpaceTableName}.space_id`,
@@ -391,9 +435,19 @@ export class SchedulerModel {
                 ProjectTableName,
                 `${ProjectTableName}.project_id`,
                 `${SpaceTableName}.project_id`,
-            )
-            .where(`${ProjectTableName}.project_uuid`, projectUuid)
-            .whereNotNull(`${SchedulerTableName}.dashboard_uuid`);
+            );
+
+        if (projectUuid) {
+            schedulerCharts = schedulerCharts.where(
+                `${ProjectTableName}.project_uuid`,
+                projectUuid,
+            );
+
+            schedulerDashboards = schedulerDashboards.where(
+                `${ProjectTableName}.project_uuid`,
+                projectUuid,
+            );
+        }
 
         // Apply resource type filter
         if (filters?.resourceType === 'chart') {
@@ -445,7 +499,9 @@ export class SchedulerModel {
 
         return {
             pagination,
-            data: await this.getSchedulersWithTargets(data),
+            data: await this.getSchedulersWithTargets(
+                data as SelectScheduler[],
+            ),
         };
     }
 
@@ -623,6 +679,20 @@ export class SchedulerModel {
             .where('scheduler_uuid', schedulerUuid);
 
         return this.getSchedulerAndTargets(schedulerUuid);
+    }
+
+    async updateOwner(
+        schedulerUuids: string[],
+        newOwnerUserUuid: string,
+    ): Promise<void> {
+        await this.database.transaction(async (trx) => {
+            await trx(SchedulerTableName)
+                .update({
+                    created_by: newOwnerUserUuid,
+                    updated_at: new Date(),
+                })
+                .whereIn('scheduler_uuid', schedulerUuids);
+        });
     }
 
     async updateScheduler(
@@ -1216,7 +1286,7 @@ export class SchedulerModel {
         });
     }
 
-    async getSchedulerRuns({
+    async getProjectSchedulerRuns({
         projectUuid,
         paginateArgs,
         searchQuery,
@@ -1244,6 +1314,35 @@ export class SchedulerModel {
                   )
                 : await this.getSchedulerForProject(projectUuid);
 
+        return this.getRunsForSchedulers({
+            schedulers,
+            paginateArgs,
+            searchQuery,
+            sort,
+            filters,
+        });
+    }
+
+    async getRunsForSchedulers({
+        schedulers,
+        paginateArgs,
+        searchQuery,
+        sort,
+        filters,
+    }: {
+        schedulers: SchedulerAndTargets[];
+        paginateArgs?: KnexPaginateArgs;
+        searchQuery?: string;
+        sort?: { column: string; direction: 'asc' | 'desc' };
+        filters?: {
+            schedulerUuids?: string[];
+            statuses?: SchedulerRunStatus[];
+            createdByUserUuids?: string[];
+            destinations?: string[];
+            resourceType?: 'chart' | 'dashboard';
+            resourceUuids?: string[];
+        };
+    }): Promise<KnexPaginatedData<SchedulerRun[]>> {
         // Apply scheduler-level filters
         let filteredSchedulers = schedulers;
 
@@ -1338,6 +1437,7 @@ export class SchedulerModel {
                 'job_id',
                 'job_group',
                 'status',
+                'details',
                 this.database.raw(
                     'ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC) as rn',
                 ),
@@ -1362,6 +1462,23 @@ export class SchedulerModel {
                 ),
                 this.database.raw(
                     `COUNT(CASE WHEN status = '${SchedulerJobStatus.ERROR}' THEN 1 END) as error_count`,
+                ),
+                // Count batch jobs with partial delivery failures (some succeeded, some failed)
+                this.database.raw(
+                    `COUNT(CASE WHEN status = '${SchedulerJobStatus.COMPLETED}' AND (
+                        (details::jsonb->>'partialFailure')::boolean = true
+                        OR (
+                            COALESCE((details::jsonb->'batchResult'->>'failed')::int, 0) > 0
+                            AND COALESCE((details::jsonb->'batchResult'->>'succeeded')::int, 0) > 0
+                        )
+                    ) THEN 1 END) as batch_partial_failure_count`,
+                ),
+                // Count batch jobs with total delivery failures (none succeeded, all failed)
+                this.database.raw(
+                    `COUNT(CASE WHEN status = '${SchedulerJobStatus.COMPLETED}' AND (
+                        COALESCE((details::jsonb->'batchResult'->>'failed')::int, 0) > 0
+                        AND COALESCE((details::jsonb->'batchResult'->>'succeeded')::int, 0) = 0
+                    ) THEN 1 END) as batch_total_failure_count`,
                 ),
             )
             .where('rn', 1)
@@ -1439,9 +1556,22 @@ export class SchedulerModel {
                         -- Parent not started
                         WHEN distinct_runs.status = '${SchedulerJobStatus.SCHEDULED}' THEN '${SchedulerRunStatus.SCHEDULED}'
 
-                        -- Parent completed with errors
+                        -- Parent completed with child job errors
                         WHEN distinct_runs.status = '${SchedulerJobStatus.COMPLETED}'
                              AND COALESCE(child_counts.error_count, 0) > 0 THEN '${SchedulerRunStatus.PARTIAL_FAILURE}'
+
+                        -- Parent completed with batch delivery total failures (all targets failed)
+                        WHEN distinct_runs.status = '${SchedulerJobStatus.COMPLETED}'
+                             AND COALESCE(child_counts.batch_total_failure_count, 0) > 0 THEN '${SchedulerRunStatus.FAILED}'
+
+                        -- Parent completed with partial failures (e.g., some charts failed in dashboard export)
+                        WHEN distinct_runs.status = '${SchedulerJobStatus.COMPLETED}'
+                             AND distinct_runs.details IS NOT NULL
+                             AND jsonb_array_length(COALESCE(distinct_runs.details::jsonb->'partialFailures', '[]'::jsonb)) > 0 THEN '${SchedulerRunStatus.PARTIAL_FAILURE}'
+
+                        -- Parent completed with batch delivery partial failures (e.g., some email targets failed)
+                        WHEN distinct_runs.status = '${SchedulerJobStatus.COMPLETED}'
+                             AND COALESCE(child_counts.batch_partial_failure_count, 0) > 0 THEN '${SchedulerRunStatus.PARTIAL_FAILURE}'
 
                         -- Parent completed, no errors
                         WHEN distinct_runs.status = '${SchedulerJobStatus.COMPLETED}' THEN '${SchedulerRunStatus.COMPLETED}'
@@ -1618,6 +1748,7 @@ export class SchedulerModel {
             .whereRaw(
                 `${SchedulerLogTableName}.job_id = ${SchedulerLogTableName}.job_group`,
             )
+            .whereNot(`${SchedulerLogTableName}.scheduler_uuid`, null)
             .orderBy(`${SchedulerLogTableName}.created_at`, 'asc');
 
         if (!parentJobs || parentJobs.length === 0) {
@@ -1689,5 +1820,234 @@ export class SchedulerModel {
             createdByUserUuid: firstParentJob.created_by_user_uuid,
             createdByUserName: firstParentJob.created_by_user_name,
         };
+    }
+
+    /**
+     * Get a summary of schedulers owned by a user across all projects.
+     * Returns the total count and breakdown by project.
+     */
+    async getSchedulersSummaryByOwner(
+        userUuid: string,
+    ): Promise<UserSchedulersSummary> {
+        type ProjectCountRow = {
+            project_uuid: string;
+            project_name: string;
+            count: string | number;
+        };
+
+        // Query schedulers for charts (including charts inside dashboards)
+        const chartSchedulersQuery = this.database(SchedulerTableName)
+            .count('*')
+            .select<ProjectCountRow[]>(
+                `${ProjectTableName}.project_uuid`,
+                `${ProjectTableName}.name as project_name`,
+            )
+            .innerJoin(
+                SavedChartsTableName,
+                `${SavedChartsTableName}.saved_query_uuid`,
+                `${SchedulerTableName}.saved_chart_uuid`,
+            )
+            .leftJoin(DashboardsTableName, function joinDashboards() {
+                this.on(
+                    `${DashboardsTableName}.dashboard_uuid`,
+                    '=',
+                    `${SavedChartsTableName}.dashboard_uuid`,
+                ).andOnNotNull(`${SavedChartsTableName}.dashboard_uuid`);
+            })
+            .innerJoin(SpaceTableName, function joinSpaces() {
+                this.on(
+                    `${SpaceTableName}.space_id`,
+                    '=',
+                    `${SavedChartsTableName}.space_id`,
+                ).andOnNotNull(`${SavedChartsTableName}.space_id`);
+                this.orOn(
+                    `${SpaceTableName}.space_id`,
+                    '=',
+                    `${DashboardsTableName}.space_id`,
+                );
+            })
+            .innerJoin(
+                ProjectTableName,
+                `${ProjectTableName}.project_id`,
+                `${SpaceTableName}.project_id`,
+            )
+            .where(`${SchedulerTableName}.created_by`, userUuid)
+            .whereNotNull(`${SchedulerTableName}.saved_chart_uuid`)
+            .groupBy(
+                `${ProjectTableName}.project_uuid`,
+                `${ProjectTableName}.name`,
+            );
+
+        // Query schedulers for dashboards
+        const dashboardSchedulersQuery = this.database(SchedulerTableName)
+            .count('*')
+            .select<
+                ProjectCountRow[]
+            >(`${ProjectTableName}.project_uuid`, `${ProjectTableName}.name as project_name`)
+            .innerJoin(
+                DashboardsTableName,
+                `${DashboardsTableName}.dashboard_uuid`,
+                `${SchedulerTableName}.dashboard_uuid`,
+            )
+            .innerJoin(
+                SpaceTableName,
+                `${SpaceTableName}.space_id`,
+                `${DashboardsTableName}.space_id`,
+            )
+            .innerJoin(
+                ProjectTableName,
+                `${ProjectTableName}.project_id`,
+                `${SpaceTableName}.project_id`,
+            )
+            .where(`${SchedulerTableName}.created_by`, userUuid)
+            .whereNotNull(`${SchedulerTableName}.dashboard_uuid`)
+            .groupBy(
+                `${ProjectTableName}.project_uuid`,
+                `${ProjectTableName}.name`,
+            );
+
+        const [chartResults, dashboardResults, hasGsheetsSchedulers] =
+            await Promise.all([
+                chartSchedulersQuery,
+                dashboardSchedulersQuery,
+                this.hasGsheetsSchedulersByOwner(userUuid),
+            ]);
+
+        // Merge results by project
+        const projectMap = new Map<
+            string,
+            { projectUuid: string; projectName: string; count: number }
+        >();
+
+        const allResults: ProjectCountRow[] = [
+            ...chartResults,
+            ...dashboardResults,
+        ];
+
+        allResults.forEach((row) => {
+            const existing = projectMap.get(row.project_uuid);
+            const rowCount = Number(row.count);
+            if (existing) {
+                existing.count += rowCount;
+            } else {
+                projectMap.set(row.project_uuid, {
+                    projectUuid: row.project_uuid,
+                    projectName: row.project_name,
+                    count: rowCount,
+                });
+            }
+        });
+
+        const byProject = Array.from(projectMap.values());
+        const totalCount = byProject.reduce((sum, p) => sum + p.count, 0);
+
+        return {
+            totalCount,
+            hasGsheetsSchedulers,
+            byProject,
+        };
+    }
+
+    /**
+     * Update ownership of all schedulers from one user to another in specific projects.
+     * Returns the number of schedulers updated.
+     */
+    async updateOwnerByUser(
+        fromUserUuid: string,
+        toUserUuid: string,
+        projectUuids: string[],
+    ): Promise<number> {
+        // Get scheduler UUIDs that belong to the specified projects
+        // Chart schedulers (including charts inside dashboards)
+        const chartSchedulerUuids = await this.database(SchedulerTableName)
+            .select<{ scheduler_uuid: string }[]>(
+                `${SchedulerTableName}.scheduler_uuid`,
+            )
+            .innerJoin(
+                SavedChartsTableName,
+                `${SavedChartsTableName}.saved_query_uuid`,
+                `${SchedulerTableName}.saved_chart_uuid`,
+            )
+            .leftJoin(DashboardsTableName, function joinDashboards() {
+                this.on(
+                    `${DashboardsTableName}.dashboard_uuid`,
+                    '=',
+                    `${SavedChartsTableName}.dashboard_uuid`,
+                ).andOnNotNull(`${SavedChartsTableName}.dashboard_uuid`);
+            })
+            .innerJoin(SpaceTableName, function joinSpaces() {
+                this.on(
+                    `${SpaceTableName}.space_id`,
+                    '=',
+                    `${SavedChartsTableName}.space_id`,
+                ).andOnNotNull(`${SavedChartsTableName}.space_id`);
+                this.orOn(
+                    `${SpaceTableName}.space_id`,
+                    '=',
+                    `${DashboardsTableName}.space_id`,
+                );
+            })
+            .innerJoin(
+                ProjectTableName,
+                `${ProjectTableName}.project_id`,
+                `${SpaceTableName}.project_id`,
+            )
+            .where(`${SchedulerTableName}.created_by`, fromUserUuid)
+            .whereNotNull(`${SchedulerTableName}.saved_chart_uuid`)
+            .whereIn(`${ProjectTableName}.project_uuid`, projectUuids);
+
+        // Dashboard schedulers
+        const dashboardSchedulerUuids = await this.database(SchedulerTableName)
+            .select<
+                { scheduler_uuid: string }[]
+            >(`${SchedulerTableName}.scheduler_uuid`)
+            .innerJoin(
+                DashboardsTableName,
+                `${DashboardsTableName}.dashboard_uuid`,
+                `${SchedulerTableName}.dashboard_uuid`,
+            )
+            .innerJoin(
+                SpaceTableName,
+                `${SpaceTableName}.space_id`,
+                `${DashboardsTableName}.space_id`,
+            )
+            .innerJoin(
+                ProjectTableName,
+                `${ProjectTableName}.project_id`,
+                `${SpaceTableName}.project_id`,
+            )
+            .where(`${SchedulerTableName}.created_by`, fromUserUuid)
+            .whereNotNull(`${SchedulerTableName}.dashboard_uuid`)
+            .whereIn(`${ProjectTableName}.project_uuid`, projectUuids);
+
+        const allSchedulerUuids = [
+            ...chartSchedulerUuids.map((r) => r.scheduler_uuid),
+            ...dashboardSchedulerUuids.map((r) => r.scheduler_uuid),
+        ];
+
+        if (allSchedulerUuids.length === 0) {
+            return 0;
+        }
+
+        const updatedCount = await this.database(SchedulerTableName)
+            .update({
+                created_by: toUserUuid,
+                updated_at: new Date(),
+            })
+            .whereIn('scheduler_uuid', allSchedulerUuids);
+
+        return updatedCount;
+    }
+
+    /**
+     * Check if a user has any GSHEETS format schedulers.
+     */
+    async hasGsheetsSchedulersByOwner(userUuid: string): Promise<boolean> {
+        const result = await this.database(SchedulerTableName)
+            .where('created_by', userUuid)
+            .where('format', SchedulerFormat.GSHEETS)
+            .first();
+
+        return !!result;
     }
 }

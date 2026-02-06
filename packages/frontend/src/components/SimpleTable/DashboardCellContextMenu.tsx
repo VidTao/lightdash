@@ -10,19 +10,19 @@ import {
     type ItemsMap,
     type ResultValue,
 } from '@lightdash/common';
-import { Menu } from '@mantine/core';
+import { Menu } from '@mantine-8/core';
 import { useClipboard } from '@mantine/hooks';
 import { IconCopy, IconStack } from '@tabler/icons-react';
 import mapValues from 'lodash/mapValues';
 import { useCallback, useMemo, type FC } from 'react';
 import { useParams } from 'react-router';
+import { FilterDashboardTo } from '../../features/dashboardFilters/FilterDashboardTo';
 import useToaster from '../../hooks/toaster/useToaster';
 import { Can } from '../../providers/Ability';
 import useApp from '../../providers/App/useApp';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
 import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
-import { FilterDashboardTo } from '../DashboardFilter/FilterDashboardTo';
 import UrlMenuItems from '../Explorer/ResultsCard/UrlMenuItems';
 import DrillDownMenuItem from '../MetricQueryData/DrillDownMenuItem';
 import { useMetricQueryDataContext } from '../MetricQueryData/useMetricQueryDataContext';
@@ -143,7 +143,7 @@ const DashboardCellContextMenu: FC<
             {isField(item) && (item.urls || []).length > 0 && <Menu.Divider />}
 
             <Menu.Item
-                icon={<MantineIcon icon={IconCopy} />}
+                leftSection={<MantineIcon icon={IconCopy} />}
                 onClick={handleCopyToClipboard}
             >
                 Copy value
@@ -160,7 +160,7 @@ const DashboardCellContextMenu: FC<
                         })}
                     >
                         <Menu.Item
-                            icon={<MantineIcon icon={IconStack} />}
+                            leftSection={<MantineIcon icon={IconStack} />}
                             onClick={handleViewUnderlyingData}
                         >
                             View underlying data

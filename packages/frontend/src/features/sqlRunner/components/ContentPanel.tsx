@@ -80,7 +80,7 @@ import {
     setSqlLimit,
     updateParameterValue,
 } from '../store/sqlRunnerSlice';
-import { runSqlQuery } from '../store/thunks';
+import { prepareAndFetchChartData, runSqlQuery } from '../store/thunks';
 import { ChartDownload } from './Download/ChartDownload';
 import ResultsDownloadButton from './Download/ResultsDownloadButton';
 import { SqlEditor } from './SqlEditor';
@@ -158,21 +158,46 @@ export const ContentPanel: FC = () => {
     );
 
     const queryResults = useAppSelector(selectSqlQueryResults);
+    const hasQueryResults = useMemo(() => !!queryResults, [queryResults]);
 
     const handleRunQuery = useCallback(
         async (sqlToUse: string) => {
             if (!sqlToUse || !limit) return;
 
-            await dispatch(
-                runSqlQuery({
-                    sql: sqlToUse,
-                    limit,
-                    projectUuid,
-                    parameterValues,
-                }),
-            );
+            if (
+                activeEditorTab === EditorTabs.VISUALIZATION &&
+                hasQueryResults
+            ) {
+                // Already have results, just refresh pivot data
+                await dispatch(
+                    prepareAndFetchChartData({ forceRefresh: true }),
+                );
+            } else {
+                // Need to run SQL query first
+                await dispatch(
+                    runSqlQuery({
+                        sql: sqlToUse,
+                        limit,
+                        projectUuid,
+                        parameterValues,
+                    }),
+                );
+                // If we're on viz tab, also fetch chart data after SQL completes
+                if (activeEditorTab === EditorTabs.VISUALIZATION) {
+                    await dispatch(
+                        prepareAndFetchChartData({ forceRefresh: true }),
+                    );
+                }
+            }
         },
-        [dispatch, projectUuid, limit, parameterValues],
+        [
+            activeEditorTab,
+            dispatch,
+            projectUuid,
+            limit,
+            parameterValues,
+            hasQueryResults,
+        ],
     );
 
     useEffect(() => {
@@ -194,17 +219,24 @@ export const ContentPanel: FC = () => {
     useEffect(
         // When the user opens the sql runner and the query results are not yet loaded, run the query and then change to the visualization tab
         function handleEditModeOnLoad() {
-            if (fetchResultsOnLoad && !queryResults) {
+            if (fetchResultsOnLoad && !hasQueryResults) {
                 void handleRunQuery(sql);
             } else if (
                 fetchResultsOnLoad &&
-                queryResults &&
+                hasQueryResults &&
                 mode === 'default'
             ) {
                 dispatch(setActiveEditorTab(EditorTabs.VISUALIZATION));
             }
         },
-        [fetchResultsOnLoad, handleRunQuery, queryResults, dispatch, sql, mode],
+        [
+            fetchResultsOnLoad,
+            handleRunQuery,
+            hasQueryResults,
+            dispatch,
+            sql,
+            mode,
+        ],
     );
 
     const activeConfigs = useAppSelector((state) => {
@@ -366,7 +398,7 @@ export const ContentPanel: FC = () => {
                     sql,
                     downloadLimit === null
                         ? MAX_SAFE_INTEGER
-                        : downloadLimit ?? limit,
+                        : (downloadLimit ?? limit),
                 );
                 return newQuery.queryUuid;
             }
@@ -415,14 +447,6 @@ export const ContentPanel: FC = () => {
                                             ? 'none'
                                             : undefined
                                     }
-                                    styles={(theme) => ({
-                                        root: {
-                                            backgroundColor:
-                                                theme.colorScheme === 'dark'
-                                                    ? theme.colors.ldDark[9]
-                                                    : theme.colors.ldGray[2],
-                                        },
-                                    })}
                                     size="sm"
                                     radius="md"
                                     data={[

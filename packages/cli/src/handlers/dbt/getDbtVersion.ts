@@ -59,6 +59,7 @@ const getSupportedDbtVersionOption = (
     if (version.startsWith('1.8.')) return SupportedDbtVersions.V1_8;
     if (version.startsWith('1.9.')) return SupportedDbtVersions.V1_9;
     if (version.startsWith('1.10.')) return SupportedDbtVersions.V1_10;
+    if (version.startsWith('1.11.')) return SupportedDbtVersions.V1_11;
 
     // No supported version found
     return null;
@@ -69,7 +70,7 @@ const getFallbackDbtVersionOption = (version: string): DbtVersionOption => {
     return getLatestSupportDbtVersion();
 };
 
-type DbtVersion = {
+export type DbtVersion = {
     verboseVersion: string; // Verbose version returned by dbt --version
     versionOption: DbtVersionOption; // The supported version by Lightdash
     isDbtCloudCLI: boolean; // Whether the version is dbt Cloud CLI
@@ -91,7 +92,7 @@ export const getDbtVersion = async (): Promise<DbtVersion> => {
         const message = `We don't currently support version ${verboseVersion} on Lightdash. We'll interpret it as version ${fallbackVersionOption} instead, which might cause unexpected errors or behavior. For the best experience, please use a supported version (${supportedVersionsRangeMessage}).`;
         const spinner = GlobalState.getActiveSpinner();
         spinner?.stop();
-        if (process.env.CI === 'true') {
+        if (GlobalState.isNonInteractive()) {
             console.error(styles.warning(message));
         } else {
             const answers = await inquirer.prompt([
@@ -123,7 +124,7 @@ export const getDbtVersion = async (): Promise<DbtVersion> => {
         const message = `Support for dbt Cloud CLI is still experimental and might not work as expected.`;
         const spinner = GlobalState.getActiveSpinner();
         spinner?.stop();
-        if (process.env.CI === 'true') {
+        if (GlobalState.isNonInteractive()) {
             console.error(styles.warning(message));
         } else {
             const answers = await inquirer.prompt([
@@ -153,4 +154,21 @@ export const getDbtVersion = async (): Promise<DbtVersion> => {
         isDbtCloudCLI: isDbtCloudCLI(verboseVersion),
         versionOption: supportedVersionOption ?? fallbackVersionOption,
     };
+};
+
+export const tryGetDbtVersion = async (): Promise<
+    { success: true; version: DbtVersion } | { success: false; error: unknown }
+> => {
+    try {
+        const version = await getDbtVersion();
+        GlobalState.debug(`> dbt version ${version.verboseVersion}`);
+        return { success: true, version };
+    } catch (e) {
+        GlobalState.debug(
+            `> dbt installation not found: ${getErrorMessage(
+                e,
+            )} (might be using Lightdash YAML only)`,
+        );
+        return { success: false, error: e };
+    }
 };

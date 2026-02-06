@@ -6,6 +6,7 @@ import {
     type ApiErrorDetail,
     type ChartConfig,
     type DashboardFilters,
+    type DateZoom,
     type EChartsSeries,
     type ItemsMap,
     type MetricQuery,
@@ -33,12 +34,12 @@ import {
     calculateSeriesLikeIdentifier,
     isGroupedSeries,
 } from '../../hooks/useChartColorConfig/utils';
-import {
-    useFeatureFlag,
-    useFeatureFlagEnabled,
-} from '../../hooks/useFeatureFlagEnabled';
 import usePivotDimensions from '../../hooks/usePivotDimensions';
 import { type InfiniteQueryResults } from '../../hooks/useQueryResults';
+import {
+    useClientFeatureFlag,
+    useServerFeatureFlag,
+} from '../../hooks/useServerOrClientFeatureFlag';
 import { type EChartsReact } from '../EChartsReactWrapper';
 import { type EchartsSeriesClickEvent } from '../SimpleChart';
 import VisualizationBigNumberConfig from './VisualizationBigNumberConfig';
@@ -78,12 +79,13 @@ export type VisualizationProviderProps = {
     invalidateCache?: boolean;
     colorPalette: string[];
     tableCalculationsMetadata?: TableCalculationMetadata[];
-    setEchartsRef?: (ref: RefObject<EChartsReact | null>) => void;
+    setEchartsRef?: (ref: RefObject<EChartsReact | null> | undefined) => void;
     computedSeries?: Series[];
     apiErrorDetail?: ApiErrorDetail | null;
     containerWidth?: number;
     containerHeight?: number;
     isDashboard?: boolean;
+    dateZoom?: DateZoom;
 };
 
 const VisualizationProvider: FC<
@@ -114,6 +116,7 @@ const VisualizationProvider: FC<
     containerWidth,
     containerHeight,
     isDashboard,
+    dateZoom,
 }) => {
     const itemsMap = useMemo(() => {
         return resultsData?.fields;
@@ -121,22 +124,35 @@ const VisualizationProvider: FC<
 
     const chartRef = useRef<EChartsReact | null>(null);
     const leafletMapRef = useRef<LeafletMap | null>(null);
+
     useEffect(() => {
         if (setEchartsRef)
             setEchartsRef(chartRef as RefObject<EChartsReact | null>);
-    }, [chartRef, setEchartsRef]);
+
+        // Cleanup: dispose ECharts instance and clear parent reference on unmount
+        return () => {
+            // Dispose the ECharts instance to free up canvas memory
+            if (chartRef.current) {
+                const echartsInstance = chartRef.current.getEchartsInstance();
+                if (echartsInstance && !echartsInstance.isDisposed()) {
+                    echartsInstance.dispose();
+                }
+                chartRef.current = null;
+            }
+        };
+    }, [setEchartsRef]);
     const [lastValidResultsData, setLastValidResultsData] = useState<
         InfiniteQueryResults & { metricQuery?: MetricQuery; fields?: ItemsMap }
     >();
 
-    const { data: useSqlPivotResults } = useFeatureFlag(
+    const { data: useSqlPivotResults } = useServerFeatureFlag(
         FeatureFlags.UseSqlPivotResults,
     );
 
     const { validPivotDimensions, setPivotDimensions } = usePivotDimensions(
         initialPivotDimensions,
         useSqlPivotResults?.enabled
-            ? unsavedMetricQuery ?? lastValidResultsData?.metricQuery
+            ? (unsavedMetricQuery ?? lastValidResultsData?.metricQuery)
             : lastValidResultsData?.metricQuery,
         onPivotDimensionsChange,
     );
@@ -239,7 +255,7 @@ const VisualizationProvider: FC<
         [calculateKeyColorAssignment, itemsMap],
     );
 
-    const isCalculateSeriesColorEnabled = useFeatureFlagEnabled(
+    const isCalculateSeriesColorEnabled = useClientFeatureFlag(
         FeatureFlags.CalculateSeriesColor,
     );
 
@@ -304,6 +320,19 @@ const VisualizationProvider: FC<
         ],
     );
 
+    // Detect if the device supports touch events
+    // This helps us avoid appendTo: 'body' on touch devices where drag-to-scroll
+    // causes tooltip positioning issues.
+    // Related: https://github.com/apache/echarts/issues/12776
+    const isTouchDevice = useMemo(() => {
+        return (
+            'ontouchstart' in window ||
+            navigator.maxTouchPoints > 0 ||
+            // @ts-ignore - msMaxTouchPoints is for older IE
+            navigator.msMaxTouchPoints > 0
+        );
+    }, []);
+
     const value: Omit<
         ReturnType<typeof useVisualizationContext>,
         'visualizationConfig'
@@ -330,6 +359,7 @@ const VisualizationProvider: FC<
         containerWidth,
         containerHeight,
         isDashboard,
+        isTouchDevice,
     };
 
     switch (chartConfig.type) {
@@ -485,6 +515,7 @@ const VisualizationProvider: FC<
                     dashboardFilters={dashboardFilters}
                     invalidateCache={invalidateCache}
                     parameters={parameters}
+                    dateZoom={dateZoom}
                 >
                     {({ visualizationConfig }) => (
                         <Context.Provider

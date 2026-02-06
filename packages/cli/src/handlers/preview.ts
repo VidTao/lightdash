@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import {
     CreateProjectTableConfiguration,
+    getErrorMessage,
     Project,
     ProjectType,
 } from '@lightdash/common';
@@ -33,6 +34,7 @@ type PreviewHandlerOptions = DbtCompileOptions & {
     tableConfiguration: CreateProjectTableConfiguration;
     skipCopyContent?: boolean;
     organizationCredentials?: string;
+    assumeYes?: boolean;
 };
 
 type StopPreviewHandlerOptions = {
@@ -81,8 +83,8 @@ const cleanupProject = async (
         });
         teardownSpinner.succeed(`  Cleaned up`);
     } catch (e) {
-        console.error('Error during cleanup:', e);
-        teardownSpinner.fail(`  Cleanup failed`);
+        // console.error(styles.error(`Error during cleanup: ${getErrorMessage(e)}`));
+        teardownSpinner.fail(`  Cleanup failed: ${getErrorMessage(e)}`);
     }
 };
 
@@ -338,7 +340,7 @@ export const previewHandler = async (
         ]);
         pressToShutdown.clear();
     } catch (e) {
-        spinner.fail('Error creating developer preview');
+        spinner.fail(`Error creating developer preview: ${getErrorMessage(e)}`);
 
         await deletePreviewProject(project.projectUuid);
         await unsetPreviewProject();
@@ -369,9 +371,22 @@ export const startPreviewHandler = async (
     }
 
     const projectName = options.name;
+    const config = await getConfig();
+
+    // Log current source project info if copying content
+    if (!options.skipCopyContent && config.context?.project) {
+        console.error(
+            `\n${styles.success('Source project for content:')} ${styles.bold(
+                config.context.projectName || config.context.project,
+            )}\n`,
+        );
+    }
 
     const previewProject = await getPreviewProject(projectName);
     if (previewProject) {
+        console.error(
+            `\n${styles.success('Updating preview project:')} ${styles.bold(projectName)}\n`,
+        );
         await setPreviewProject(previewProject.projectUuid, projectName);
         await LightdashAnalytics.track({
             event: 'start_preview.update',
@@ -383,7 +398,6 @@ export const startPreviewHandler = async (
         });
 
         // Update
-        console.error(`Updating project preview ${projectName}`);
         const explores = await compile(options);
         await deploy(explores, {
             ...options,
@@ -396,7 +410,9 @@ export const startPreviewHandler = async (
             core.setOutput('project_uuid', previewProject.projectUuid);
         }
     } else {
-        const config = await getConfig();
+        console.error(
+            `\n${styles.success('Creating preview project:')} ${styles.bold(projectName)}\n`,
+        );
 
         if (!config.context?.project) {
             console.error(
@@ -421,7 +437,6 @@ export const startPreviewHandler = async (
         }
 
         // Create
-        console.error(`Creating new project preview ${projectName}`);
         const results = await createProject({
             ...options,
             name: projectName,

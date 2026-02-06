@@ -12,7 +12,10 @@ import {
     DashboardTileTypes,
     DashboardVersionedFields,
     ExploreType,
+    FeatureFlags,
     ForbiddenError,
+    KnexPaginateArgs,
+    KnexPaginatedData,
     ParameterError,
     PossibleAbilities,
     SchedulerAndTargets,
@@ -54,6 +57,7 @@ import { AnalyticsModel } from '../../models/AnalyticsModel';
 import type { CatalogModel } from '../../models/CatalogModel/CatalogModel';
 import { getChartFieldUsageChanges } from '../../models/CatalogModel/utils';
 import { DashboardModel } from '../../models/DashboardModel/DashboardModel';
+import { FeatureFlagModel } from '../../models/FeatureFlagModel/FeatureFlagModel';
 import { PinnedListModel } from '../../models/PinnedListModel';
 import type { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { SavedChartModel } from '../../models/SavedChartModel';
@@ -78,6 +82,7 @@ type DashboardServiceArguments = {
     slackClient: SlackClient;
     projectModel: ProjectModel;
     catalogModel: CatalogModel;
+    featureFlagModel: FeatureFlagModel;
 };
 
 export class DashboardService
@@ -108,6 +113,8 @@ export class DashboardService
 
     slackClient: SlackClient;
 
+    featureFlagModel: FeatureFlagModel;
+
     constructor({
         analytics,
         dashboardModel,
@@ -121,6 +128,7 @@ export class DashboardService
         slackClient,
         projectModel,
         catalogModel,
+        featureFlagModel,
     }: DashboardServiceArguments) {
         super();
         this.analytics = analytics;
@@ -135,6 +143,14 @@ export class DashboardService
         this.catalogModel = catalogModel;
         this.schedulerClient = schedulerClient;
         this.slackClient = slackClient;
+        this.featureFlagModel = featureFlagModel;
+    }
+
+    private async getNestedPermissionsFlag(user: SessionUser) {
+        return this.featureFlagModel.get({
+            user,
+            featureFlagId: FeatureFlags.NestedSpacesPermissions,
+        });
     }
 
     static getCreateEventProperties(
@@ -172,9 +188,8 @@ export class DashboardService
         user: SessionUser,
         dashboardUuid: string,
     ) {
-        const orphanedCharts = await this.dashboardModel.getOrphanedCharts(
-            dashboardUuid,
-        );
+        const orphanedCharts =
+            await this.dashboardModel.getOrphanedCharts(dashboardUuid);
 
         await Promise.all(
             orphanedCharts.map(async (chart) => {
@@ -191,6 +206,83 @@ export class DashboardService
                 });
             }),
         );
+    }
+
+    /**
+     * Duplicates a chart that belongs to a dashboard.
+     * Used when duplicating dashboards or duplicating tabs with dashboard charts.
+     */
+    private async duplicateChartForDashboard({
+        chartUuid,
+        projectUuid,
+        dashboardUuid,
+        user,
+    }: {
+        chartUuid: string;
+        projectUuid: string;
+        dashboardUuid: string;
+        user: SessionUser;
+    }): Promise<string> {
+        const chartToDuplicate = await this.savedChartModel.get(chartUuid);
+        if (!chartToDuplicate.dashboardUuid) {
+            throw new ParameterError(
+                'We cannot duplicate a chart that is not part of a dashboard',
+            );
+        }
+        const duplicatedChart = await this.savedChartModel.create(
+            projectUuid,
+            user.userUuid,
+            {
+                ...chartToDuplicate,
+                spaceUuid: null,
+                dashboardUuid,
+                updatedByUser: {
+                    userUuid: user.userUuid,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                },
+                slug: generateSlug(`${chartToDuplicate.name} ${Date.now()}`),
+            },
+        );
+
+        // Update catalog field usage for the new chart
+        const cachedExplore = await this.projectModel.getExploreFromCache(
+            projectUuid,
+            duplicatedChart.tableName,
+        );
+        try {
+            await this.updateChartFieldUsage(projectUuid, cachedExplore, {
+                oldChartFields: {
+                    metrics: [],
+                    dimensions: [],
+                },
+                newChartFields: {
+                    metrics: duplicatedChart.metricQuery.metrics,
+                    dimensions: duplicatedChart.metricQuery.dimensions,
+                },
+            });
+        } catch (error) {
+            this.logger.error(
+                `Error updating chart field usage for duplicated chart ${duplicatedChart.uuid}`,
+                error,
+            );
+        }
+
+        this.analytics.track({
+            event: 'saved_chart.created',
+            userId: user.userUuid,
+            properties: {
+                ...SavedChartService.getCreateEventProperties(duplicatedChart),
+                dashboardId: duplicatedChart.dashboardUuid ?? undefined,
+                duplicated: true,
+                virtualViewId:
+                    cachedExplore?.type === ExploreType.VIRTUAL
+                        ? cachedExplore.name
+                        : undefined,
+            },
+        });
+
+        return duplicatedChart.uuid;
     }
 
     async getAllByProject(
@@ -211,10 +303,22 @@ export class DashboardService
                 this.spaceModel.getSpaceSummary(spaceUuid),
             ),
         );
+
+        const nestedPermissionsFlag = await this.featureFlagModel.get({
+            user: {
+                userUuid: user.userUuid,
+                organizationUuid: user.organizationUuid,
+                organizationName: user.organizationName,
+            },
+            featureFlagId: FeatureFlags.NestedSpacesPermissions,
+        });
+
         const spacesAccess = await this.spaceModel.getUserSpacesAccess(
             user.userUuid,
             spaces.map((s) => s.uuid),
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
+
         return dashboards.filter((dashboard) => {
             const dashboardSpace = spaces.find(
                 (space) => space.uuid === dashboard.spaceUuid,
@@ -242,16 +346,17 @@ export class DashboardService
         user: SessionUser,
         dashboardUuidOrSlug: string,
     ): Promise<Dashboard> {
-        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuidOrSlug,
-        );
+        const dashboardDao =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuidOrSlug);
 
         const space = await this.spaceModel.getSpaceSummary(
             dashboardDao.spaceUuid,
         );
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             dashboardDao.spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
         const dashboard = {
             ...dashboardDao,
@@ -345,9 +450,11 @@ export class DashboardService
             ? await this.spaceModel.get(dashboard.spaceUuid)
             : await getFirstSpace();
 
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             space.uuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
 
         if (
@@ -398,15 +505,16 @@ export class DashboardService
         dashboardUuid: string,
         data: DuplicateDashboardParams,
     ): Promise<Dashboard> {
-        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const dashboardDao =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
         const space = await this.spaceModel.getSpaceSummary(
             dashboardDao.spaceUuid,
         );
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             dashboardDao.spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
         const dashboard = {
             ...dashboardDao,
@@ -459,83 +567,20 @@ export class DashboardService
                         tile.properties.belongsToDashboard &&
                         tile.properties.savedChartUuid
                     ) {
-                        const chartInDashboard = await this.savedChartModel.get(
-                            tile.properties.savedChartUuid,
-                        );
-                        const duplicatedChart =
-                            await this.savedChartModel.create(
-                                newDashboard.projectUuid,
-                                user.userUuid,
-                                {
-                                    ...chartInDashboard,
-                                    spaceUuid: null,
-                                    dashboardUuid: newDashboard.uuid,
-                                    updatedByUser: {
-                                        userUuid: user.userUuid,
-                                        firstName: user.firstName,
-                                        lastName: user.lastName,
-                                    },
-                                    slug: generateSlug(
-                                        `${
-                                            chartInDashboard.name
-                                        } ${Date.now()}`,
-                                    ),
-                                },
-                            );
-                        const cachedExplore =
-                            await this.projectModel.getExploreFromCache(
-                                projectUuid,
-                                duplicatedChart.tableName,
-                            );
-
-                        try {
-                            await this.updateChartFieldUsage(
-                                projectUuid,
-                                cachedExplore,
-                                {
-                                    oldChartFields: {
-                                        metrics: [],
-                                        dimensions: [],
-                                    },
-                                    newChartFields: {
-                                        metrics:
-                                            duplicatedChart.metricQuery.metrics,
-                                        dimensions:
-                                            duplicatedChart.metricQuery
-                                                .dimensions,
-                                    },
-                                },
-                            );
-                        } catch (error) {
-                            this.logger.error(
-                                `Error updating chart field usage for chart ${duplicatedChart.uuid}`,
-                                error,
-                            );
-                        }
-
-                        this.analytics.track({
-                            event: 'saved_chart.created',
-                            userId: user.userUuid,
-                            properties: {
-                                ...SavedChartService.getCreateEventProperties(
-                                    duplicatedChart,
-                                ),
-                                dashboardId:
-                                    duplicatedChart.dashboardUuid ?? undefined,
-                                duplicated: true,
-                                virtualViewId:
-                                    cachedExplore?.type === ExploreType.VIRTUAL
-                                        ? cachedExplore.name
-                                        : undefined,
-                            },
-                        });
+                        const newChartUuid =
+                            await this.duplicateChartForDashboard({
+                                chartUuid: tile.properties.savedChartUuid,
+                                projectUuid: newDashboard.projectUuid,
+                                dashboardUuid: newDashboard.uuid,
+                                user,
+                            });
 
                         return {
                             ...tile,
                             uuid: uuidv4(),
                             properties: {
                                 ...tile.properties,
-                                savedChartUuid: duplicatedChart.uuid,
+                                savedChartUuid: newChartUuid,
                             },
                         };
                     }
@@ -589,10 +634,10 @@ export class DashboardService
         dashboardUuidOrSlug: string,
         dashboard: UpdateDashboard,
     ): Promise<Dashboard> {
-        const existingDashboardDao = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuidOrSlug,
-        );
+        const existingDashboardDao =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuidOrSlug);
 
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const canUpdateDashboardInCurrentSpace = user.ability.can(
             'update',
             subject('Dashboard', {
@@ -602,6 +647,7 @@ export class DashboardService
                 access: await this.spaceModel.getUserSpaceAccess(
                     user.userUuid,
                     existingDashboardDao.spaceUuid,
+                    { useInheritedAccess: nestedPermissionsFlag.enabled },
                 ),
             }),
         );
@@ -623,6 +669,10 @@ export class DashboardService
                         access: await this.spaceModel.getUserSpaceAccess(
                             user.userUuid,
                             dashboard.spaceUuid,
+                            {
+                                useInheritedAccess:
+                                    nestedPermissionsFlag.enabled,
+                            },
                         ),
                     }),
                 );
@@ -670,10 +720,96 @@ export class DashboardService
                 new Set(dashboard.tiles.map((t) => t.type)),
             );
 
+            // Handle chart duplication for dashboard charts that appear multiple times
+            // This happens when duplicating a dashboard tab with charts saved directly to the dashboard
+            // We detect duplicates by finding chart UUIDs that appear more than once
+            // Step 1: Count occurrences of each chart UUID for dashboard charts
+            const chartUuidOccurrences = new Map<string, number>();
+            dashboard.tiles.forEach((tile) => {
+                if (
+                    tile.type === DashboardTileTypes.SAVED_CHART &&
+                    tile.properties.belongsToDashboard &&
+                    tile.properties.savedChartUuid
+                ) {
+                    const chartUuid = tile.properties.savedChartUuid;
+                    chartUuidOccurrences.set(
+                        chartUuid,
+                        (chartUuidOccurrences.get(chartUuid) ?? 0) + 1,
+                    );
+                }
+            });
+
+            // Step 2: Find chart UUIDs that need duplication (appear more than once)
+            const chartUuidsToDuplicate = new Set(
+                [...chartUuidOccurrences.entries()]
+                    .filter(([, count]) => count > 1)
+                    .map(([uuid]) => uuid),
+            );
+
+            // Step 3: Create duplicated charts for all tiles that need them (except the first occurrence)
+            const seenChartUuids = new Set<string>();
+            const chartDuplicationPromises: Promise<{
+                tileIndex: number;
+                newChartUuid: string;
+            }>[] = [];
+
+            dashboard.tiles.forEach((tile, index) => {
+                if (
+                    tile.type === DashboardTileTypes.SAVED_CHART &&
+                    tile.properties.belongsToDashboard &&
+                    tile.properties.savedChartUuid &&
+                    chartUuidsToDuplicate.has(tile.properties.savedChartUuid)
+                ) {
+                    const chartUuid = tile.properties.savedChartUuid;
+                    if (seenChartUuids.has(chartUuid)) {
+                        // This is a subsequent occurrence - needs duplication
+                        chartDuplicationPromises.push(
+                            this.duplicateChartForDashboard({
+                                chartUuid,
+                                projectUuid: existingDashboardDao.projectUuid,
+                                dashboardUuid: existingDashboardDao.uuid,
+                                user,
+                            }).then((newChartUuid) => ({
+                                tileIndex: index,
+                                newChartUuid,
+                            })),
+                        );
+                    } else {
+                        // First occurrence - keep the original
+                        seenChartUuids.add(chartUuid);
+                    }
+                }
+            });
+
+            // Step 4: Wait for all duplications and build the final tiles array
+            const duplicatedCharts = await Promise.all(
+                chartDuplicationPromises,
+            );
+            const duplicatedChartsByTileIndex = new Map(
+                duplicatedCharts.map((d) => [d.tileIndex, d.newChartUuid]),
+            );
+
+            const tilesToSave = dashboard.tiles.map((tile, index) => {
+                const newChartUuid = duplicatedChartsByTileIndex.get(index);
+                if (
+                    newChartUuid &&
+                    tile.type === DashboardTileTypes.SAVED_CHART
+                ) {
+                    return {
+                        ...tile,
+                        properties: {
+                            ...tile.properties,
+                            savedChartUuid: newChartUuid,
+                        },
+                    };
+                }
+                return tile;
+            });
+
             const updatedDashboard = await this.dashboardModel.addVersion(
                 existingDashboardDao.uuid,
                 {
-                    tiles: dashboard.tiles,
+                    tiles: tilesToSave,
                     filters: dashboard.filters,
                     parameters: dashboard.parameters,
                     tabs: dashboard.tabs || [],
@@ -703,6 +839,7 @@ export class DashboardService
         const access = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             updatedNewDashboard.spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
 
         return {
@@ -716,15 +853,16 @@ export class DashboardService
         user: SessionUser,
         dashboardUuid: string,
     ): Promise<TogglePinnedItemInfo> {
-        const existingDashboardDao = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const existingDashboardDao =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
         const space = await this.spaceModel.getSpaceSummary(
             existingDashboardDao.spaceUuid,
         );
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             existingDashboardDao.spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
         const existingDashboard = {
             ...existingDashboardDao,
@@ -794,6 +932,7 @@ export class DashboardService
         projectUuid: string,
         dashboards: UpdateMultipleDashboards[],
     ): Promise<Dashboard[]> {
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const userHasAccessToDashboards = await Promise.all(
             dashboards.map(async (dashboardToUpdate) => {
                 const dashboard = await this.dashboardModel.getByIdOrSlug(
@@ -808,6 +947,10 @@ export class DashboardService
                         access: await this.spaceModel.getUserSpaceAccess(
                             user.userUuid,
                             dashboard.spaceUuid,
+                            {
+                                useInheritedAccess:
+                                    nestedPermissionsFlag.enabled,
+                            },
                         ),
                     }),
                 );
@@ -820,6 +963,10 @@ export class DashboardService
                         access: await this.spaceModel.getUserSpaceAccess(
                             user.userUuid,
                             dashboardToUpdate.spaceUuid,
+                            {
+                                useInheritedAccess:
+                                    nestedPermissionsFlag.enabled,
+                            },
                         ),
                     }),
                 );
@@ -859,6 +1006,7 @@ export class DashboardService
                     await this.spaceModel.getUserSpaceAccess(
                         user.userUuid,
                         dashboard.spaceUuid,
+                        { useInheritedAccess: nestedPermissionsFlag.enabled },
                     );
                 return {
                     ...dashboard,
@@ -872,15 +1020,16 @@ export class DashboardService
     }
 
     async delete(user: SessionUser, dashboardUuid: string): Promise<void> {
-        const dashboardToDelete = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const dashboardToDelete =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
         const { organizationUuid, projectUuid, spaceUuid, tiles } =
             dashboardToDelete;
         const space = await this.spaceModel.getSpaceSummary(spaceUuid);
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
         if (
             user.ability.cannot(
@@ -947,9 +1096,8 @@ export class DashboardService
             }
         }
 
-        const deletedDashboard = await this.dashboardModel.delete(
-            dashboardUuid,
-        );
+        const deletedDashboard =
+            await this.dashboardModel.delete(dashboardUuid);
 
         this.analytics.track({
             event: 'dashboard.deleted',
@@ -964,9 +1112,22 @@ export class DashboardService
     async getSchedulers(
         user: SessionUser,
         dashboardUuid: string,
-    ): Promise<SchedulerAndTargets[]> {
-        await this.checkCreateScheduledDeliveryAccess(user, dashboardUuid);
-        return this.schedulerModel.getDashboardSchedulers(dashboardUuid);
+        searchQuery?: string,
+        paginateArgs?: KnexPaginateArgs,
+    ): Promise<KnexPaginatedData<SchedulerAndTargets[]>> {
+        const dashboard = await this.checkCreateScheduledDeliveryAccess(
+            user,
+            dashboardUuid,
+        );
+        return this.schedulerModel.getSchedulers({
+            projectUuid: dashboard.projectUuid,
+            paginateArgs,
+            searchQuery,
+            filters: {
+                resourceType: 'dashboard',
+                resourceUuids: [dashboardUuid],
+            },
+        });
     }
 
     async createScheduler(
@@ -986,6 +1147,12 @@ export class DashboardService
 
         if (!isValidTimezone(newScheduler.timezone)) {
             throw new ParameterError('Timezone string is not valid');
+        }
+
+        if (!newScheduler.targets || !Array.isArray(newScheduler.targets)) {
+            throw new ParameterError(
+                'Targets is required and must be an array',
+            );
         }
 
         const { projectUuid, organizationUuid } =
@@ -1053,15 +1220,16 @@ export class DashboardService
         user: SessionUser,
         dashboardUuid: string,
     ): Promise<Dashboard> {
-        const dashboardDao = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const dashboardDao =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
         const space = await this.spaceModel.getSpaceSummary(
             dashboardDao.spaceUuid,
         );
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(user);
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             user.userUuid,
             dashboardDao.spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
         const dashboard = {
             ...dashboardDao,
@@ -1110,9 +1278,13 @@ export class DashboardService
         const space = await this.spaceModel.getSpaceSummary(
             dashboard.spaceUuid,
         );
+        const nestedPermissionsFlag = await this.getNestedPermissionsFlag(
+            actor.user,
+        );
         const spaceAccess = await this.spaceModel.getUserSpaceAccess(
             actor.user.userUuid,
             dashboard.spaceUuid,
+            { useInheritedAccess: nestedPermissionsFlag.enabled },
         );
 
         const isActorAllowedToPerformAction = actor.user.ability.can(
@@ -1138,6 +1310,7 @@ export class DashboardService
             const newSpaceAccess = await this.spaceModel.getUserSpaceAccess(
                 actor.user.userUuid,
                 resource.spaceUuid,
+                { useInheritedAccess: nestedPermissionsFlag.enabled },
             );
 
             const isActorAllowedToPerformActionInNewSpace =
