@@ -1,5 +1,5 @@
 import { subject } from '@casl/ability';
-import { isCompileJob } from '@lightdash/common';
+import { CatalogCategoryFilterMode, isCompileJob } from '@lightdash/common';
 import {
     ActionIcon,
     Badge,
@@ -26,15 +26,18 @@ import { useTimeAgo } from '../../../hooks/useTimeAgo';
 import useActiveJob from '../../../providers/ActiveJob/useActiveJob';
 import useApp from '../../../providers/App/useApp';
 import { LearnMoreContent } from '../../../svgs/metricsCatalog';
-import { useIndexCatalogJob } from '../../catalog/hooks/useIndexCatalogJob';
 import { useAppDispatch, useAppSelector } from '../../sqlRunner/store/hooks';
+import { useIndexCatalogJob } from '../hooks/useIndexCatalogJob';
 import {
     setAbility,
     setActiveMetric,
+    setCategoryFilterMode,
     setCategoryFilters,
     setOrganizationUuid,
+    setOwnerFilters,
     setProjectUuid,
     setSearch,
+    setTableFilters,
     setTableSorting,
     setUser,
     toggleMetricExploreModal,
@@ -179,16 +182,28 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
     );
     const navigate = useNavigate();
     const categoriesParam = useSearchParams('categories');
+    const categoriesFilterModeParam = useSearchParams('categoriesFilterMode');
+    const tablesParam = useSearchParams('tables');
     const searchParam = useSearchParams('search');
     const sortingParam = useSearchParams('sortBy');
     const sortDirectionParam = useSearchParams('sortDirection');
+    const ownerUserUuidParam = useSearchParams('ownerUserUuid');
 
     const categories = useAppSelector(
         (state) => state.metricsCatalog.categoryFilters,
     );
+    const categoryFilterMode = useAppSelector(
+        (state) => state.metricsCatalog.categoryFilterMode,
+    );
+    const tableFilters = useAppSelector(
+        (state) => state.metricsCatalog.tableFilters,
+    );
     const search = useAppSelector((state) => state.metricsCatalog.search);
     const tableSorting = useAppSelector(
         (state) => state.metricsCatalog.tableSorting,
+    );
+    const ownerFilters = useAppSelector(
+        (state) => state.metricsCatalog.ownerFilters,
     );
 
     const organizationUuid = useAppSelector(
@@ -248,6 +263,11 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
     useEffect(() => {
         const urlCategories =
             categoriesParam?.split(',').map(decodeURIComponent) || [];
+        const urlCategoriesFilterMode =
+            categoriesFilterModeParam === CatalogCategoryFilterMode.AND
+                ? CatalogCategoryFilterMode.AND
+                : CatalogCategoryFilterMode.OR;
+        const urlTables = tablesParam?.split(',').map(decodeURIComponent) || [];
         const urlSearch = searchParam
             ? decodeURIComponent(searchParam)
             : undefined;
@@ -257,8 +277,13 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
         const urlSortDirectionParam = sortDirectionParam
             ? decodeURIComponent(sortDirectionParam)
             : undefined;
+        const urlOwnerUserUuids =
+            ownerUserUuidParam?.split(',').map(decodeURIComponent) || [];
 
         dispatch(setCategoryFilters(urlCategories));
+        dispatch(setCategoryFilterMode(urlCategoriesFilterMode));
+        dispatch(setTableFilters(urlTables));
+        dispatch(setOwnerFilters(urlOwnerUserUuids));
         dispatch(setSearch(urlSearch));
 
         if (urlSortByParam) {
@@ -273,6 +298,9 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
         }
     }, [
         categoriesParam,
+        categoriesFilterModeParam,
+        tablesParam,
+        ownerUserUuidParam,
         dispatch,
         searchParam,
         sortingParam,
@@ -287,8 +315,24 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
                 'categories',
                 categories.map(encodeURIComponent).join(','),
             );
+            // Only include mode when categories selected and mode is not default (OR)
+            if (categoryFilterMode === CatalogCategoryFilterMode.AND) {
+                queryParams.set('categoriesFilterMode', categoryFilterMode);
+            } else {
+                queryParams.delete('categoriesFilterMode');
+            }
         } else {
             queryParams.delete('categories');
+            queryParams.delete('categoriesFilterMode');
+        }
+
+        if (tableFilters.length > 0) {
+            queryParams.set(
+                'tables',
+                tableFilters.map(encodeURIComponent).join(','),
+            );
+        } else {
+            queryParams.delete('tables');
         }
 
         if (search) {
@@ -306,8 +350,25 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
             );
         }
 
+        if (ownerFilters.length > 0) {
+            queryParams.set(
+                'ownerUserUuid',
+                ownerFilters.map(encodeURIComponent).join(','),
+            );
+        } else {
+            queryParams.delete('ownerUserUuid');
+        }
+
         void navigate({ search: queryParams.toString() }, { replace: true });
-    }, [categories, search, tableSorting, navigate]);
+    }, [
+        categories,
+        categoryFilterMode,
+        tableFilters,
+        ownerFilters,
+        search,
+        tableSorting,
+        navigate,
+    ]);
 
     useEffect(
         function handleAbilities() {
@@ -384,7 +445,10 @@ export const MetricsCatalogPanel: FC<MetricsCatalogPanelProps> = ({
         padding: `${theme.spacing.xxs} 10px ${theme.spacing.xxs} ${theme.spacing.xs}`,
         fontSize: theme.fontSizes.sm,
         fontWeight: 500,
-        color: theme.colors.ldGray[7],
+        color:
+            theme.colorScheme === 'dark'
+                ? theme.colors.ldDark[9]
+                : theme.colors.ldGray[7],
     };
 
     return (

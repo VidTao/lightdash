@@ -19,7 +19,7 @@ import {
     IconRobot,
 } from '@tabler/icons-react';
 import posthog from 'posthog-js';
-import { useCallback, useState, type FC } from 'react';
+import { useCallback, useMemo, useState, type FC } from 'react';
 import {
     Link,
     Navigate,
@@ -33,11 +33,13 @@ import RouterNavLink from './components/common/RouterNavLink';
 import ForbiddenPanel from './components/ForbiddenPanel';
 import MobileView from './components/Mobile';
 import ProjectSwitcher from './components/NavBar/ProjectSwitcher';
+import { ThemeSwitcher } from './components/NavBar/ThemeSwitcher';
 import PrivateRoute from './components/PrivateRoute';
 import ProjectRoute from './components/ProjectRoute';
 import { useAiAgentButtonVisibility } from './ee/features/aiCopilot/hooks/useAiAgentsButtonVisibility';
 import { useActiveProjectUuid } from './hooks/useActiveProject';
 import useLogoutMutation from './hooks/user/useUserLogoutMutation';
+import { getMantineThemeOverride } from './mantineTheme';
 import AuthPopupResult, {
     SuccessAuthPopupResult,
 } from './pages/AuthPopupResult';
@@ -94,8 +96,15 @@ export const MobileNavBar: FC = () => {
 
     const isAiAgentButtonVisible = useAiAgentButtonVisibility();
 
+    // Force dark theme for navbar (excluding global styles)
+    const darkTheme = useMemo(() => {
+        const fullDarkTheme = getMantineThemeOverride('dark');
+        const { globalStyles, ...themeWithoutGlobalStyles } = fullDarkTheme;
+        return themeWithoutGlobalStyles;
+    }, []);
+
     return (
-        <MantineProvider inherit theme={{ colorScheme: 'dark' }}>
+        <MantineProvider theme={darkTheme}>
             <Header
                 height={50}
                 display="flex"
@@ -119,7 +128,12 @@ export const MobileNavBar: FC = () => {
                 </Group>
             </Header>
 
-            <Drawer opened={isMenuOpen} onClose={toggleMenu} size="75%">
+            <Drawer
+                title={<ThemeSwitcher />}
+                opened={isMenuOpen}
+                onClose={toggleMenu}
+                size="75%"
+            >
                 <Title order={6} fw={600} mb="xs">
                     Project
                 </Title>
@@ -129,28 +143,28 @@ export const MobileNavBar: FC = () => {
                     exact
                     label="Home"
                     to={`/`}
-                    icon={<MantineIcon icon={IconHome} />}
+                    leftSection={<MantineIcon icon={IconHome} />}
                     onClick={toggleMenu}
                 />
                 <RouterNavLink
                     exact
                     label="Spaces"
                     to={`/projects/${activeProjectUuid}/spaces`}
-                    icon={<MantineIcon icon={IconFolders} />}
+                    leftSection={<MantineIcon icon={IconFolders} />}
                     onClick={toggleMenu}
                 />
                 <RouterNavLink
                     exact
                     label="Dashboards"
                     to={`/projects/${activeProjectUuid}/dashboards`}
-                    icon={<MantineIcon icon={IconLayoutDashboard} />}
+                    leftSection={<MantineIcon icon={IconLayoutDashboard} />}
                     onClick={toggleMenu}
                 />
                 <RouterNavLink
                     exact
                     label="Charts"
                     to={`/projects/${activeProjectUuid}/saved`}
-                    icon={<MantineIcon icon={IconChartAreaLine} />}
+                    leftSection={<MantineIcon icon={IconChartAreaLine} />}
                     onClick={toggleMenu}
                 />
                 {isAiAgentButtonVisible && (
@@ -158,16 +172,17 @@ export const MobileNavBar: FC = () => {
                         exact
                         label="Ask AI"
                         to={`/projects/${activeProjectUuid}/ai-agents`}
-                        icon={<MantineIcon icon={IconRobot} />}
+                        leftSection={<MantineIcon icon={IconRobot} />}
                         onClick={toggleMenu}
                     />
                 )}
                 <Divider my="lg" />
+
                 <RouterNavLink
                     exact
                     label="Logout"
                     to={`/`}
-                    icon={<MantineIcon icon={IconLogout} />}
+                    leftSection={<MantineIcon icon={IconLogout} />}
                     onClick={() => logout()}
                 />
             </Drawer>

@@ -1,6 +1,8 @@
 import { subject } from '@casl/ability';
 import {
+    derivePivotConfigurationFromChart,
     ECHARTS_DEFAULT_COLORS,
+    getFieldsFromMetricQuery,
     getHiddenTableFields,
     getPivotConfig,
     NotFoundError,
@@ -52,6 +54,7 @@ import LightdashVisualization from '../../LightdashVisualization';
 import VisualizationProvider from '../../LightdashVisualization/VisualizationProvider';
 import { type EchartsSeriesClickEvent } from '../../SimpleChart';
 import { VisualizationConfigPortalId } from '../ExplorePanel/constants';
+import { DevCopyChartDebugData } from '../ExplorerHeader/DevCopyChartDebugData';
 import VisualizationConfig from '../VisualizationCard/VisualizationConfig';
 import { SeriesContextMenu } from './SeriesContextMenu';
 import VisualizationWarning from './VisualizationWarning';
@@ -219,6 +222,19 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
         missingRequiredParameters,
     ]);
 
+    const dirtyPivotConfiguration = useMemo(() => {
+        return explore
+            ? derivePivotConfigurationFromChart(
+                  unsavedChartVersion,
+                  unsavedChartVersion.metricQuery,
+                  getFieldsFromMetricQuery(
+                      unsavedChartVersion.metricQuery,
+                      explore,
+                  ),
+              )
+            : undefined;
+    }, [unsavedChartVersion, explore]);
+
     if (!unsavedChartVersion.tableName) {
         return <CollapsableCard title="Charts" disabled />;
     }
@@ -284,8 +300,8 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
                     headerElement={
                         isOpen && (
                             <VisualizationWarning
-                                pivotDimensions={
-                                    unsavedChartVersion.pivotConfig?.columns
+                                dirtyPivotConfiguration={
+                                    dirtyPivotConfiguration
                                 }
                                 chartConfig={unsavedChartVersion.chartConfig}
                                 resultsData={resultsData}
@@ -357,6 +373,10 @@ const VisualizationCard: FC<Props> = memo(({ projectUuid: fallBackUUid }) => {
                                         />
                                     )}
                                 </Can>
+
+                                {import.meta.env.DEV && (
+                                    <DevCopyChartDebugData />
+                                )}
                             </>
                         )
                     }

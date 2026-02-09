@@ -386,6 +386,7 @@ const createOptimisticMessages = (
             uuid: promptUuid,
             threadUuid,
             message: '',
+            errorMessage: null,
             createdAt: new Date().toISOString(),
             user: {
                 name: agent?.name ?? 'Unknown',
@@ -402,6 +403,7 @@ const createOptimisticMessages = (
             savedQueryUuid: null,
             artifacts: null,
             referencedArtifacts: null,
+            modelConfig: null,
         },
     ];
 };
@@ -822,7 +824,7 @@ export const useUpdatePromptFeedbackMutation = (
                                 humanScore,
                                 humanFeedback:
                                     humanScore === -1
-                                        ? humanFeedback ?? null
+                                        ? (humanFeedback ?? null)
                                         : null,
                             };
                         }),

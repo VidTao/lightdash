@@ -60,6 +60,7 @@ export * from './compiler/filtersCompiler';
 export * from './compiler/lightdashModelConverter';
 export * from './compiler/parameters';
 export * from './compiler/translator';
+export * from './constants/screenshot';
 export * from './constants/sessionStorageKeys';
 export * from './constants/sqlRunner';
 export { default as DbtSchemaEditor } from './dbt/DbtSchemaEditor/DbtSchemaEditor';
@@ -108,6 +109,7 @@ export * from './types/featureFlags';
 export * from './types/field';
 export * from './types/fieldMatch';
 export * from './types/filter';
+export * from './types/funnel';
 export * from './types/gdrive';
 export * from './types/gitIntegration';
 export * from './types/groups';
@@ -167,9 +169,9 @@ export * from './utils/accessors';
 export * from './utils/additionalMetrics';
 export * from './utils/api';
 export { default as assertUnreachable } from './utils/assertUnreachable';
-export * from './utils/catalogMetricsTree';
 export * from './utils/changeset';
 export * from './utils/charts';
+export * from './utils/chartValidation';
 export * from './utils/colors';
 export * from './utils/conditionalFormatExpressions';
 export * from './utils/conditionalFormatting';
@@ -198,9 +200,11 @@ export * from './utils/promises';
 export * from './utils/sanitizeHtml';
 export * from './utils/scheduler';
 export * from './utils/searchParams';
+export * from './utils/slack';
 export * from './utils/sleep';
 export * from './utils/slugs';
 export * from './utils/subtotals';
+export * from './utils/tableCalculationFunctions';
 export * from './utils/time';
 export * from './utils/timeFrames';
 export * from './utils/virtualView';
@@ -599,6 +603,28 @@ export function getItemMap(
         return acc;
     }, {} as ItemsMap);
 }
+
+export const getFieldsFromMetricQuery = (
+    metricQuery: MetricQuery,
+    explore: Explore,
+): ItemsMap => {
+    const itemsMap = getItemMap(
+        explore,
+        metricQuery.additionalMetrics,
+        metricQuery.tableCalculations,
+        metricQuery.customDimensions,
+    );
+    const itemIdsInMetricQuery = [
+        ...metricQuery.dimensions,
+        ...metricQuery.metrics,
+        ...(metricQuery.tableCalculations || []).map(getItemId),
+    ];
+    return itemIdsInMetricQuery.reduce<ItemsMap>((acc, id) => {
+        const item = itemsMap[id];
+        if (item) acc[id] = item;
+        return acc;
+    }, {});
+};
 
 export const getDimensionsFromItemsMap = (itemsMap: ItemsMap) =>
     Object.entries(itemsMap).reduce<

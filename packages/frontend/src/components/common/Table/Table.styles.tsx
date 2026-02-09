@@ -1,17 +1,34 @@
 import { forwardRef, type ComponentPropsWithRef, type ReactNode } from 'react';
 import styled, { css } from 'styled-components';
-import { ROW_HEIGHT_PX } from './constants';
+import {
+    FROZEN_COLUMN_BACKGROUND,
+    FROZEN_COLUMN_BORDER_COLOR,
+    FROZEN_COLUMN_BORDER_WIDTH,
+    ROW_HEIGHT_PX,
+} from './constants';
 import trStyles from './Tr.module.css';
 
-export const TableScrollableWrapper = styled.div`
+export const TableScrollableWrapper = styled.div<{
+    $isDashboard?: boolean;
+}>`
     display: flex;
     flex-direction: column;
 
     position: relative;
     overflow: auto;
     min-width: 100%;
-    border-radius: 4px;
+    border-radius: ${({ $isDashboard }) => ($isDashboard ? '0' : '4px')};
     border: 1px solid var(--mantine-color-ldGray-3);
+    ${({ $isDashboard }) =>
+        $isDashboard &&
+        css`
+            border-left: none;
+            border-right: none;
+        `}
+
+    &:not(:has(thead tr)):not(:has(tbody tr)) {
+        border: none;
+    }
 `;
 
 interface TableContainerProps {
@@ -43,7 +60,9 @@ export const TableContainer = styled.div<
             `}
 `;
 
-export const Table = styled.table<{ $showFooter?: boolean }>`
+export const Table = styled.table<{
+    $showFooter?: boolean;
+}>`
     border-spacing: 0;
     font-size: 14px;
     width: 100%;
@@ -70,21 +89,25 @@ export const Table = styled.table<{ $showFooter?: boolean }>`
     tbody tr:first-child td,
     tfoot tr:first-child th,
     tfoot tr:first-child td {
-        box-shadow: inset 0 1px 0 0 rgba(17, 20, 24, 0.15);
+        box-shadow: inset 0 1px 0 0
+            color-mix(in srgb, var(--mantine-color-ldGray-3) 80%, transparent);
     }
 
     tbody tr td,
     tfoot tr td {
-        box-shadow: inset 0 1px 0 0 rgba(17, 20, 24, 0.15);
+        box-shadow: inset 0 1px 0 0
+            color-mix(in srgb, var(--mantine-color-ldGray-3) 80%, transparent);
     }
 
     tbody tr td:not(:first-child),
     tfoot tr td:not(:first-child) {
-        box-shadow: inset 1px 1px 0 0 rgba(17, 20, 24, 0.15);
+        box-shadow: inset 1px 1px 0 0
+            color-mix(in srgb, var(--mantine-color-ldGray-3) 80%, transparent);
     }
 
     th:not(:first-child) {
-        box-shadow: inset 1px 0 0 0 rgba(17, 20, 24, 0.15);
+        box-shadow: inset 1px 0 0 0
+            color-mix(in srgb, var(--mantine-color-ldGray-3) 80%, transparent);
     }
 
     /* FIXME: everything above this line is copied from blueprint's table css */
@@ -126,15 +149,16 @@ export const Table = styled.table<{ $showFooter?: boolean }>`
         word-break: break-word;
         :hover {
             white-space: normal;
-            background-color: white;
+            background-color: ${FROZEN_COLUMN_BACKGROUND};
         }
     }
     th.sticky-column {
-        background: white !important;
+        background: ${FROZEN_COLUMN_BACKGROUND} !important;
     }
 
     .last-sticky-column {
-        border-right: 1.4px solid rgb(189, 189, 189);
+        border-right: ${FROZEN_COLUMN_BORDER_WIDTH} solid
+            ${FROZEN_COLUMN_BORDER_COLOR};
     }
 `;
 
@@ -289,8 +313,10 @@ export const ThActionsContainer = styled.div`
     }
 `;
 
-export const TableHeaderLabelContainer = styled.div`
+export const TableHeaderLabelContainer = styled.div<{ color?: string }>`
     ${FontSyles}
+    color: ${({ color }) =>
+        color || 'var(--table-header-color, var(--mantine-color-text))'};
 `;
 
 export const TableHeaderRegularLabel = styled.span`

@@ -28,7 +28,7 @@ import { readAndLoadLightdashProjectConfig } from '../lightdash-config';
 import { loadLightdashModels } from '../lightdash/loader';
 import * as styles from '../styles';
 import { DbtCompileOptions, maybeCompileModelsAndJoins } from './dbt/compile';
-import { getDbtVersion } from './dbt/getDbtVersion';
+import { tryGetDbtVersion } from './dbt/getDbtVersion';
 import getWarehouseClient from './dbt/getWarehouseClient';
 
 export type CompileHandlerOptions = DbtCompileOptions & {
@@ -95,20 +95,23 @@ const getExploresFromLightdashYmlProject = async (
         warehouseSqlBuilder,
         lightdashProjectConfig,
         disableTimestampConversion,
+        process.env.PARTIAL_COMPILATION_ENABLED === 'true',
     );
 
     return validExplores;
 };
 
 export const compile = async (options: CompileHandlerOptions) => {
-    const dbtVersion = await getDbtVersion();
-    GlobalState.debug(`> dbt version ${dbtVersion.verboseVersion}`);
+    const dbtVersionResult = await tryGetDbtVersion();
     const executionId = uuidv4();
+
     await LightdashAnalytics.track({
         event: 'compile.started',
         properties: {
             executionId,
-            dbtVersion: dbtVersion.verboseVersion,
+            dbtVersion: dbtVersionResult.success
+                ? dbtVersionResult.version.verboseVersion
+                : undefined,
             useDbtList: !!options.useDbtList,
             skipWarehouseCatalog: !!options.skipWarehouseCatalog,
             skipDbtCompile: !!options.skipDbtCompile,
@@ -119,11 +122,8 @@ export const compile = async (options: CompileHandlerOptions) => {
 
     GlobalState.debug(`> Compiling with project dir ${absoluteProjectPath}`);
 
-    // Load Lightdash Project
-    // Load Lightdash project config
-    const lightdashProjectConfig = await readAndLoadLightdashProjectConfig(
-        absoluteProjectPath,
-    );
+    const lightdashProjectConfig =
+        await readAndLoadLightdashProjectConfig(absoluteProjectPath);
     GlobalState.debug(`> Loaded lightdash project config`);
 
     // Try lightdash project compile
@@ -139,6 +139,18 @@ export const compile = async (options: CompileHandlerOptions) => {
 
     // Load dbt Project
     if (explores === null) {
+        if (!dbtVersionResult.success) {
+            await LightdashAnalytics.track({
+                event: 'compile.error',
+                properties: {
+                    executionId,
+                    error: 'dbt not found',
+                },
+            });
+
+            throw dbtVersionResult.error;
+        }
+
         const context = await getDbtContext({
             projectDir: absoluteProjectPath,
             targetPath: options.targetPath,
@@ -183,7 +195,9 @@ export const compile = async (options: CompileHandlerOptions) => {
         let catalog: WarehouseCatalog = {};
         if (!options.skipWarehouseCatalog) {
             const { warehouseClient } = await getWarehouseClient({
-                isDbtCloudCLI: dbtVersion.isDbtCloudCLI,
+                isDbtCloudCLI: dbtVersionResult.success
+                    ? dbtVersionResult.version.isDbtCloudCLI
+                    : false,
                 profilesDir: options.profilesDir,
                 profile: options.profile || context.profileName,
                 target: options.target,
@@ -208,7 +222,9 @@ export const compile = async (options: CompileHandlerOptions) => {
                 event: 'compile.error',
                 properties: {
                     executionId,
-                    dbtVersion: dbtVersion.verboseVersion,
+                    dbtVersion: dbtVersionResult.success
+                        ? dbtVersionResult.version.verboseVersion
+                        : undefined,
                     error: `Dbt adapter ${manifest.metadata.adapter_type} is not supported`,
                 },
             });
@@ -244,6 +260,7 @@ export const compile = async (options: CompileHandlerOptions) => {
             warehouseSqlBuilder,
             lightdashProjectConfig,
             options.disableTimestampConversion,
+            process.env.PARTIAL_COMPILATION_ENABLED === 'true',
         );
         console.error('');
 
@@ -251,22 +268,48 @@ export const compile = async (options: CompileHandlerOptions) => {
         dbtMetrics = manifest.metrics;
     }
 
+    let errors = 0;
+    let partialSuccess = 0;
+    let success = 0;
+
     explores.forEach((e) => {
-        const status = isExploreError(e)
-            ? styles.error('ERROR')
-            : styles.success('SUCCESS');
-        const errors = isExploreError(e)
-            ? `: ${styles.error(e.errors.map((err) => err.message).join(', '))}`
-            : '';
-        console.error(`- ${status}> ${e.name} ${errors}`);
+        let status: string;
+        let messages = '';
+
+        if (isExploreError(e)) {
+            status = styles.error('ERROR');
+            messages = `: ${styles.error(e.errors.map((err) => err.message).join(', '))}`;
+            errors += 1;
+        } else if (
+            process.env.PARTIAL_COMPILATION_ENABLED === 'true' &&
+            'warnings' in e &&
+            e.warnings &&
+            e.warnings.length > 0
+        ) {
+            status = styles.warning('PARTIAL_SUCCESS');
+            messages = `: ${styles.warning(e.warnings.map((warning) => warning.message).join(', '))}`;
+            partialSuccess += 1;
+        } else {
+            status = styles.success('SUCCESS');
+            success += 1;
+        }
+
+        console.error(`- ${status}> ${e.name} ${messages}`);
     });
     console.error('');
-    const errors = explores.filter((e) => isExploreError(e)).length;
-    console.error(
-        `Compiled ${explores.length} explores, SUCCESS=${
-            explores.length - errors
-        } ERRORS=${errors}`,
-    );
+
+    if (
+        process.env.PARTIAL_COMPILATION_ENABLED === 'true' &&
+        partialSuccess > 0
+    ) {
+        console.error(
+            `Compiled ${explores.length} explores, SUCCESS=${success} PARTIAL_SUCCESS=${partialSuccess} ERRORS=${errors}`,
+        );
+    } else {
+        console.error(
+            `Compiled ${explores.length} explores, SUCCESS=${success} ERRORS=${errors}`,
+        );
+    }
 
     const metricsCount =
         dbtMetrics === null ? 0 : Object.values(dbtMetrics).length;
@@ -277,7 +320,9 @@ export const compile = async (options: CompileHandlerOptions) => {
             explores: explores.length,
             errors,
             dbtMetrics: metricsCount,
-            dbtVersion: dbtVersion.verboseVersion,
+            dbtVersion: dbtVersionResult.success
+                ? dbtVersionResult.version.verboseVersion
+                : undefined,
         },
     });
     return explores;

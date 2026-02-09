@@ -72,7 +72,7 @@ export const getIntegerFromEnvironmentVariable = (
     name: string,
 ): number | undefined => {
     const raw = process.env[name];
-    if (raw === undefined) {
+    if (!raw) {
         return undefined;
     }
     const parsed = Number.parseInt(raw, 10);
@@ -88,7 +88,7 @@ export const getFloatFromEnvironmentVariable = (
     name: string,
 ): number | undefined => {
     const raw = process.env[name];
-    if (raw === undefined) {
+    if (!raw) {
         return undefined;
     }
     const parsed = Number.parseFloat(raw);
@@ -637,6 +637,37 @@ const parseAndSanitizeSchedulerTasks = (): Array<SchedulerTaskName> => {
     return ALL_TASK_NAMES;
 };
 
+const getBedrockConfig = () => {
+    if (process.env.BEDROCK_API_KEY) {
+        return {
+            apiKey: process.env.BEDROCK_API_KEY,
+            region: process.env.BEDROCK_REGION,
+            modelName:
+                process.env.BEDROCK_MODEL_NAME || DEFAULT_BEDROCK_MODEL_NAME,
+            embeddingModelName: process.env.BEDROCK_EMBEDDING_MODEL,
+            availableModels: getArrayFromCommaSeparatedList(
+                'BEDROCK_AVAILABLE_MODELS',
+            ),
+        } as const;
+    }
+    if (process.env.BEDROCK_ACCESS_KEY_ID) {
+        return {
+            accessKeyId: process.env.BEDROCK_ACCESS_KEY_ID,
+            secretAccessKey: process.env.BEDROCK_SECRET_ACCESS_KEY,
+            sessionToken: process.env.BEDROCK_SESSION_TOKEN,
+            region: process.env.BEDROCK_REGION,
+            modelName:
+                process.env.BEDROCK_MODEL_NAME || DEFAULT_BEDROCK_MODEL_NAME,
+            embeddingModelName: process.env.BEDROCK_EMBEDDING_MODEL,
+            availableModels: getArrayFromCommaSeparatedList(
+                'BEDROCK_AVAILABLE_MODELS',
+            ),
+        } as const;
+    }
+
+    return undefined;
+};
+
 export const getAiConfig = () => ({
     enabled: process.env.AI_COPILOT_ENABLED === 'true',
     debugLoggingEnabled:
@@ -648,7 +679,9 @@ export const getAiConfig = () => ({
     embeddingEnabled: process.env.AI_EMBEDDING_ENABLED === 'true',
     defaultProvider:
         process.env.AI_DEFAULT_PROVIDER || DEFAULT_DEFAULT_AI_PROVIDER,
-    defaultEmbeddingModelProvider: process.env.AI_DEFAULT_EMBEDDING_PROVIDER,
+    defaultEmbeddingModelProvider:
+        process.env.AI_DEFAULT_EMBEDDING_PROVIDER ||
+        DEFAULT_DEFAULT_AI_PROVIDER,
     providers: {
         azure: process.env.AZURE_AI_API_KEY
             ? {
@@ -656,9 +689,13 @@ export const getAiConfig = () => ({
                   apiKey: process.env.AZURE_AI_API_KEY,
                   apiVersion: process.env.AZURE_AI_API_VERSION,
                   deploymentName: process.env.AZURE_AI_DEPLOYMENT_NAME,
-                  temperature: getFloatFromEnvironmentVariable(
-                      'AZURE_AI_TEMPERATURE',
-                  ),
+                  deploymentSupportsReasoning:
+                      process.env.AZURE_AI_DEPLOYMENT_SUPPORTS_REASONING ===
+                      'true',
+                  embeddingDeploymentName:
+                      process.env.AZURE_EMBEDDING_DEPLOYMENT_NAME,
+                  useDeploymentBasedUrls:
+                      process.env.AZURE_USE_DEPLOYMENT_BASED_URLS !== 'false',
               }
             : undefined,
         openai: process.env.OPENAI_API_KEY
@@ -671,27 +708,26 @@ export const getAiConfig = () => ({
                       process.env.OPENAI_EMBEDDING_MODEL ||
                       DEFAULT_OPENAI_EMBEDDING_MODEL,
                   baseUrl: process.env.OPENAI_BASE_URL,
-                  temperature:
-                      getFloatFromEnvironmentVariable('OPENAI_TEMPERATURE'),
-                  responsesApi: process.env.OPENAI_RESPONSES_API === 'true',
-                  reasoning: {
-                      enabled: process.env.OPENAI_REASONING_ENABLED === 'true',
-                      reasoningSummary: process.env.OPENAI_REASONING_SUMMARY,
-                      reasoningEffort: process.env.OPENAI_REASONING_EFFORT,
-                  },
-              }
-            : undefined,
-        anthropic: process.env.ANTHROPIC_API_KEY
-            ? {
-                  apiKey: process.env.ANTHROPIC_API_KEY,
-                  modelName:
-                      process.env.ANTHROPIC_MODEL_NAME ||
-                      DEFAULT_ANTHROPIC_MODEL_NAME,
-                  temperature: getFloatFromEnvironmentVariable(
-                      'ANTHROPIC_TEMPERATURE',
+                  availableModels: getArrayFromCommaSeparatedList(
+                      'OPENAI_AVAILABLE_MODELS',
                   ),
+                  zeroDataRetention:
+                      process.env.OPENAI_ZERO_DATA_RETENTION === 'true',
               }
             : undefined,
+        anthropic:
+            process.env.ANTHROPIC_API_KEY &&
+            process.env.ANTHROPIC_API_KEY !== 'undefined'
+                ? {
+                      apiKey: process.env.ANTHROPIC_API_KEY,
+                      modelName:
+                          process.env.ANTHROPIC_MODEL_NAME ||
+                          DEFAULT_ANTHROPIC_MODEL_NAME,
+                      availableModels: getArrayFromCommaSeparatedList(
+                          'ANTHROPIC_AVAILABLE_MODELS',
+                      ),
+                  }
+                : undefined,
         openrouter: process.env.OPENROUTER_API_KEY
             ? {
                   apiKey: process.env.OPENROUTER_API_KEY,
@@ -702,28 +738,9 @@ export const getAiConfig = () => ({
                   allowedProviders: getArrayFromCommaSeparatedList(
                       'OPENROUTER_ALLOWED_PROVIDERS',
                   ),
-                  temperature: getFloatFromEnvironmentVariable(
-                      'OPENROUTER_TEMPERATURE',
-                  ),
               }
             : undefined,
-        bedrock:
-            process.env.BEDROCK_API_KEY || process.env.BEDROCK_ACCESS_KEY_ID
-                ? {
-                      apiKey: process.env.BEDROCK_API_KEY,
-                      region: process.env.BEDROCK_REGION,
-                      accessKeyId: process.env.BEDROCK_ACCESS_KEY_ID,
-                      secretAccessKey: process.env.BEDROCK_SECRET_ACCESS_KEY,
-                      sessionToken: process.env.BEDROCK_SESSION_TOKEN,
-                      modelName:
-                          process.env.BEDROCK_MODEL_NAME ||
-                          DEFAULT_BEDROCK_MODEL_NAME,
-                      embeddingModelName: process.env.BEDROCK_EMBEDDING_MODEL,
-                      temperature: getFloatFromEnvironmentVariable(
-                          'BEDROCK_TEMPERATURE',
-                      ),
-                  }
-                : undefined,
+        bedrock: getBedrockConfig(),
     },
     maxQueryLimit:
         getIntegerFromEnvironmentVariable('AI_COPILOT_MAX_QUERY_LIMIT') ||
@@ -776,8 +793,11 @@ export type LightdashConfig = {
     auth: AuthConfig;
     intercom: IntercomConfig;
     pylon: PylonConfig;
+    headway: HeadwayConfig;
     siteUrl: string;
     staticIp: string;
+    signupUrl: string | undefined;
+    helpMenuUrl: string | undefined;
     lightdashCloudInstance: string | undefined;
     k8s: {
         nodeName: string | undefined;
@@ -806,7 +826,8 @@ export type LightdashConfig = {
         csvCellsLimit: number;
         timezone: string | undefined;
         maxPageSize: number;
-        useSqlPivotResults: boolean;
+        useSqlPivotResults: boolean | undefined;
+        showExecutionTime: boolean | undefined;
     };
     pivotTable: {
         maxColumnLimit: number;
@@ -815,6 +836,10 @@ export type LightdashConfig = {
         versionHistory: {
             daysLimit: number;
         };
+    };
+    dashboard: {
+        maxTilesPerTab: number;
+        maxTabsPerDashboard: number;
     };
     // This is the override color palette for the organization
     // TODO: allow override for dark theme
@@ -849,7 +874,7 @@ export type LightdashConfig = {
         };
     };
     groups: {
-        enabled: boolean;
+        enabled: boolean | undefined;
     };
     extendedUsageAnalytics: {
         enabled: boolean;
@@ -971,6 +996,26 @@ export type LightdashConfig = {
     echarts6: {
         enabled: boolean;
     };
+    editYamlInUi: {
+        enabled: boolean;
+    };
+    /**
+     * When enabled, fields that fail to compile will be marked with a
+     * compilationError instead of causing the entire explore to fail.
+     * This allows users to still access other fields in the explore.
+     */
+    partialCompilation: {
+        enabled: boolean;
+    };
+    funnelBuilder: {
+        enabled: boolean;
+    };
+    maps: {
+        enabled: boolean | undefined;
+    };
+    nestedSpacesPermissions: {
+        enabled: boolean;
+    };
 };
 
 export type SlackConfig = {
@@ -984,12 +1029,19 @@ export type SlackConfig = {
     channelsCachedTime: number;
     supportUrl: string;
     multiAgentChannelEnabled: boolean;
+    /*
+     This is the setting that controls whether we generate image previews for link shares in Slack
+     @default true
+    */
+    linkShareImagePreviewEnabled: boolean;
 };
 export type HeadlessBrowserConfig = {
     host?: string;
     port?: string;
     internalLightdashHost: string;
     browserEndpoint: string;
+    maxScreenshotRetries: number;
+    retryBaseDelayMs: number;
 };
 export type S3Config = {
     region: string;
@@ -1013,6 +1065,10 @@ export type IntercomConfig = {
 type PylonConfig = {
     appId: string;
     identityVerificationSecret?: string;
+};
+
+type HeadwayConfig = {
+    enabled: boolean;
 };
 
 export type RudderConfig = {
@@ -1451,10 +1507,7 @@ export const parseConfig = (): LightdashConfig => {
             },
         },
         intercom: {
-            appId:
-                process.env.INTERCOM_APP_ID === undefined
-                    ? 'zppxyjpp'
-                    : process.env.INTERCOM_APP_ID,
+            appId: process.env.INTERCOM_APP_ID || '',
             apiBase:
                 process.env.INTERCOM_APP_BASE || 'https://api-iam.intercom.io',
         },
@@ -1463,8 +1516,13 @@ export const parseConfig = (): LightdashConfig => {
             identityVerificationSecret:
                 process.env.PYLON_IDENTITY_VERIFICATION_SECRET,
         },
+        headway: {
+            enabled: process.env.HEADWAY_ENABLED !== 'false',
+        },
         siteUrl,
+        helpMenuUrl: process.env.HELP_MENU_URL,
         staticIp: process.env.STATIC_IP || '',
+        signupUrl: process.env.SIGNUP_URL,
         lightdashCloudInstance: process.env.LIGHTDASH_CLOUD_INSTANCE,
         k8s: {
             nodeName: process.env.K8S_NODE_NAME,
@@ -1509,7 +1567,12 @@ export const parseConfig = (): LightdashConfig => {
                 getIntegerFromEnvironmentVariable(
                     'LIGHTDASH_QUERY_MAX_PAGE_SIZE',
                 ) || 2500, // Defaults to default limit * 5
-            useSqlPivotResults: process.env.USE_SQL_PIVOT_RESULTS === 'true',
+            useSqlPivotResults: process.env.USE_SQL_PIVOT_RESULTS
+                ? process.env.USE_SQL_PIVOT_RESULTS === 'true'
+                : undefined,
+            showExecutionTime: process.env.SHOW_EXECUTION_TIME
+                ? process.env.SHOW_EXECUTION_TIME === 'true'
+                : undefined,
         },
         chart: {
             versionHistory: {
@@ -1518,6 +1581,16 @@ export const parseConfig = (): LightdashConfig => {
                         'LIGHTDASH_CHART_VERSION_HISTORY_DAYS_LIMIT',
                     ) || 3,
             },
+        },
+        dashboard: {
+            maxTilesPerTab:
+                getIntegerFromEnvironmentVariable(
+                    'LIGHTDASH_DASHBOARD_MAX_TILES_PER_TAB',
+                ) || 50,
+            maxTabsPerDashboard:
+                getIntegerFromEnvironmentVariable(
+                    'LIGHTDASH_DASHBOARD_MAX_TABS_PER_DASHBOARD',
+                ) || 20,
         },
         pivotTable: {
             maxColumnLimit:
@@ -1531,6 +1604,14 @@ export const parseConfig = (): LightdashConfig => {
             internalLightdashHost:
                 process.env.INTERNAL_LIGHTDASH_HOST || siteUrl,
             browserEndpoint,
+            maxScreenshotRetries: parseInt(
+                process.env.HEADLESS_BROWSER_MAX_SCREENSHOT_RETRIES || '5',
+                10,
+            ),
+            retryBaseDelayMs: parseInt(
+                process.env.HEADLESS_BROWSER_RETRY_BASE_DELAY_MS || '3000',
+                10,
+            ),
         },
         s3: parseBaseS3Config(),
         results: {
@@ -1558,6 +1639,8 @@ export const parseConfig = (): LightdashConfig => {
             supportUrl: process.env.SLACK_SUPPORT_URL || '',
             multiAgentChannelEnabled:
                 process.env.SLACK_MULTI_AGENT_CHANNEL_ENABLED === 'true',
+            linkShareImagePreviewEnabled:
+                process.env.SLACK_LINK_SHARE_IMAGE_PREVIEW_ENABLED !== 'false',
         },
         scheduler: {
             enabled: process.env.SCHEDULER_ENABLED !== 'false',
@@ -1596,7 +1679,9 @@ export const parseConfig = (): LightdashConfig => {
             },
         },
         groups: {
-            enabled: process.env.GROUPS_ENABLED === 'true',
+            enabled: process.env.GROUPS_ENABLED
+                ? process.env.GROUPS_ENABLED === 'true'
+                : undefined,
         },
         extendedUsageAnalytics: {
             enabled: process.env.EXTENDED_USAGE_ANALYTICS === 'true',
@@ -1725,6 +1810,26 @@ export const parseConfig = (): LightdashConfig => {
         },
         echarts6: {
             enabled: process.env.ECHARTS_V6_ENABLED === 'true',
+        },
+        editYamlInUi: {
+            enabled: process.env.EDIT_YAML_IN_UI_ENABLED === 'true',
+        },
+        partialCompilation: {
+            enabled: process.env.PARTIAL_COMPILATION_ENABLED === 'true',
+        },
+        funnelBuilder: {
+            enabled:
+                process.env.FUNNEL_BUILDER_ENABLED === 'true' ||
+                lightdashMode === LightdashMode.PR,
+        },
+        maps: {
+            enabled:
+                process.env.LIGHTDASH_MAPS_ENABLED === 'true'
+                    ? true
+                    : undefined,
+        },
+        nestedSpacesPermissions: {
+            enabled: process.env.NESTED_SPACES_PERMISSIONS_ENABLED === 'true',
         },
     };
 };

@@ -114,18 +114,32 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     "dbt-databricks~=1.9.0" \
     "dbt-trino~=1.9.0" \
     "dbt-clickhouse~=1.9.0" \
-    && ln -s /usr/local/dbt1.9/bin/dbt /usr/local/bin/dbt1.9 \ 
+    "dbt-athena~=1.9.0" \
+    && ln -s /usr/local/dbt1.9/bin/dbt /usr/local/bin/dbt1.9 \
     && python3 -m venv /usr/local/dbt1.10 \
     && /usr/local/dbt1.10/bin/pip install \
     "dbt-core~=1.10.0" \
-    "dbt-postgres~=1.9.0" \
-    "dbt-redshift~=1.9.0" \
-    "dbt-snowflake~=1.9.0" \
-    "dbt-bigquery~=1.9.0" \
+    "dbt-postgres~=1.10.0" \
+    "dbt-redshift~=1.10.0" \
+    "dbt-snowflake~=1.10.0" \
+    "dbt-bigquery~=1.10.0" \
     "dbt-databricks~=1.10.0" \
-    "dbt-trino~=1.9.0" \
+    "dbt-trino~=1.10.0" \
     "dbt-clickhouse~=1.9.0" \
-    && ln -s /usr/local/dbt1.10/bin/dbt /usr/local/bin/dbt1.10
+    "dbt-athena~=1.10.0" \
+    && ln -s /usr/local/dbt1.10/bin/dbt /usr/local/bin/dbt1.10 \
+    && python3 -m venv /usr/local/dbt1.11 \
+    && /usr/local/dbt1.11/bin/pip install \
+    "dbt-core~=1.11.0" \
+    "dbt-postgres~=1.10.0" \
+    "dbt-redshift~=1.10.0" \
+    "dbt-snowflake~=1.11.0" \
+    "dbt-bigquery~=1.11.0" \
+    "dbt-databricks~=1.11.0" \
+    "dbt-trino~=1.10.0" \
+    "dbt-clickhouse~=1.9.0" \
+    "dbt-athena~=1.10.0" \
+    && ln -s /usr/local/dbt1.11/bin/dbt /usr/local/bin/dbt1.11
 
 # -----------------------------
 # Stage 1: stop here for dev environment
@@ -144,10 +158,19 @@ EXPOSE 8080
 # -----------------------------
 
 FROM base AS prod-builder
+
+# Turbo cache configuration
+# TURBO_TOKEN is passed as a secret mount for security (not exposed in image layers)
+# TURBO_TEAM and TURBO_API are set as ENV variables
+ARG TURBO_TEAM=""
+ENV TURBO_TEAM=${TURBO_TEAM}
+ENV TURBO_API=https://cache.depot.dev
+
 # Install development dependencies for all packages
 COPY package.json .
 COPY pnpm-workspace.yaml .
 COPY pnpm-lock.yaml .
+COPY turbo.json .
 COPY tsconfig.json .
 COPY .eslintrc.js .
 COPY .pnpmfile.cjs .
@@ -159,6 +182,9 @@ COPY packages/frontend/package.json ./packages/frontend/
 # Install all dependencies INCLUDING dev dependencies for build
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --prefer-offline
+
+# Add node_modules/.bin to PATH so turbo and other binaries are available
+ENV PATH="/usr/app/node_modules/.bin:$PATH"
 
 # Increase Node.js heap size for TypeScript compilation
 ENV NODE_OPTIONS="--max-old-space-size=4096"
@@ -175,14 +201,18 @@ RUN if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY
 FROM prod-builder AS build-common
 COPY packages/common/tsconfig*.json ./packages/common/
 COPY packages/common/src/ ./packages/common/src/
-RUN pnpm -F @lightdash/common build
+RUN --mount=type=secret,id=TURBO_TOKEN \
+    export TURBO_TOKEN=$(cat /run/secrets/TURBO_TOKEN 2>/dev/null || echo "") && \
+    turbo build --filter=@lightdash/common
 
 # Build warehouses package
 FROM prod-builder AS build-warehouses
 COPY --from=build-common /usr/app/packages/common/ ./packages/common/
 COPY packages/warehouses/tsconfig.json ./packages/warehouses/
 COPY packages/warehouses/src/ ./packages/warehouses/src/
-RUN pnpm -F @lightdash/warehouses build
+RUN --mount=type=secret,id=TURBO_TOKEN \
+    export TURBO_TOKEN=$(cat /run/secrets/TURBO_TOKEN 2>/dev/null || echo "") && \
+    turbo build --filter=@lightdash/warehouses
 
 # Build backend package
 FROM prod-builder AS build-backend
@@ -192,6 +222,12 @@ COPY packages/backend/tsconfig.json ./packages/backend/
 COPY packages/backend/tsconfig.sentry.json ./packages/backend/
 COPY packages/backend/src/ ./packages/backend/src/
 
+# Build MCP chart app (standalone Vite project, not in pnpm workspace)
+RUN cd packages/backend/src/ee/services/McpService/mcp-chart-app \
+    && npm install --ignore-scripts \
+    && npm run build \
+    && rm -rf node_modules
+
 ARG SENTRY_AUTH_TOKEN=""
 ARG SENTRY_ORG=""
 ARG SENTRY_RELEASE_VERSION=""
@@ -200,12 +236,14 @@ ARG SENTRY_BACKEND_PROJECT=""
 ARG SENTRY_ENVIRONMENT=""
 
 # Conditionally build backend with sourcemaps if Sentry environment variables are set
-RUN if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY_RELEASE_VERSION}" ] && [ -n "${SENTRY_FRONTEND_PROJECT}" ] && [ -n "${SENTRY_BACKEND_PROJECT}" ] && [ -n "${SENTRY_ENVIRONMENT}" ]; then \
+RUN --mount=type=secret,id=TURBO_TOKEN \
+    export TURBO_TOKEN=$(cat /run/secrets/TURBO_TOKEN 2>/dev/null || echo "") && \
+    if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY_RELEASE_VERSION}" ] && [ -n "${SENTRY_FRONTEND_PROJECT}" ] && [ -n "${SENTRY_BACKEND_PROJECT}" ] && [ -n "${SENTRY_ENVIRONMENT}" ]; then \
     echo "Building backend with sourcemaps for Sentry"; \
     pnpm -F backend build-sourcemaps && pnpm -F backend postbuild; \
     else \
     echo "Building backend without sourcemaps"; \
-    pnpm -F backend build; \
+    turbo build --filter=backend; \
     fi
 
 # Build frontend package  
@@ -218,12 +256,14 @@ ARG SENTRY_ORG=""
 ARG SENTRY_RELEASE_VERSION=""
 
 # Build frontend with sourcemaps (Vite generates them by default)
-RUN if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY_RELEASE_VERSION}" ]; then \
+RUN --mount=type=secret,id=TURBO_TOKEN \
+    export TURBO_TOKEN=$(cat /run/secrets/TURBO_TOKEN 2>/dev/null || echo "") && \
+    if [ -n "${SENTRY_AUTH_TOKEN}" ] && [ -n "${SENTRY_ORG}" ] && [ -n "${SENTRY_RELEASE_VERSION}" ]; then \
     echo "Building frontend with Sentry integration"; \
-    SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN} SENTRY_RELEASE_VERSION=${SENTRY_RELEASE_VERSION} pnpm -F frontend build; \
+    SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN} SENTRY_RELEASE_VERSION=${SENTRY_RELEASE_VERSION} turbo build --filter=@lightdash/frontend; \
     else \
     echo "Building frontend without Sentry integration"; \
-    pnpm -F frontend build; \
+    turbo build --filter=@lightdash/frontend; \
     fi
 
 # -----------------------------
@@ -315,6 +355,7 @@ COPY --from=prod-builder  /usr/local/dbt1.7 /usr/local/dbt1.7
 COPY --from=prod-builder  /usr/local/dbt1.8 /usr/local/dbt1.8
 COPY --from=prod-builder  /usr/local/dbt1.9 /usr/local/dbt1.9
 COPY --from=prod-builder  /usr/local/dbt1.10 /usr/local/dbt1.10
+COPY --from=prod-builder  /usr/local/dbt1.11 /usr/local/dbt1.11
 COPY --from=build-final /usr/app /usr/app
 
 RUN ln -s /usr/local/dbt1.4/bin/dbt /usr/local/bin/dbt \
@@ -323,7 +364,8 @@ RUN ln -s /usr/local/dbt1.4/bin/dbt /usr/local/bin/dbt \
     && ln -s /usr/local/dbt1.7/bin/dbt /usr/local/bin/dbt1.7 \
     && ln -s /usr/local/dbt1.8/bin/dbt /usr/local/bin/dbt1.8 \
     && ln -s /usr/local/dbt1.9/bin/dbt /usr/local/bin/dbt1.9 \
-    && ln -s /usr/local/dbt1.10/bin/dbt /usr/local/bin/dbt1.10
+    && ln -s /usr/local/dbt1.10/bin/dbt /usr/local/bin/dbt1.10 \
+    && ln -s /usr/local/dbt1.11/bin/dbt /usr/local/bin/dbt1.11
 
 # Copy the entrypoint script from the correct location
 COPY docker/prod-entrypoint.sh /usr/bin/prod-entrypoint.sh

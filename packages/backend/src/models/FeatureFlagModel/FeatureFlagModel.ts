@@ -38,6 +38,12 @@ export class FeatureFlagModel {
                 this.getUseSqlPivotResults.bind(this),
             [FeatureFlags.DashboardComments]:
                 this.getDashboardComments.bind(this),
+            [FeatureFlags.EditYamlInUi]: this.getEditYamlInUiEnabled.bind(this),
+            [FeatureFlags.Maps]: this.getMapsEnabled.bind(this),
+            [FeatureFlags.ShowExecutionTime]:
+                this.getShowExecutionTimeEnabled.bind(this),
+            [FeatureFlags.NestedSpacesPermissions]:
+                this.getNestedSpacesPermissionsEnabled.bind(this),
         };
     }
 
@@ -78,7 +84,7 @@ export class FeatureFlagModel {
         featureFlagId,
     }: FeatureFlagLogicArgs) {
         const enabled =
-            this.lightdashConfig.groups.enabled ||
+            this.lightdashConfig.groups.enabled ??
             (user
                 ? await isFeatureFlagEnabled(
                       FeatureFlags.UserGroupsEnabled,
@@ -105,7 +111,7 @@ export class FeatureFlagModel {
         featureFlagId,
     }: FeatureFlagLogicArgs) {
         const enabled =
-            this.lightdashConfig.query.useSqlPivotResults ||
+            this.lightdashConfig.query.useSqlPivotResults ??
             (user
                 ? await isFeatureFlagEnabled(
                       FeatureFlags.UseSqlPivotResults,
@@ -154,6 +160,68 @@ export class FeatureFlagModel {
         return {
             id: featureFlagId,
             enabled,
+        };
+    }
+
+    private async getEditYamlInUiEnabled({
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        return {
+            id: featureFlagId,
+            enabled: this.lightdashConfig.editYamlInUi.enabled,
+        };
+    }
+
+    private async getMapsEnabled({
+        user,
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        const enabled =
+            this.lightdashConfig.maps.enabled ??
+            (user
+                ? await isFeatureFlagEnabled(FeatureFlags.Maps, {
+                      userUuid: user.userUuid,
+                      organizationUuid: user.organizationUuid,
+                  })
+                : false);
+        return {
+            id: featureFlagId,
+            enabled,
+        };
+    }
+
+    private async getShowExecutionTimeEnabled({
+        user,
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        const enabled =
+            this.lightdashConfig.query.showExecutionTime ??
+            (user
+                ? await isFeatureFlagEnabled(
+                      FeatureFlags.ShowExecutionTime,
+                      {
+                          userUuid: user.userUuid,
+                          organizationUuid: user.organizationUuid,
+                      },
+                      {
+                          throwOnTimeout: false,
+                          timeoutMilliseconds: 500,
+                      },
+                  )
+                : false);
+
+        return {
+            id: featureFlagId,
+            enabled,
+        };
+    }
+
+    private async getNestedSpacesPermissionsEnabled({
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        return {
+            id: featureFlagId,
+            enabled: this.lightdashConfig.nestedSpacesPermissions.enabled,
         };
     }
 }

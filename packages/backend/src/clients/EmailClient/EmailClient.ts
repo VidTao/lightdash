@@ -8,6 +8,7 @@ import {
     SchedulerFormat,
     SessionUser,
     SmptError,
+    type PartialFailure,
 } from '@lightdash/common';
 import { marked } from 'marked';
 import * as nodemailer from 'nodemailer';
@@ -54,7 +55,7 @@ type EmailTemplate = {
         | boolean
         | number
         | AttachmentUrl[]
-        | { chartName: string; error: string }[]
+        | PartialFailure[]
         | undefined
     >;
     attachments?: (Mail.Attachment | AttachmentUrl)[] | undefined;
@@ -386,6 +387,71 @@ export default class EmailClient {
         });
     }
 
+    public async sendScheduledDeliveryTargetFailureEmail(
+        recipient: string,
+        schedulerName: string,
+        schedulerUrl: string,
+        deliveryType: 'slack' | 'email' | 'msteams',
+        failedTargets: { target: string; error?: string }[],
+        totalTargets: number,
+    ) {
+        if (!this.canSendEmail()) {
+            Logger.error(
+                'Cannot send delivery target failure email - email transporter not configured',
+                {
+                    recipient: recipient ? '***@***' : undefined,
+                    schedulerName,
+                },
+            );
+            throw new Error('Email transporter not configured');
+        }
+
+        const failedCount = failedTargets.length;
+        const isPartial = failedCount < totalTargets;
+
+        const deliveryTypeLabel =
+            deliveryType === 'msteams' ? 'Microsoft Teams' : deliveryType;
+
+        const targetList = failedTargets
+            .map(
+                (t) =>
+                    `<li>${sanitizeHtml(t.target)}${
+                        t.error ? ` error: ${sanitizeHtml(t.error)}` : ''
+                    }</li>`,
+            )
+            .join('');
+
+        const message = `
+            <p>Your scheduled delivery <strong>"${schedulerName}"</strong> failed to deliver to ${failedCount} of ${totalTargets} ${deliveryTypeLabel} target${
+                totalTargets > 1 ? 's' : ''
+            }.</p>
+            <br />
+            <br />
+            <p><strong>Failed targets:</strong></p> 
+            <ul>${targetList}</ul>
+            <br />
+            <p>Please check your <a href="${schedulerUrl}" target="_blank">scheduled delivery settings</a>.</p>
+        `;
+
+        return this.sendEmail({
+            to: recipient,
+            subject: `${
+                isPartial ? 'Partial delivery failure' : 'Delivery failed'
+            } - "${schedulerName}"`,
+            template: 'genericNotification',
+            context: {
+                host: this.lightdashConfig.siteUrl,
+                title: isPartial
+                    ? 'Partial delivery failure'
+                    : 'Scheduled delivery failure',
+                message,
+            },
+            text: `Warning: Your scheduled delivery "${schedulerName}" failed to deliver to ${failedCount} ${deliveryTypeLabel} target${
+                failedCount > 1 ? 's' : ''
+            }. Check settings at ${schedulerUrl}`,
+        });
+    }
+
     public async sendInviteEmail(
         userThatInvited: Pick<
             SessionUser,
@@ -567,7 +633,7 @@ export default class EmailClient {
         expirationDays?: number,
         asAttachment?: boolean,
         format?: SchedulerFormat,
-        failures?: { chartName: string; error: string }[],
+        failures?: PartialFailure[],
     ) {
         const csvUrls = attachments.filter(
             (attachment) => !attachment.truncated,

@@ -157,6 +157,7 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
     public async compileAllExplores(
         trackingParams?: TrackingParams,
         loadSources: boolean = false,
+        allowPartialCompilation: boolean = false,
     ): Promise<(Explore | ExploreError)[]> {
         Logger.debug('Install dependencies');
         
@@ -243,9 +244,8 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                 : Object.values(manifest.metrics),
         );
 
-        const lightdashProjectConfig = await this.getLightdashProjectConfig(
-            trackingParams,
-        );
+        const lightdashProjectConfig =
+            await this.getLightdashProjectConfig(trackingParams);
 
         // Be lazy and try to attach types to the remaining models without refreshing the catalog
         try {
@@ -276,6 +276,7 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                 this.warehouseClient,
                 lightdashProjectConfig,
                 disableTimestampConversion,
+                allowPartialCompilation,
             );
             Logger.info('Finished compiling explores');
             return [...lazyExplores, ...failedExplores];
@@ -290,9 +291,8 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                     `Fetching table metadata for ${modelCatalog.length} tables`,
                 );
 
-                const warehouseCatalog = await this.warehouseClient.getCatalog(
-                    modelCatalog,
-                );
+                const warehouseCatalog =
+                    await this.warehouseClient.getCatalog(modelCatalog);
                 await this.cachedWarehouse?.onWarehouseCatalogChange(
                     warehouseCatalog,
                 );
@@ -321,6 +321,7 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                     this.warehouseClient,
                     lightdashProjectConfig,
                     disableTimestampConversion,
+                    allowPartialCompilation,
                 );
                 Logger.info(
                     'Finished compiling explores after missing catalog error',

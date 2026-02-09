@@ -8,6 +8,7 @@ import {
     ApiAiAgentEvaluationRunSummaryListResponse,
     ApiAiAgentEvaluationSummaryListResponse,
     ApiAiAgentExploreAccessSummaryResponse,
+    ApiAiAgentModelOptionsResponse,
     ApiAiAgentResponse,
     ApiAiAgentSummaryResponse,
     ApiAiAgentThreadCreateRequest,
@@ -64,7 +65,7 @@ import {
 } from '../../controllers/authentication';
 import { BaseController } from '../../controllers/baseController';
 import Logger from '../../logging/logger';
-import { type AiAgentService } from '../services/AiAgentService';
+import { type AiAgentService } from '../services/AiAgentService/AiAgentService';
 
 @Route('/api/v1/projects/{projectUuid}/aiAgents')
 @Hidden()
@@ -168,6 +169,27 @@ export class AiAgentController extends BaseController {
         return {
             status: 'ok',
             results: agent,
+        };
+    }
+
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('/{agentUuid}/models')
+    @OperationId('getModelOptions')
+    async getModelOptions(
+        @Request() req: express.Request,
+        @Path() projectUuid: string,
+        @Path() agentUuid: string,
+    ): Promise<ApiAiAgentModelOptionsResponse> {
+        this.setStatus(200);
+        const models = await this.getAiAgentService().getModelOptions(
+            req.user!,
+            projectUuid,
+            agentUuid,
+        );
+        return {
+            status: 'ok',
+            results: models,
         };
     }
 
@@ -420,6 +442,11 @@ export class AiAgentController extends BaseController {
 
         // If client disconnects, continue consuming the stream so side-effects complete
         let hasConsumed = false;
+        const isStreamTimeoutError = (error: unknown) =>
+            error instanceof Error &&
+            (error.name === 'BodyTimeoutError' ||
+                (error.name === 'TypeError' && error.message === 'terminated'));
+
         const handleClientDisconnect = (err: Error | undefined) => {
             if (hasConsumed) return;
             hasConsumed = true;
@@ -428,7 +455,7 @@ export class AiAgentController extends BaseController {
                     err ? `with error: ${err.message}` : ''
                 }, consuming stream`,
             );
-            if (err) {
+            if (err && !isStreamTimeoutError(err)) {
                 Sentry.captureException(err, {
                     tags: {
                         errorType: 'AiAgentStreamError',
@@ -437,12 +464,14 @@ export class AiAgentController extends BaseController {
             }
             void stream.consumeStream({
                 onError: (error) => {
-                    Logger.error('Error consuming stream');
-                    Sentry.captureException(error, {
-                        tags: {
-                            errorType: 'AiAgentStreamError',
-                        },
-                    });
+                    Logger.error(`Error consuming stream ${String(error)}`);
+                    if (!isStreamTimeoutError(error)) {
+                        Sentry.captureException(error, {
+                            tags: {
+                                errorType: 'AiAgentStreamError',
+                            },
+                        });
+                    }
                 },
             });
         };

@@ -56,6 +56,7 @@ import AgentChatDebugDrawer from './AgentChatDebugDrawer';
 import { AiArtifactInline } from './AiArtifactInline';
 import { AiArtifactButton } from './ArtifactButton/AiArtifactButton';
 import { ContentLink } from './ContentLink';
+import { MessageModelIndicator } from './MessageModelIndicator';
 import { rehypeAiAgentContentLinks } from './rehypeContentLinks';
 import { AiChartToolCalls } from './ToolCalls/AiChartToolCalls';
 import { AiProposeChangeToolCall } from './ToolCalls/AiProposeChangeToolCall';
@@ -75,13 +76,14 @@ const AssistantBubbleContent: FC<{
     const mdStyle = useMdEditorStyle();
 
     const isPending = message.status === 'pending';
+    const hasError = message.status === 'error';
     const hasNoResponse = !isStreaming && !message.message && !isPending;
-    const shouldShowRetry = hasNoResponse;
+    const shouldShowRetry = hasError || hasNoResponse;
 
     const baseMessageContent =
         isStreaming && streamingState
             ? streamingState.content
-            : message.message ?? '';
+            : (message.message ?? '');
 
     const referencedArtifactsMarkdown =
         !isStreaming &&
@@ -109,7 +111,7 @@ const AssistantBubbleContent: FC<{
     );
 
     const toolCalls = isStreaming
-        ? streamingState?.toolCalls ?? []
+        ? (streamingState?.toolCalls ?? [])
         : message.toolCalls;
 
     return (
@@ -142,8 +144,8 @@ const AssistantBubbleContent: FC<{
                                     Something went wrong
                                 </Text>
                                 <Text size="xs" c="dimmed">
-                                    Failed to generate response. Please try
-                                    again.
+                                    {message.errorMessage ||
+                                        'Failed to generate response. Please try again.'}
                                 </Text>
                             </Stack>
                         </Alert>
@@ -429,7 +431,7 @@ export const AssistantBubble: FC<Props> = memo(
                             {({ copied, copy }) => (
                                 <ActionIcon
                                     variant="subtle"
-                                    color="gray"
+                                    color="ldGray.9"
                                     aria-label="copy"
                                     onClick={copy}
                                 >
@@ -443,7 +445,7 @@ export const AssistantBubble: FC<Props> = memo(
                         {(!hasRating || upVoted) && (
                             <ActionIcon
                                 variant="subtle"
-                                color="gray"
+                                color="ldGray.9"
                                 aria-label="upvote"
                                 onClick={handleUpvote}
                             >
@@ -481,7 +483,7 @@ export const AssistantBubble: FC<Props> = memo(
                                 <Popover.Target>
                                     <ActionIcon
                                         variant="subtle"
-                                        color="gray"
+                                        color="ldGray.9"
                                         aria-label="downvote"
                                         onClick={handleDownvote}
                                     >
@@ -548,14 +550,11 @@ export const AssistantBubble: FC<Props> = memo(
                             <Tooltip label="Add this response to evals">
                                 <ActionIcon
                                     variant="subtle"
-                                    color="gray"
+                                    color="ldGray.9"
                                     aria-label="Add to evaluation set"
                                     onClick={() => onAddToEvals(message.uuid)}
                                 >
-                                    <MantineIcon
-                                        icon={IconTestPipe}
-                                        color="gray"
-                                    />
+                                    <MantineIcon icon={IconTestPipe} />
                                 </ActionIcon>
                             </Tooltip>
                         )}
@@ -563,13 +562,19 @@ export const AssistantBubble: FC<Props> = memo(
                         {isArtifactAvailable && (
                             <ActionIcon
                                 variant="subtle"
-                                color="gray"
+                                color="ldGray.9"
                                 aria-label="Debug information"
                                 onClick={openDrawer}
                             >
-                                <MantineIcon icon={IconBug} color="gray" />
+                                <MantineIcon icon={IconBug} />
                             </ActionIcon>
                         )}
+
+                        <MessageModelIndicator
+                            projectUuid={projectUuid}
+                            agentUuid={agentUuid}
+                            modelConfig={message.modelConfig}
+                        />
                     </Group>
                 )}
 

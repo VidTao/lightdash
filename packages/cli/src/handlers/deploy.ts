@@ -6,6 +6,7 @@ import {
     Project,
     ProjectType,
     friendlyName,
+    getErrorMessage,
     isExploreError,
     type LightdashProjectConfig,
     type Tag,
@@ -27,7 +28,7 @@ import {
 } from './createProject';
 import { checkLightdashVersion, lightdashApi } from './dbt/apiClient';
 import { DbtCompileOptions } from './dbt/compile';
-import { getDbtVersion } from './dbt/getDbtVersion';
+import { tryGetDbtVersion } from './dbt/getDbtVersion';
 
 type DeployHandlerOptions = DbtCompileOptions & {
     projectDir: string;
@@ -40,6 +41,7 @@ type DeployHandlerOptions = DbtCompileOptions & {
     startOfWeek?: number;
     warehouseCredentials?: boolean;
     organizationCredentials?: string;
+    assumeYes?: boolean;
 };
 
 type DeployArgs = DeployHandlerOptions & {
@@ -110,8 +112,32 @@ export const deploy = async (
         options.projectUuid,
     );
 
-    await replaceProjectYamlTags(options.projectUuid, lightdashProjectConfig);
-    await replaceProjectParameters(options.projectUuid, lightdashProjectConfig);
+    // These two methods are not critical to the deployment process, so we can ignore errors and show warnings instead
+    try {
+        await replaceProjectYamlTags(
+            options.projectUuid,
+            lightdashProjectConfig,
+        );
+    } catch (e) {
+        console.error(
+            styles.warning(
+                `\nError replacing YAML tags: ${getErrorMessage(e)}\n`,
+            ),
+        );
+    }
+
+    try {
+        await replaceProjectParameters(
+            options.projectUuid,
+            lightdashProjectConfig,
+        );
+    } catch (e) {
+        console.error(
+            styles.warning(
+                `\nError replacing project parameters: ${getErrorMessage(e)}\n`,
+            ),
+        );
+    }
 
     await lightdashApi<null>({
         method: 'PUT',
@@ -148,7 +174,7 @@ const createNewProject = async (
 
     // If interactive and no name provided, prompt for project name
     let projectName = defaultProjectName;
-    if (options.create === true && process.env.CI !== 'true') {
+    if (options.create === true && !GlobalState.isNonInteractive()) {
         const answers = await inquirer.prompt([
             {
                 type: 'input',
@@ -184,6 +210,7 @@ const createNewProject = async (
             name: projectName,
             type: ProjectType.DEFAULT,
             warehouseCredentials: options.warehouseCredentials,
+            assumeYes: options.assumeYes,
         });
 
         const project = results?.project;
@@ -246,13 +273,18 @@ export const deployHandler = async (originalOptions: DeployHandlerOptions) => {
         }
     }
 
-    const dbtVersion = await getDbtVersion();
+    const dbtVersionResult = await tryGetDbtVersion();
     await checkLightdashVersion();
     const executionId = uuidv4();
     const explores = await compile(options);
 
     const config = await getConfig();
     let projectUuid: string;
+
+    // Log current project info if not creating a new one
+    if (options.create === undefined) {
+        GlobalState.logProjectInfo(config);
+    }
 
     if (options.create !== undefined) {
         const project = await createNewProject(executionId, options);
@@ -288,7 +320,11 @@ export const deployHandler = async (originalOptions: DeployHandlerOptions) => {
         ? `${serverUrl}/createProject/cli?projectUuid=${projectUuid}`
         : `${serverUrl}/projects/${projectUuid}/home`;
     let successMessage = 'Successfully deployed project:';
-    if (dbtVersion.isDbtCloudCLI && options.create) {
+    if (
+        dbtVersionResult.success &&
+        dbtVersionResult.version.isDbtCloudCLI &&
+        options.create
+    ) {
         successMessage =
             'Successfully deployed project! Complete the setup by adding warehouse connection details here:';
         displayUrl = `${serverUrl}/generalSettings/projectManagement/${projectUuid}/settings`;

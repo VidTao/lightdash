@@ -392,6 +392,11 @@ export class CsvService extends BaseService {
             let lineBuffer = '';
             let rowCount = 0;
 
+            // Handle backpressure: resume reading when write buffer drains
+            writeStream.on('drain', () => {
+                readStream.resume();
+            });
+
             readStream.on('data', (chunk: Buffer) => {
                 lineBuffer += decoder.write(chunk);
                 const lines = lineBuffer.split('\n');
@@ -399,7 +404,7 @@ export class CsvService extends BaseService {
                 // Keep last incomplete line in buffer
                 lineBuffer = lines.pop() || '';
 
-                // Process complete lines
+                // Process complete lines with backpressure handling
                 for (const line of lines) {
                     const csvString = CsvService.processJsonLineToCsv(
                         line,
@@ -409,8 +414,13 @@ export class CsvService extends BaseService {
                     );
 
                     if (csvString) {
-                        writeStream.write(`${csvString}\n`);
+                        const canContinue = writeStream.write(`${csvString}\n`);
                         rowCount += 1;
+
+                        // If write buffer is full, pause reading until it drains
+                        if (!canContinue) {
+                            readStream.pause();
+                        }
                     }
                 }
             });
@@ -570,9 +580,18 @@ export class CsvService extends BaseService {
             const s3Url = await this.s3Client.uploadCsv(csvContent, fileId);
 
             // Delete local file in 10 minutes, we could still read from the local file to upload to google sheets
-            setTimeout(async () => {
-                await fsPromise.unlink(filePath);
-            }, 60 * 10 * 1000);
+            setTimeout(
+                async () => {
+                    try {
+                        await fsPromise.unlink(filePath);
+                    } catch (error) {
+                        this.logger.warn(
+                            `Error deleting local file ${filePath}: ${error}`,
+                        );
+                    }
+                },
+                60 * 10 * 1000,
+            );
 
             return {
                 filename: fileName,
@@ -762,7 +781,9 @@ export class CsvService extends BaseService {
             onlyRaw,
             metricQueryWithDashboardFilters,
             fields,
-            isTableChartConfig(config) ? config.showTableNames ?? false : true,
+            isTableChartConfig(config)
+                ? (config.showTableNames ?? false)
+                : true,
             chart.name,
             truncated,
             getCustomLabelsFromTableConfig(config),
@@ -917,9 +938,8 @@ export class CsvService extends BaseService {
         invalidateCache?: boolean;
         schedulerParameters?: ParametersValuesMap;
     }): Promise<AttachmentUrl[]> {
-        const dashboard = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const dashboard =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
 
         const dashboardFilters = overrideDashboardFilters || dashboard.filters;
 
@@ -1019,7 +1039,7 @@ export class CsvService extends BaseService {
         );
 
         const showTableNames = isTableChartConfig(chartConfig.config)
-            ? chartConfig.config.showTableNames ?? false
+            ? (chartConfig.config.showTableNames ?? false)
             : true;
         const customLabels = getCustomLabelsFromTableConfig(chartConfig.config);
         const hiddenFields = getHiddenTableFields(chartConfig);
@@ -1256,18 +1276,22 @@ export class CsvService extends BaseService {
                 columnOrder || [],
                 hiddenFields,
             );
-
+            const filePath = `/tmp/${fileId}`;
             let fileUrl;
             if (this.s3Client.isEnabled()) {
-                const csvContent = await fsPromise.readFile(`/tmp/${fileId}`, {
+                const csvContent = await fsPromise.readFile(filePath, {
                     encoding: 'utf-8',
                 });
                 fileUrl = await this.s3Client.uploadCsv(csvContent, fileId);
-
-                await fsPromise.unlink(`/tmp/${fileId}`);
+                try {
+                    await fsPromise.unlink(filePath);
+                } catch (error) {
+                    this.logger.warn(
+                        `Error deleting local file ${filePath}: ${error}`,
+                    );
+                }
             } else {
                 // Storing locally
-                const filePath = `/tmp/${fileId}`;
                 const downloadFileId = nanoid(); // Creates a new nanoid for the download file because the jobId is already exposed
                 await this.downloadFileModel.createDownloadFile(
                     downloadFileId,
@@ -1314,9 +1338,8 @@ export class CsvService extends BaseService {
         dashboardFilters: DashboardFilters,
         dateZoomGranularity?: DateGranularity,
     ) {
-        const dashboard = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const dashboard =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
         if (
             user.ability.cannot(
                 'manage',
@@ -1365,9 +1388,8 @@ export class CsvService extends BaseService {
             formatted: true,
             limit: 'table',
         };
-        const dashboard = await this.dashboardModel.getByIdOrSlug(
-            dashboardUuid,
-        );
+        const dashboard =
+            await this.dashboardModel.getByIdOrSlug(dashboardUuid);
 
         this.logger.info(`Exporting CSVs for dashboard ${dashboardUuid}`);
         const user = await this.userModel.findSessionUserAndOrgByUuid(

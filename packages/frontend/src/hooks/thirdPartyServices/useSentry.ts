@@ -16,9 +16,16 @@ import {
     useNavigationType,
     useParams,
 } from 'react-router';
+import {
+    hasRecentChunkReload,
+    isChunkLoadErrorObject,
+} from '../../features/chunkErrorHandler';
 
 const sentrySpotlightEnabled =
     import.meta.env.DEV && import.meta.env.VITE_SENTRY_SPOTLIGHT;
+
+// Dummy DSN for Spotlight-only mode (no real Sentry account needed)
+const SPOTLIGHT_DUMMY_DSN = 'https://0@o0.ingest.sentry.io/0';
 
 const useSentry = (
     sentryConfig: HealthState['sentry'] | undefined,
@@ -26,9 +33,12 @@ const useSentry = (
 ) => {
     const [isSentryLoaded, setIsSentryLoaded] = useState(false);
     useEffect(() => {
-        if (sentryConfig && !isSentryLoaded && sentryConfig.frontend.dsn) {
+        const dsn =
+            sentryConfig?.frontend.dsn ||
+            (sentrySpotlightEnabled ? SPOTLIGHT_DUMMY_DSN : '');
+        if (sentryConfig && !isSentryLoaded && dsn) {
             init({
-                dsn: sentryConfig.frontend.dsn,
+                dsn,
                 release: sentryConfig.release,
                 environment: sentryConfig.environment,
                 integrations: [
@@ -61,6 +71,33 @@ const useSentry = (
                     return sentryConfig.tracesSampleRate;
                 },
                 replaysOnErrorSampleRate: 1.0,
+                beforeSend(event, hint) {
+                    const error = hint.originalException;
+                    // For chunk load errors, only send to Sentry if auto-reload already failed
+                    if (
+                        isChunkLoadErrorObject(error) &&
+                        !hasRecentChunkReload()
+                    ) {
+                        return null;
+                    }
+
+                    // Filter SyntaxErrors that originate entirely from third-party code
+                    // These are typically caused by network issues, browser extensions,
+                    // or CDN serving corrupted bundles - not actionable by us
+                    if (error instanceof SyntaxError) {
+                        const frames =
+                            event.exception?.values?.[0]?.stacktrace?.frames;
+                        const hasInAppFrame =
+                            frames &&
+                            frames.length > 0 &&
+                            frames.some((frame) => frame.in_app === true);
+                        if (frames && frames.length > 0 && !hasInAppFrame) {
+                            return null;
+                        }
+                    }
+
+                    return event;
+                },
             });
             setIsSentryLoaded(true);
         }

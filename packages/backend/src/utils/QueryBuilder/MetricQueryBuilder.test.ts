@@ -1705,6 +1705,102 @@ LIMIT 10`;
                 expect(selectClause).not.toBe('*');
             }
         });
+
+        test('Should include table calculation in SELECT when table calc has filter AND filter-only metric exists', () => {
+            // Reproduces bug: table calc displays as "-" when:
+            // 1. Table calculation is in results
+            // 2. Table calculation has a filter
+            // 3. A metric NOT in results IS in filter
+            const result = buildQuery({
+                explore: EXPLORE,
+                compiledMetricQuery: {
+                    ...METRIC_QUERY_TWO_TABLES,
+                    dimensions: ['table1_dim1'],
+                    metrics: ['table1_metric1'], // Only select table1_metric1
+                    filters: {
+                        metrics: {
+                            id: 'metric-filter-root',
+                            and: [
+                                {
+                                    id: 'metric-filter-1',
+                                    target: {
+                                        fieldId: 'table2_metric3', // Filter on table2_metric3 (not in SELECT)
+                                    },
+                                    operator: FilterOperator.EQUALS,
+                                    values: [100],
+                                },
+                            ],
+                        },
+                        tableCalculations: {
+                            id: 'tc-filter-root',
+                            and: [
+                                {
+                                    id: 'tc-filter-1',
+                                    target: {
+                                        fieldId: 'calc1',
+                                    },
+                                    operator: FilterOperator.NOT_NULL,
+                                    values: [],
+                                },
+                            ],
+                        },
+                    },
+                    sorts: [{ fieldId: 'table1_metric1', descending: true }],
+                    limit: 10,
+                    tableCalculations: [
+                        {
+                            name: 'calc1',
+                            displayName: 'Calc 1',
+                            sql: '${table1.metric1} * 2',
+                        },
+                    ],
+                    compiledTableCalculations: [
+                        {
+                            name: 'calc1',
+                            displayName: 'Calc 1',
+                            sql: '${table1.metric1} * 2',
+                            compiledSql: '"table1_metric1" * 2',
+                            dependsOn: [],
+                        },
+                    ],
+                },
+                warehouseSqlBuilder: warehouseClientMock,
+                intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            });
+
+            // Should have table_calculations CTE (because table calc has filter)
+            expect(result.query).toContain('table_calculations AS (');
+
+            // Should calculate filter-only metric in the CTE
+            expect(result.query).toContain(
+                'SUM("table2".number_column) AS "table2_metric3"',
+            );
+
+            // Final SELECT should explicitly include the table calculation
+            // Match the SELECT after the CTE closing paren (not the SELECT inside the CTE)
+            const finalSelectMatch = result.query.match(
+                /\)\s*SELECT\s+(.*?)\s+FROM\s+table_calculations\s+WHERE/s,
+            );
+            expect(finalSelectMatch).toBeTruthy();
+            if (finalSelectMatch) {
+                const selectClause = finalSelectMatch[1].trim();
+                // Should include the selected dimension
+                expect(selectClause).toContain('"table1_dim1"');
+                // Should include the selected metric
+                expect(selectClause).toContain('"table1_metric1"');
+                // Should include the table calculation (this was the bug - it was missing)
+                expect(selectClause).toContain('"calc1"');
+                // Should NOT include the filter-only metric
+                expect(selectClause).not.toContain('"table2_metric3"');
+                // Should NOT be SELECT * (since we have filter-only metrics)
+                expect(selectClause).not.toBe('*');
+            }
+
+            // Should have both metric and table calc filters in WHERE clause
+            expect(result.query).toContain('("table2_metric3") IN (100)');
+            expect(result.query).toContain('("calc1") IS NOT NULL');
+        });
     });
 
     describe('Table Calculations', () => {
@@ -2730,5 +2826,89 @@ describe('Query Structure Tests', () => {
         expect(metricsIndex).toBeLessThan(metricFiltersIndex);
         expect(metricFiltersIndex).toBeLessThan(tcAIndex);
         expect(tcAIndex).toBeLessThan(tcBIndex);
+    });
+
+    test('Should return NULL for table calculations with pivot functions', () => {
+        const metricQueryWithPivotTableCalcs = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pivot_calc_offset',
+                    displayName: 'Pivot Calculation with Offset',
+                    sql: 'revenue - pivot_offset(revenue, -1)',
+                },
+                {
+                    name: 'pivot_calc_column',
+                    displayName: 'Pivot Calculation with Column',
+                    sql: 'pivot_column()',
+                },
+                {
+                    name: 'normal_calc',
+                    displayName: 'Normal Calculation',
+                    sql: '${table1.metric1} * 2',
+                },
+                {
+                    name: 'row_calc',
+                    displayName: 'Row Calculation',
+                    sql: 'offset(${table1.metric1}, -1)',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pivot_calc_offset',
+                    displayName: 'Pivot Calculation with Offset',
+                    sql: 'revenue - pivot_offset(revenue, -1)',
+                    compiledSql: 'revenue - pivot_offset(revenue, -1)',
+                    dependsOn: [],
+                },
+                {
+                    name: 'pivot_calc_column',
+                    displayName: 'Pivot Calculation with Column',
+                    sql: 'pivot_column()',
+                    compiledSql: 'pivot_column()',
+                    dependsOn: [],
+                },
+                {
+                    name: 'normal_calc',
+                    displayName: 'Normal Calculation',
+                    sql: '${table1.metric1} * 2',
+                    compiledSql: '"table1_metric1" * 2',
+                    dependsOn: [],
+                },
+                {
+                    name: 'row_calc',
+                    displayName: 'Row Calculation',
+                    sql: 'offset(${table1.metric1}, -1)',
+                    compiledSql: 'offset("table1_metric1", -1)',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithPivotTableCalcs,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should return NULL for table calculations with pivot functions (case-insensitive)
+        expect(result.query.toLowerCase()).toContain(
+            'null as "pivot_calc_offset"',
+        );
+        expect(result.query.toLowerCase()).toContain(
+            'null as "pivot_calc_column"',
+        );
+
+        // Should return normal SQL for table calculations without pivot functions
+        expect(result.query).toContain('"table1_metric1" * 2 AS "normal_calc"');
+        expect(result.query).toContain(
+            'offset("table1_metric1", -1) AS "row_calc"',
+        );
+
+        // Verify that the pivot function SQL is not in the query
+        expect(result.query).not.toContain('pivot_offset(revenue, -1)');
+        expect(result.query).not.toContain('pivot_column()');
     });
 });

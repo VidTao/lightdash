@@ -151,6 +151,45 @@ const getPaginatedSchedulers = async (
     });
 };
 
+const getUserPaginatedSchedulers = async (
+    paginateArgs: KnexPaginateArgs,
+    searchQuery?: string,
+    sortBy?: string,
+    sortDirection?: 'asc' | 'desc',
+    filters?: {
+        formats?: string[];
+        resourceType?: 'chart' | 'dashboard';
+        resourceUuids?: string[];
+        destinations?: DestinationType[];
+    },
+    includeLatestRun?: boolean,
+) => {
+    const urlParams = new URLSearchParams({
+        page: String(paginateArgs.page),
+        pageSize: String(paginateArgs.pageSize),
+        ...(searchQuery ? { searchQuery } : {}),
+        ...(sortBy ? { sortBy } : {}),
+        ...(sortDirection ? { sortDirection } : {}),
+        ...(filters?.formats ? { formats: filters.formats.join(',') } : {}),
+        ...(filters?.resourceType
+            ? { resourceType: filters.resourceType }
+            : {}),
+        ...(filters?.resourceUuids
+            ? { resourceUuids: filters.resourceUuids.join(',') }
+            : {}),
+        ...(filters?.destinations
+            ? { destinations: filters.destinations.join(',') }
+            : {}),
+        ...(includeLatestRun ? { includeLatestRun: 'true' } : {}),
+    }).toString();
+
+    return lightdashApi<ApiSchedulersResponse['results']>({
+        url: `/schedulers/user-schedulers?${urlParams}`,
+        method: 'GET',
+        body: undefined,
+    });
+};
+
 export const getSchedulerJobStatus = async <
     T = ApiJobStatusResponse['results'],
 >(
@@ -272,8 +311,9 @@ export const usePaginatedSchedulers = ({
     sortDirection,
     filters,
     includeLatestRun,
+    isUserScope = false,
 }: {
-    projectUuid: string;
+    projectUuid?: string;
     paginateArgs?: KnexPaginateArgs;
     searchQuery?: string;
     sortBy?: string;
@@ -283,13 +323,15 @@ export const usePaginatedSchedulers = ({
         formats?: string[];
         resourceType?: 'chart' | 'dashboard';
         resourceUuids?: string[];
+        destinations?: DestinationType[];
     };
     includeLatestRun?: boolean;
+    isUserScope?: boolean;
 }) => {
     return useInfiniteQuery<ApiSchedulersResponse['results']>({
         queryKey: [
             'paginatedSchedulers',
-            projectUuid,
+            isUserScope ? 'user' : projectUuid,
             paginateArgs,
             searchQuery,
             sortBy,
@@ -297,13 +339,26 @@ export const usePaginatedSchedulers = ({
             filters,
             includeLatestRun,
         ],
-        queryFn: async ({ pageParam = 0 }) => {
+        queryFn: async ({ pageParam = 1 }) => {
+            const paginateArgsWithPage = {
+                page: pageParam as number,
+                pageSize: paginateArgs?.pageSize ?? 10,
+            };
+
+            if (isUserScope) {
+                return getUserPaginatedSchedulers(
+                    paginateArgsWithPage,
+                    searchQuery,
+                    sortBy,
+                    sortDirection,
+                    filters,
+                    includeLatestRun,
+                );
+            }
+
             return getPaginatedSchedulers(
-                projectUuid,
-                {
-                    page: pageParam as number,
-                    pageSize: paginateArgs?.pageSize ?? 10,
-                },
+                projectUuid!,
+                paginateArgsWithPage,
                 searchQuery,
                 sortBy,
                 sortDirection,
@@ -312,13 +367,13 @@ export const usePaginatedSchedulers = ({
             );
         },
         getNextPageParam: (_lastGroup, groups) => {
-            const currentPage = groups.length - 1;
+            const currentPage = groups.length;
             const totalPages = _lastGroup.pagination?.totalPageCount ?? 0;
-            return currentPage < totalPages - 1 ? currentPage + 1 : undefined;
+            return currentPage < totalPages ? currentPage + 1 : undefined;
         },
         keepPreviousData: true,
         refetchOnWindowFocus: false,
-        enabled: !!projectUuid,
+        enabled: isUserScope || !!projectUuid,
     });
 };
 

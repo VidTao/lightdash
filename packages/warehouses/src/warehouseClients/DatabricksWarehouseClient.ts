@@ -5,8 +5,6 @@ import IDBSQLClient, {
 import IDBSQLSession from '@databricks/sql/dist/contracts/IDBSQLSession';
 import IOperation from '@databricks/sql/dist/contracts/IOperation';
 import { TTypeId as DatabricksDataTypes } from '@databricks/sql/thrift/TCLIService_types';
-import fetch from 'node-fetch';
-
 import {
     AnyType,
     CreateDatabricksCredentials,
@@ -17,12 +15,14 @@ import {
     MetricType,
     ParseError,
     SupportedDbtAdapter,
+    TimeIntervalUnit,
     UnexpectedServerError,
     WarehouseConnectionError,
     WarehouseQueryError,
     WarehouseResults,
     WarehouseTypes,
 } from '@lightdash/common';
+import fetch from 'node-fetch';
 import { WarehouseCatalog } from '../types';
 import {
     DEFAULT_BATCH_SIZE,
@@ -31,6 +31,15 @@ import {
 import { normalizeUnicode } from '../utils/sql';
 import WarehouseBaseClient from './WarehouseBaseClient';
 import WarehouseBaseSqlBuilder from './WarehouseBaseSqlBuilder';
+
+/**
+ * Pre-registered Databricks public OAuth client ID for U2M authentication.
+ * This is a built-in client that doesn't require registering a custom OAuth app.
+ * This client id only works on he CLI redirect URIs. For the UI we require a custom OAuth app
+ * with a valid whitelisted redirect URI.
+ * https://docs.databricks.com/en/dev-tools/auth/oauth-u2m.html
+ */
+export const DATABRICKS_DEFAULT_OAUTH_CLIENT_ID = 'databricks-cli';
 
 type SchemaResult = {
     TABLE_CAT: string;
@@ -214,6 +223,25 @@ export class DatabricksSqlBuilder extends WarehouseBaseSqlBuilder {
                 .replaceAll('\0', '')
         );
     }
+
+    getIntervalSql(value: number, unit: TimeIntervalUnit): string {
+        // Databricks/Spark uses INTERVAL with value and keyword unit (no quotes)
+        const unitStr = DatabricksSqlBuilder.intervalUnitsSingular[unit];
+        return `INTERVAL ${value} ${unitStr}`;
+    }
+
+    getTimestampDiffSeconds(
+        startTimestampSql: string,
+        endTimestampSql: string,
+    ): string {
+        // Databricks uses unix_timestamp for conversion to seconds
+        return `(UNIX_TIMESTAMP(${endTimestampSql}) - UNIX_TIMESTAMP(${startTimestampSql}))`;
+    }
+
+    getMedianSql(valueSql: string): string {
+        // Databricks uses PERCENTILE function
+        return `PERCENTILE(${valueSql}, 0.5)`;
+    }
 }
 
 const DATABRICKS_SOCKET_TIMEOUT_MS = 60000;
@@ -316,7 +344,7 @@ export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabri
 
     async streamQuery(
         sql: string,
-        streamCallback: (data: WarehouseResults) => void,
+        streamCallback: (data: WarehouseResults) => void | Promise<void>,
         options: {
             values?: AnyType[];
             tags?: Record<string, string>;
@@ -373,7 +401,8 @@ export class DatabricksWarehouseClient extends WarehouseBaseClient<CreateDatabri
             do {
                 // eslint-disable-next-line no-await-in-loop
                 const chunk = await query.fetchChunk();
-                streamCallback({ fields, rows: chunk });
+                // eslint-disable-next-line no-await-in-loop
+                await streamCallback({ fields, rows: chunk });
                 // eslint-disable-next-line no-await-in-loop
             } while (await query.hasMoreRows());
         } catch (e: AnyType) {

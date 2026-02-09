@@ -118,7 +118,7 @@ pnpm -F backend rollback-last
 
 ## Testing Memories
 
--   Use puppeteer mcp to interact with the frontend web app
+-   Use Chrome DevTools MCP to interact with the frontend web app
 -   Test user login is demo@lightdash.com and 'demo_password!'
 -   Use ./scripts/reset-db.sh to reset the database, run migrations, and seed the database with dev data
 
@@ -143,6 +143,7 @@ pnpm -F backend rollback-last
     -   Backwards compatibility requirements
     -   API design patterns where omission has semantic meaning
     -   Configuration objects with sensible defaults
+-   **Always wrap `JSON.parse` in try/catch**: Parse errors crash the app. On failure, considering showing a warning toast or falling back to a sensible default.
 
 ## TypeScript Utilities
 

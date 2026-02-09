@@ -43,8 +43,6 @@ export enum FeatureFlags {
      */
     AiCustomViz = 'ai-custom-viz',
 
-    BigquerySSO = 'bigquery-sso',
-
     /**
      * Use workers for async query execution
      */
@@ -71,9 +69,21 @@ export enum FeatureFlags {
     PeriodOverPeriod = 'pop',
 
     /**
-     * Dark mode
+     * Enable viewing and editing YAML source files in the Explore UI
      */
-    DarkMode = 'dark-mode',
+    EditYamlInUi = 'edit-yaml-in-ui',
+
+    /**
+     * Enable nested spaces to define their own permissions as well as extending
+     * their parent permissions. When disabled (default), all nested spaces
+     * inherit permissions from their root space.
+     */
+    NestedSpacesPermissions = 'nested-spaces-permissions',
+
+    /**
+     * Enable tree/list mode switcher in Metrics Catalog
+     */
+    MetricsCatalogTreeModeSwitcher = 'metrics-catalog-tree-mode-switcher',
 }
 
 export type FeatureFlag = {

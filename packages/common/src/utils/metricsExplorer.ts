@@ -5,14 +5,20 @@ import { type Dictionary } from 'lodash';
 import groupBy from 'lodash/groupBy';
 import mapKeys from 'lodash/mapKeys';
 import { v4 as uuidv4 } from 'uuid';
+import { castDateLiteral } from '../compiler/filtersCompiler';
 import { type AnyType } from '../types/any';
-import type { MetricWithAssociatedTimeDimension } from '../types/catalog';
+import type {
+    CatalogField,
+    MetricWithAssociatedTimeDimension,
+} from '../types/catalog';
 import { type CompiledTable } from '../types/explore';
 import {
+    CustomDimensionType,
     DimensionType,
     MetricType,
     type CompiledDimension,
     type CompiledMetric,
+    type CustomSqlDimension,
     type Dimension,
 } from '../types/field';
 import {
@@ -27,6 +33,7 @@ import {
     type MetricExplorerDateRange,
     type MetricExplorerQuery,
 } from '../types/metricsExplorer';
+import { type WarehouseTypes } from '../types/projects';
 import type { ResultRow } from '../types/results';
 import { TimeFrames, type DefaultTimeDimension } from '../types/timeFrames';
 import assertUnreachable from './assertUnreachable';
@@ -104,7 +111,11 @@ export const getFieldIdForDateDimension = (
 export const getDateCalcUtils = (timeFrame: TimeFrames, grain?: TimeFrames) => {
     switch (timeFrame) {
         case TimeFrames.MONTH:
-            if (grain && grain !== TimeFrames.DAY) {
+            if (
+                grain &&
+                grain !== TimeFrames.DAY &&
+                grain !== TimeFrames.MONTH
+            ) {
                 throw new Error(
                     `Granularity "${grain}" is not supported yet for this timeframe "${timeFrame}"`,
                 );
@@ -113,6 +124,26 @@ export const getDateCalcUtils = (timeFrame: TimeFrames, grain?: TimeFrames) => {
             return {
                 forward: (date: Date) => dayjs(date).add(1, 'month').toDate(),
                 back: (date: Date) => dayjs(date).subtract(1, 'month').toDate(),
+            };
+        case TimeFrames.DAY:
+            if (grain && grain !== TimeFrames.DAY) {
+                throw new Error(
+                    `Granularity "${grain}" is not supported yet for this timeframe "${timeFrame}"`,
+                );
+            }
+            return {
+                forward: (date: Date) => dayjs(date).add(1, 'day').toDate(),
+                back: (date: Date) => dayjs(date).subtract(1, 'day').toDate(),
+            };
+        case TimeFrames.WEEK:
+            if (grain && grain !== TimeFrames.WEEK) {
+                throw new Error(
+                    `Granularity "${grain}" is not supported yet for this timeframe "${timeFrame}"`,
+                );
+            }
+            return {
+                forward: (date: Date) => dayjs(date).add(1, 'week').toDate(),
+                back: (date: Date) => dayjs(date).subtract(1, 'week').toDate(),
             };
         case TimeFrames.YEAR:
             // Handle week shift for previous year comparison and subtract what the amount of weeks is in a year
@@ -136,9 +167,6 @@ export const getDateCalcUtils = (timeFrame: TimeFrames, grain?: TimeFrames) => {
                 forward: (date: Date) => dayjs(date).add(1, 'year').toDate(),
                 back: (date: Date) => dayjs(date).subtract(1, 'year').toDate(),
             };
-        case TimeFrames.DAY:
-        case TimeFrames.WEEK:
-            throw new Error(`Timeframe "${timeFrame}" is not supported yet`);
         default:
             return assertUnimplementedTimeframe(timeFrame);
     }
@@ -540,18 +568,71 @@ export const getAvailableTimeDimensionsFromTables = (
         ),
     );
 
-export const getAvailableSegmentDimensions = (
-    dimensions: Dimension[],
+/**
+ * Returns dimensions that can be used for filtering based on type constraints only.
+ * Only STRING and BOOLEAN dimensions are allowed, excluding time-derived dimensions.
+ * Does NOT apply spotlight settings - frontend handles that with metric allowlist.
+ */
+export const getTypeValidFilterDimensions = (
+    dimensions: CompiledDimension[],
 ): CompiledDimension[] =>
-    dimensions
-        .filter((d): d is CompiledDimension => !!d)
-        .filter(
-            (d) =>
-                d.type !== DimensionType.DATE &&
-                d.type !== DimensionType.TIMESTAMP &&
-                d.type !== DimensionType.NUMBER &&
-                !d.timeIntervalBaseDimensionName,
+    dimensions.filter((d) => {
+        // Exclude date-derived dimensions (month name, day name, etc.) even though they're strings
+        if (d.timeIntervalBaseDimensionName) return false;
+        return (
+            d.type === DimensionType.STRING || d.type === DimensionType.BOOLEAN
         );
+    });
+
+/**
+ * Filters dimensions for a specific metric, applying metric's spotlight allowlist.
+ * Dimensions should already be type-valid from the backend.
+ */
+export const getFilterDimensionsForMetric = (
+    dimensions: CompiledDimension[],
+    metric: Pick<CatalogField, 'spotlightFilterBy'> | undefined,
+): CompiledDimension[] =>
+    dimensions.filter((d) => {
+        // If metric has allowlist, use it (supersedes dimension-level)
+        if (metric?.spotlightFilterBy) {
+            return metric.spotlightFilterBy.includes(d.name);
+        }
+        // Otherwise use dimension-level setting
+        return d.spotlight?.filterBy !== false;
+    });
+
+/**
+ * Returns dimensions that can be used for segmenting based on type constraints only.
+ * Only STRING and BOOLEAN dimensions are allowed, excluding time-derived dimensions.
+ * Does NOT apply spotlight settings - frontend handles that with metric allowlist.
+ */
+export const getTypeValidSegmentDimensions = (
+    dimensions: CompiledDimension[],
+): CompiledDimension[] =>
+    dimensions.filter((d) => {
+        // Exclude date-derived dimensions (month name, day name, etc.) even though they're strings
+        if (d.timeIntervalBaseDimensionName) return false;
+        return (
+            d.type === DimensionType.STRING || d.type === DimensionType.BOOLEAN
+        );
+    });
+
+/**
+ * Filters dimensions for a specific metric, applying metric's spotlight allowlist.
+ * Dimensions should already be type-valid from the backend.
+ */
+export const getSegmentDimensionsForMetric = (
+    dimensions: CompiledDimension[],
+    metric: Pick<CatalogField, 'spotlightSegmentBy'> | undefined,
+): CompiledDimension[] =>
+    dimensions.filter((d) => {
+        // If metric has allowlist, use it (supersedes dimension-level)
+        if (metric?.spotlightSegmentBy) {
+            return metric.spotlightSegmentBy.includes(d.name);
+        }
+        // Otherwise use dimension-level setting
+        return d.spotlight?.segmentBy !== false;
+    });
 
 export const getAvailableCompareMetrics = (
     metrics: MetricWithAssociatedTimeDimension[],
@@ -565,3 +646,61 @@ export const getAvailableCompareMetrics = (
                 metric.type !== MetricType.DATE &&
                 metric.type !== MetricType.TIMESTAMP,
         );
+
+/**
+ * Calculate date ranges for rolling period comparisons.
+ * Current period: yesterday - (days-1) days ago to yesterday
+ * Previous period: (days*2) days ago to (days+1) days ago
+ *
+ * Example for 7 days (if today is Feb 4):
+ * Current:  Jan 28 - Feb 3
+ * Previous: Jan 21 - Jan 27
+ */
+export const getRollingPeriodDates = (days: number) => {
+    const now = dayjs();
+    const yesterday = now.subtract(1, 'day').endOf('day');
+
+    return {
+        current: {
+            start: now.subtract(days, 'day').startOf('day'),
+            end: yesterday,
+        },
+        previous: {
+            start: now.subtract(days * 2, 'day').startOf('day'),
+            end: now.subtract(days + 1, 'day').endOf('day'),
+        },
+    };
+};
+
+/**
+ * Build a custom SQL dimension that buckets data into periods:
+ * - 0 = current period
+ * - 1 = previous period
+ * - NULL = outside both periods
+ */
+export const buildRollingPeriodCustomDimension = (
+    timeDimensionFieldRef: string, // e.g., "${orders.order_date_day}"
+    table: string,
+    rollingDays: number,
+    adapterType: WarehouseTypes,
+): CustomSqlDimension => {
+    const { current, previous } = getRollingPeriodDates(rollingDays);
+
+    const cast = (d: dayjs.Dayjs) =>
+        castDateLiteral(d.format(METRICS_EXPLORER_DATE_FORMAT), adapterType);
+
+    const id = 'lightdash_metric_total_period';
+
+    return {
+        id,
+        name: id,
+        table,
+        type: CustomDimensionType.SQL,
+        sql: `CASE
+  WHEN ${timeDimensionFieldRef} >= ${cast(current.start)} AND ${timeDimensionFieldRef} <= ${cast(current.end)} THEN 0
+  WHEN ${timeDimensionFieldRef} >= ${cast(previous.start)} AND ${timeDimensionFieldRef} <= ${cast(previous.end)} THEN 1
+  ELSE NULL
+END`,
+        dimensionType: DimensionType.NUMBER,
+    };
+};

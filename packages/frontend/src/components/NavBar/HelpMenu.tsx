@@ -1,5 +1,5 @@
 import { LightdashMode } from '@lightdash/common';
-import { Button, Menu } from '@mantine/core';
+import { Button, getDefaultZIndex, Menu } from '@mantine-8/core';
 import { modals } from '@mantine/modals';
 import {
     IconBook,
@@ -23,6 +23,25 @@ const HelpMenu: FC = () => {
 
     const { show: showIntercom } = useIntercom();
 
+    const helpMenuUrl = health.data?.helpMenuUrl;
+
+    // If helpMenuUrl is set, render a button that opens the URL in a new tab
+    if (helpMenuUrl) {
+        return (
+            <Button
+                aria-label="Help"
+                variant="default"
+                size="xs"
+                component="a"
+                href={helpMenuUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                <MantineIcon icon={IconHelp} />
+            </Button>
+        );
+    }
+
     return (
         <Menu
             withArrow
@@ -30,6 +49,8 @@ const HelpMenu: FC = () => {
             position="bottom-end"
             arrowOffset={16}
             offset={-2}
+            zIndex={getDefaultZIndex('max')}
+            portalProps={{ target: '#navbar-header' }}
         >
             <Menu.Target>
                 <Button aria-label="Help" variant="default" size="xs">

@@ -5,7 +5,8 @@ import {
     type ApiExploreResults,
     type EChartsSeries,
 } from '@lightdash/common';
-import { Menu, Portal } from '@mantine/core';
+import { Menu } from '@mantine-8/core';
+import { Portal } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import { IconCopy, IconStack } from '@tabler/icons-react';
 import {
@@ -16,8 +17,8 @@ import {
     useState,
     type FC,
 } from 'react';
-import { useParams } from 'react-router';
 import useToaster from '../../../hooks/toaster/useToaster';
+import { useProjectUuid } from '../../../hooks/useProjectUuid';
 import { Can } from '../../../providers/Ability';
 import useApp from '../../../providers/App/useApp';
 import useTracking from '../../../providers/Tracking/useTracking';
@@ -51,7 +52,7 @@ export const SeriesContextMenu: FC<{
         top: number;
     }>();
 
-    const { projectUuid } = useParams<{ projectUuid: string }>();
+    const projectUuid = useProjectUuid();
 
     useEffect(() => {
         if (echartsSeriesClickEvent !== undefined) {
@@ -152,7 +153,7 @@ export const SeriesContextMenu: FC<{
             <Menu.Dropdown>
                 {underlyingData?.value && (
                     <Menu.Item
-                        icon={<MantineIcon icon={IconCopy} />}
+                        leftSection={<MantineIcon icon={IconCopy} />}
                         onClick={handleCopyToClipboard}
                     >
                         Copy value
@@ -168,7 +169,7 @@ export const SeriesContextMenu: FC<{
                 >
                     {!hasCustomBinDimension(metricQuery) && (
                         <Menu.Item
-                            icon={<MantineIcon icon={IconStack} />}
+                            leftSection={<MantineIcon icon={IconStack} />}
                             onClick={handleViewUnderlyingData}
                         >
                             View underlying data

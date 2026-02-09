@@ -5,6 +5,11 @@ models:
     config:
       tags: ["core", "ai"]
       meta:
+        spotlight:
+          owner: demo@lightdash.com
+        default_show_underlying_values:
+          - orders.customer_id
+          - unique_payment_count
         sets:
           base_set:
             fields:
@@ -44,6 +49,9 @@ models:
           meta:
             metrics:
               total_revenue:
+                spotlight:
+                  owner: demo2@lightdash.com
+                  categories: ['revenue_growth']
                 type: sum
                 description: Sum of all payments
                 # E2E tests rely on these values
@@ -55,3 +63,6 @@ models:
                   - orders.total_order_amount
                   # # Dimensions
                   - orders.customer_id
+                drivers:
+                  - unique_payment_count
+                  - orders.total_order_amount

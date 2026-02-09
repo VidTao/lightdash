@@ -6,6 +6,7 @@ import {
     FunnelChartLabelPosition,
     FunnelChartLegendPosition,
     getLegendStyle,
+    getReadableTextColor,
     getTooltipStyle,
     type Metric,
     type ResultRow,
@@ -53,8 +54,13 @@ const useEchartsFunnelConfig = (
     selectedLegends?: Record<string, boolean>,
     isInDashboard?: boolean,
 ) => {
-    const { visualizationConfig, itemsMap, colorPalette, parameters } =
-        useVisualizationContext();
+    const {
+        visualizationConfig,
+        itemsMap,
+        colorPalette,
+        parameters,
+        isTouchDevice,
+    } = useVisualizationContext();
 
     const theme = useMantineTheme();
 
@@ -101,6 +107,18 @@ const useEchartsFunnelConfig = (
                         color: colorOverrides?.[id] ?? colorDefaults[id],
                         borderWidth: 0,
                     },
+                    label:
+                        labels?.position === FunnelChartLabelPosition.INSIDE
+                            ? {
+                                  backgroundColor:
+                                      colorOverrides?.[id] ?? colorDefaults[id],
+                                  color: getReadableTextColor(
+                                      colorOverrides?.[id] ?? colorDefaults[id],
+                                  ),
+                                  borderRadius: 4,
+                                  padding: [4, 8],
+                              }
+                            : undefined,
                 };
             }),
             color: colorPalette,
@@ -139,7 +157,7 @@ const useEchartsFunnelConfig = (
                         : FunnelChartLabelPosition.INSIDE,
                 color:
                     labels?.position !== FunnelChartLabelPosition.INSIDE
-                        ? 'black'
+                        ? theme.colors.foreground[0]
                         : undefined,
                 formatter: ({ name, value }) => {
                     const { formattedValue, percentOfMax } =
@@ -167,7 +185,13 @@ const useEchartsFunnelConfig = (
                 disabled: true,
             },
         };
-    }, [chartConfig, colorPalette, seriesData, parameters]);
+    }, [
+        chartConfig,
+        colorPalette,
+        seriesData,
+        parameters,
+        theme.colors.foreground,
+    ]);
 
     const { tooltip: legendDoubleClickTooltip } = useLegendDoubleClickTooltip();
 
@@ -213,7 +237,7 @@ const useEchartsFunnelConfig = (
                 fontFamily: theme?.other.chartFont as string | undefined,
             },
             tooltip: {
-                ...getTooltipStyle(),
+                ...getTooltipStyle({ appendToBody: !isTouchDevice }),
                 trigger: 'item' as const,
             },
             series: [funnelSeriesOptions],
@@ -231,6 +255,7 @@ const useEchartsFunnelConfig = (
         isInDashboard,
         theme,
         legendConfigWithTooltip,
+        isTouchDevice,
     ]);
 
     if (!itemsMap) return;

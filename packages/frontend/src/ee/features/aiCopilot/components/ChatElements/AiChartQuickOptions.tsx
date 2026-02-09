@@ -3,14 +3,7 @@ import {
     type AiArtifact,
     type SavedChart,
 } from '@lightdash/common';
-import {
-    ActionIcon,
-    Button,
-    Group,
-    Menu,
-    Text,
-    Tooltip,
-} from '@mantine-8/core';
+import { ActionIcon, Button, Menu, Tooltip } from '@mantine-8/core';
 import { useDisclosure } from '@mantine-8/hooks';
 import {
     IconChartBar,
@@ -31,10 +24,10 @@ import { useVisualizationContext } from '../../../../../components/LightdashVisu
 import useApp from '../../../../../providers/App/useApp';
 import useTracking from '../../../../../providers/Tracking/useTracking';
 import { EventName } from '../../../../../types/Events';
+import { getOpenInExploreUrl } from '../../../../../utils/getOpenInExploreUrl';
 import { useSetArtifactVersionVerified } from '../../hooks/useAiAgentArtifacts';
 import { useAiAgentPermission } from '../../hooks/useAiAgentPermission';
 import { useSavePromptQuery } from '../../hooks/useProjectAiAgents';
-import { getOpenInExploreUrl } from '../../utils/getOpenInExploreUrl';
 
 type Props = {
     projectUuid: string;
@@ -201,7 +194,7 @@ export const AiChartQuickOptions = ({
                     <ActionIcon
                         size="xs"
                         variant="subtle"
-                        color={isVerified ? 'green' : 'gray'}
+                        color={isVerified ? 'green' : 'ldGray.9'}
                         onClick={handleVerifyToggle}
                     >
                         <MantineIcon
@@ -217,8 +210,8 @@ export const AiChartQuickOptions = ({
             )}
             <Menu withArrow>
                 <Menu.Target>
-                    <ActionIcon size="sm" variant="subtle" color="gray">
-                        <MantineIcon icon={IconDots} size="lg" color="gray" />
+                    <ActionIcon size="sm" variant="subtle" color="ldGray.9">
+                        <MantineIcon icon={IconDots} size="lg" />
                     </ActionIcon>
                 </Menu.Target>
                 <Menu.Dropdown>
@@ -291,6 +284,9 @@ export const AiChartQuickOptions = ({
                         tableName: metricQuery.exploreName,
                         chartConfig,
                         tableConfig: { columnOrder },
+                        pivotConfig: pivotDimensions?.length
+                            ? { columns: pivotDimensions }
+                            : undefined,
                     }}
                     onConfirm={onSaveChart}
                     onClose={close}
@@ -307,23 +303,13 @@ export const AiChartQuickOptions = ({
                 title="Remove from verified answers"
                 icon={IconCircleCheck}
                 size="sm"
+                description="Are you sure you want to remove this answer from verified answers? It will no longer be used as an example in future Agent responses."
                 actions={
-                    <Group gap="sm">
-                        <Button variant="default" onClick={closeVerifyModal}>
-                            Cancel
-                        </Button>
-                        <Button color="red" onClick={handleConfirmUnverify}>
-                            Confirm
-                        </Button>
-                    </Group>
+                    <Button color="red" onClick={handleConfirmUnverify}>
+                        Confirm
+                    </Button>
                 }
-            >
-                <Text>
-                    Are you sure you want to remove this answer from verified
-                    answers? It will no longer be used as an example in future
-                    Agent responses.
-                </Text>
-            </MantineModal>
+            />
         </Fragment>
     );
 };

@@ -6,6 +6,7 @@ import {
     MetricType,
     getErrorMessage as originalGetErrorMessage,
     SupportedDbtAdapter,
+    TimeIntervalUnit,
     WarehouseConnectionError,
     WarehouseQueryError,
     WarehouseResults,
@@ -212,6 +213,25 @@ export class TrinoSqlBuilder extends WarehouseBaseSqlBuilder {
                 .replaceAll('\0', '')
         );
     }
+
+    getIntervalSql(value: number, unit: TimeIntervalUnit): string {
+        // Trino uses INTERVAL with quoted value and separate unit keyword
+        const unitStr = TrinoSqlBuilder.intervalUnitsSingular[unit];
+        return `INTERVAL '${value}' ${unitStr}`;
+    }
+
+    getTimestampDiffSeconds(
+        startTimestampSql: string,
+        endTimestampSql: string,
+    ): string {
+        // Trino uses date_diff function
+        return `DATE_DIFF('second', ${startTimestampSql}, ${endTimestampSql})`;
+    }
+
+    getMedianSql(valueSql: string): string {
+        // Trino uses APPROX_PERCENTILE for median
+        return `APPROX_PERCENTILE(${valueSql}, 0.5)`;
+    }
 }
 
 export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredentials> {
@@ -248,7 +268,7 @@ export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredent
 
     async streamQuery(
         sql: string,
-        streamCallback: (data: WarehouseResults) => void,
+        streamCallback: (data: WarehouseResults) => void | Promise<void>,
         options: {
             tags?: Record<string, string>;
             timezone?: string;
@@ -297,7 +317,7 @@ export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredent
 
             // stream initial data, if available
             if (queryResult.value.data) {
-                streamCallback({
+                await streamCallback({
                     fields,
                     rows: resultHandler(schema, queryResult.value.data ?? []),
                 });
@@ -305,30 +325,24 @@ export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredent
             // Using `await` in this loop ensures data chunks are fetched and processed sequentially.
             // This maintains order and data integrity.
             while (!queryResult.done) {
-                // Sometimes the query result state is 'FINISHED' but not done,
-                // and the number of rows is greater than 0,
-                // this is causing we are calling the streamCallback twice with the same rows
-                // duplicating the number of results
-                const numberRows = (queryResult.value.data ?? []).length;
-                if (
-                    queryResult.value.stats?.state === 'FINISHED' &&
-                    numberRows > 0
-                ) {
-                    console.warn(
-                        `Trino query result state was 'FINISHED' but not done, avoid duplicated ${numberRows} results`,
-                    );
+                // Per Trino protocol, absence of nextUri means the query is complete.
+                // Some setups (like Honeydew semantic layer) return done=false with no nextUri,
+                // which causes the trino-client library to return duplicate data on subsequent next() calls.
+                // See: https://trino.io/docs/current/develop/client-protocol.html
+                if (!queryResult.value.nextUri) {
                     // eslint-disable-next-line no-await-in-loop
                     queryResult = await query.next(); // Call .next() one more time to avoid warehouse timeouts
-                    // Don't break immediately - continue the loop to process any remaining data
-                    // The loop will exit naturally when queryResult.done becomes true
+                    // Don't write data here - it would be duplicate. Continue to let loop exit naturally.
                     // eslint-disable-next-line no-continue
                     continue;
                 }
 
                 // eslint-disable-next-line no-await-in-loop
                 queryResult = await query.next();
+
                 // stream next chunk of data
-                streamCallback({
+                // eslint-disable-next-line no-await-in-loop
+                await streamCallback({
                     fields,
                     rows: resultHandler(schema, queryResult.value.data ?? []),
                 });

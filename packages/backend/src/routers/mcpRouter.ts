@@ -9,19 +9,18 @@ import {
     ForbiddenError,
     getErrorMessage,
     LightdashError,
-    LightdashSessionUser,
     MissingConfigError,
-    NotImplementedError,
     ApiKeyAccount,
     OauthAccount,
-    OauthAuth,
+    ServiceAcctAccount,
+    UserAttributeValueMap,
 } from '@lightdash/common';
 import {
     allowApiKeyAuthentication, // ← Changed from allowOauthAuthentication
-    isAuthenticated,
 } from '../controllers/authentication';
 import Logger from '../logging/logger';
-import { ExtraContext, McpServiceMain } from '../services/McpService/McpServiceMain';
+import { ExtraContext, McpServiceMain } from '../services/McpService/McpServiceMain';import { userAttributeOverridesSchema } from '../services/UserAttributesService/UserAttributeUtils';
+
 const mcpRouter: Router = express.Router({ mergeParams: true });
 
 function getMcpService(req: express.Request): McpServiceMain {
@@ -29,6 +28,43 @@ function getMcpService(req: express.Request): McpServiceMain {
         return req.services.getMcpServiceMain();
     } catch (e) {
         throw new MissingConfigError('MCP service not available');
+    }
+}
+
+const MCP_USER_ATTRIBUTE_HEADER = 'X-Lightdash-User-Attributes';
+
+/**
+ * Extracts user attribute overrides from the X-Lightdash-User-Attributes header.
+ * Header value should be a JSON object with string or string[] values.
+ * Example: {"organizer_id": "123"} or {"organizer_id": ["123", "456"]}
+ */
+function extractUserAttributesFromHeader(
+    req: express.Request,
+): UserAttributeValueMap | undefined {
+    const headerValue = req.headers[MCP_USER_ATTRIBUTE_HEADER.toLowerCase()];
+    if (!headerValue || typeof headerValue !== 'string') {
+        return undefined;
+    }
+
+    try {
+        const parsed = JSON.parse(headerValue);
+        const result = userAttributeOverridesSchema.safeParse(parsed);
+
+        if (!result.success) {
+            Logger.warn(
+                `Invalid ${MCP_USER_ATTRIBUTE_HEADER} header: ${result.error.message}`,
+            );
+            return undefined;
+        }
+
+        return Object.keys(result.data).length > 0 ? result.data : undefined;
+    } catch (e) {
+        Logger.warn(
+            `Failed to parse ${MCP_USER_ATTRIBUTE_HEADER} header: ${getErrorMessage(
+                e,
+            )}`,
+        );
+        return undefined;
     }
 }
 
@@ -157,6 +193,10 @@ mcpRouter.all(
                 });
                 await mcpServer.connect(transport);
 
+                // Extract user attributes from header (for row-level security)
+                const headerUserAttributes =
+                    extractUserAttributesFromHeader(req);
+
                 // Add auth info for authenticated requests
                 const authReq: IncomingMessage & { auth?: AuthInfo } = req;
 
@@ -176,6 +216,22 @@ mcpRouter.all(
                             extra,
                         };
                     }
+                }
+
+                if (req.user && req.account?.isServiceAccount()) {
+                    const serviceAccountAuth =
+                        req.account as ServiceAcctAccount;
+                    const extra: ExtraContext = {
+                        user: req.user,
+                        account: serviceAccountAuth,
+                        headerUserAttributes,
+                    };
+                    authReq.auth = {
+                        token: serviceAccountAuth.authentication.source,
+                        clientId: 'Service account', // hardcoded client and scopes for Service Account authentication
+                        scopes: ['mcp:read', 'mcp:write'],
+                        extra,
+                    };
                 }
 
                 return await transport.handleRequest(authReq, res, req.body);

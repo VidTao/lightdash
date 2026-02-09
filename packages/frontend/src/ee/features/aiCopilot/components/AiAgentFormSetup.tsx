@@ -1,6 +1,5 @@
 import { CommercialFeatureFlags, FeatureFlags } from '@lightdash/common';
 import {
-    ActionIcon,
     Anchor,
     Badge,
     Box,
@@ -10,7 +9,6 @@ import {
     Collapse,
     Group,
     HoverCard,
-    Loader,
     LoadingOverlay,
     MultiSelect,
     Paper,
@@ -33,7 +31,6 @@ import {
     IconLock,
     IconPlug,
     IconPointFilled,
-    IconRefresh,
     IconSparkles,
     IconTrash,
 } from '@tabler/icons-react';
@@ -41,20 +38,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { z } from 'zod';
 import MantineIcon from '../../../../components/common/MantineIcon';
 import MantineModal from '../../../../components/common/MantineModal';
-import {
-    useGetSlack,
-    useSlackChannels,
-} from '../../../../hooks/slack/useSlack';
-import { useFeatureFlag } from '../../../../hooks/useFeatureFlagEnabled';
+import { SlackChannelSelect } from '../../../../components/common/SlackChannelSelect';
+import { useGetSlack } from '../../../../hooks/slack/useSlack';
 import { useOrganizationGroups } from '../../../../hooks/useOrganizationGroups';
 import { useProject } from '../../../../hooks/useProject';
+import { useServerFeatureFlag } from '../../../../hooks/useServerOrClientFeatureFlag';
 import useApp from '../../../../providers/App/useApp';
 import { UserAccessMultiSelect } from '../../../components/UserAccessMultiSelect';
 import AiExploreAccessTree from '../../../pages/AiAgents/AiExploreAccessTree';
-import {
-    useDeleteAiAgentMutation,
-    useProjectAiAgents,
-} from '../hooks/useProjectAiAgents';
+import { useDeleteAiAgentMutation } from '../hooks/useProjectAiAgents';
 import { useGetAgentExploreAccessSummary } from '../hooks/useUserAgentPreferences';
 import {
     InstructionsGuidelines,
@@ -136,12 +128,7 @@ export const AiAgentFormSetup = ({
     const { data: slackInstallation, isLoading: isLoadingSlackInstallation } =
         useGetSlack();
 
-    const { data: agents, isSuccess: isSuccessAgents } = useProjectAiAgents({
-        projectUuid,
-        redirectOnUnauthorized: true,
-    });
-
-    const userGroupsFeatureFlagQuery = useFeatureFlag(
+    const userGroupsFeatureFlagQuery = useServerFeatureFlag(
         FeatureFlags.UserGroupsEnabled,
     );
 
@@ -149,7 +136,7 @@ export const AiAgentFormSetup = ({
         userGroupsFeatureFlagQuery.isSuccess &&
         userGroupsFeatureFlagQuery.data.enabled;
 
-    const agentReasoningFeatureFlagQuery = useFeatureFlag(
+    const agentReasoningFeatureFlagQuery = useServerFeatureFlag(
         CommercialFeatureFlags.AgentReasoning,
     );
 
@@ -173,35 +160,6 @@ export const AiAgentFormSetup = ({
                 label: group.name,
             })) ?? [],
         [groups],
-    );
-
-    const {
-        data: slackChannels,
-        refresh: refreshChannels,
-        isRefreshing,
-        isLoading: isLoadingSlackChannels,
-    } = useSlackChannels(
-        '',
-        {
-            excludeArchived: true,
-            excludeDms: true,
-            excludeGroups: true,
-        },
-        {
-            enabled: !!slackInstallation?.organizationUuid && isSuccessAgents,
-        },
-    );
-
-    const slackChannelOptions = useMemo(
-        () =>
-            slackChannels?.map((channel) => ({
-                value: channel.id,
-                label: channel.name,
-                disabled: agents?.some((a) =>
-                    a.integrations.some((i) => i.channelId === channel.id),
-                ),
-            })) ?? [],
-        [slackChannels, agents],
     );
 
     return (
@@ -549,8 +507,8 @@ export const AiAgentFormSetup = ({
                                             isLoadingGroups
                                                 ? 'Loading groups...'
                                                 : groupOptions.length === 0
-                                                ? 'No groups available'
-                                                : 'Select groups or leave empty for all users'
+                                                  ? 'No groups available'
+                                                  : 'Select groups or leave empty for all users'
                                         }
                                         data={groupOptions}
                                         disabled={
@@ -709,7 +667,7 @@ export const AiAgentFormSetup = ({
                                 <Group
                                     c={
                                         slackChannelsConfigured
-                                            ? 'green.04'
+                                            ? 'green.4'
                                             : 'dimmed'
                                     }
                                     gap="xxs"
@@ -723,8 +681,8 @@ export const AiAgentFormSetup = ({
                                         {!slackInstallation?.organizationUuid
                                             ? 'Disabled'
                                             : !slackChannelsConfigured
-                                            ? 'Channels not configured'
-                                            : 'Enabled'}
+                                              ? 'Channels not configured'
+                                              : 'Enabled'}
                                     </Text>
                                 </Group>
                             </Group>
@@ -761,76 +719,34 @@ export const AiAgentFormSetup = ({
                             ) : (
                                 <Box>
                                     <Stack gap="xs">
-                                        <MultiSelect
-                                            variant="subtle"
-                                            readOnly={
-                                                isLoadingSlackChannels ||
-                                                isRefreshing
-                                            }
-                                            description={
+                                        <Text size="sm" c="dimmed">
+                                            Select the channels where this agent
+                                            will be available.
+                                            {slackChannelsConfigured && (
                                                 <>
-                                                    Select the channels where
-                                                    this agent will be
-                                                    available.
-                                                    {slackChannelsConfigured && (
-                                                        <>
-                                                            {' '}
-                                                            Tag the Slack app{' '}
-                                                            <Code>
-                                                                @
-                                                                {
-                                                                    slackInstallation.appName
-                                                                }
-                                                            </Code>{' '}
-                                                            to get started.
-                                                        </>
-                                                    )}
+                                                    {' '}
+                                                    Tag the Slack app{' '}
+                                                    <Code>
+                                                        @
+                                                        {
+                                                            slackInstallation.appName
+                                                        }
+                                                    </Code>{' '}
+                                                    to get started.
                                                 </>
-                                            }
-                                            labelProps={{
-                                                style: {
-                                                    width: '100%',
-                                                },
-                                            }}
-                                            label={'Channels'}
-                                            limit={30}
-                                            placeholder={
-                                                isLoadingSlackChannels ||
-                                                isRefreshing
-                                                    ? 'Loading channels, this might take a while if you have a lot of channels in your workspace'
-                                                    : 'Search channel(s)'
-                                            }
-                                            data={slackChannelOptions}
+                                            )}
+                                        </Text>
+                                        <SlackChannelSelect
+                                            includeGroups
+                                            multiple
+                                            withRefresh
+                                            size="sm"
+                                            variant="subtle"
+                                            label="Channels"
+                                            placeholder="Search channel(s)"
                                             value={form.values.integrations.map(
                                                 (i) => i.channelId,
                                             )}
-                                            searchable
-                                            rightSectionPointerEvents="all"
-                                            rightSection={
-                                                isLoadingSlackChannels ||
-                                                isRefreshing ? (
-                                                    <Loader size="xs" />
-                                                ) : (
-                                                    <Tooltip
-                                                        withArrow
-                                                        withinPortal
-                                                        label="Refresh Slack Channels"
-                                                    >
-                                                        <ActionIcon
-                                                            variant="transparent"
-                                                            onClick={
-                                                                refreshChannels
-                                                            }
-                                                        >
-                                                            <MantineIcon
-                                                                icon={
-                                                                    IconRefresh
-                                                                }
-                                                            />
-                                                        </ActionIcon>
-                                                    </Tooltip>
-                                                )
-                                            }
                                             onChange={(value) => {
                                                 form.setFieldValue(
                                                     'integrations',
@@ -839,7 +755,7 @@ export const AiAgentFormSetup = ({
                                                             ({
                                                                 type: 'slack',
                                                                 channelId: v,
-                                                            } as const),
+                                                            }) as const,
                                                     ),
                                                 );
                                             }}
@@ -901,25 +817,11 @@ export const AiAgentFormSetup = ({
                 opened={deleteModalOpen}
                 onClose={handleCancelDelete}
                 title="Delete Agent"
-                icon={IconTrash}
-                actions={
-                    <Group>
-                        <Button variant="subtle" onClick={handleCancelDelete}>
-                            Cancel
-                        </Button>
-                        <Button color="red" onClick={handleDelete}>
-                            Delete
-                        </Button>
-                    </Group>
-                }
-            >
-                <Stack gap="md">
-                    <Text>
-                        Are you sure you want to delete this agent? This action
-                        cannot be undone.
-                    </Text>
-                </Stack>
-            </MantineModal>
+                variant="delete"
+                resourceType="agent"
+                description="This action cannot be undone."
+                onConfirm={handleDelete}
+            />
         </>
     );
 };

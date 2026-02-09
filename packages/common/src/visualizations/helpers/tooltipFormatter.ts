@@ -8,7 +8,12 @@ import {
 import { toNumber } from 'lodash';
 import { type ItemsMap, isField, isTableCalculation } from '../../types/field';
 import { type ParametersValuesMap } from '../../types/parameters';
-import { hashFieldReference } from '../../types/savedCharts';
+import { type ResultRow } from '../../types/results';
+import {
+    type TooltipSortBy,
+    hashFieldReference,
+    TooltipSortByOptions,
+} from '../../types/savedCharts';
 import { TimeFrames } from '../../types/timeFrames';
 import { formatItemValue } from '../../utils/formatting';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
@@ -27,6 +32,128 @@ import {
 import { getFormattedValue } from './valueFormatter';
 
 dayjs.extend(utc);
+
+/**
+ * Translates user pivot refs (metric.dimension.value) to SQL pivot column names.
+ * e.g., "orders_unique_order_count.orders_status.completed" -> "orders_unique_order_count_any_completed"
+ *
+ * User ref format: metric.dim1.val1 or metric.dim1.val1.dim2.val2...
+ * Parts length must be odd (metric + pairs of dimension.value)
+ */
+export function translatePivotRef(
+    userRef: string,
+    pivotValuesColumnsMap: Record<string, PivotValuesColumn> | undefined,
+): string | undefined {
+    if (!pivotValuesColumnsMap) return undefined;
+
+    const parts = userRef.split('.');
+    if (parts.length < 3 || parts.length % 2 !== 1) return undefined;
+
+    const metric = parts[0];
+    const pivotPairs: { field: string; value: string }[] = [];
+    for (let i = 1; i < parts.length; i += 2) {
+        pivotPairs.push({ field: parts[i], value: parts[i + 1] });
+    }
+
+    const match = Object.entries(pivotValuesColumnsMap).find(([, column]) => {
+        if (column.referenceField !== metric) return false;
+        if (column.pivotValues.length !== pivotPairs.length) return false;
+        return pivotPairs.every((pair) =>
+            column.pivotValues.some(
+                (pv) =>
+                    pv.referenceField === pair.field &&
+                    String(pv.value) === pair.value,
+            ),
+        );
+    });
+    return match?.[0];
+}
+
+/**
+ * Resolves the format key for pivot refs.
+ * For SQL pivot: key is already correct (SQL column name).
+ * For legacy pivot: extracts base field from ref (e.g., "metric.dim.val" -> "metric").
+ */
+function resolveFormatKey(
+    formatKey: string,
+    itemsMap: ItemsMap,
+    pivotValuesColumnsMap?: Record<string, PivotValuesColumn>,
+): string {
+    if (pivotValuesColumnsMap?.[formatKey] || itemsMap[formatKey]) {
+        return formatKey;
+    }
+    const parts = formatKey.split('.');
+    if (parts.length >= 3 && itemsMap[parts[0]]) {
+        return parts[0];
+    }
+    return formatKey;
+}
+
+/**
+ * Extracts raw value from a row cell (handles both ResultRow and flat formats).
+ */
+function extractCellValue(cell: unknown): unknown {
+    if (cell && typeof cell === 'object' && 'value' in cell) {
+        return (cell as { value?: { raw?: unknown } }).value?.raw;
+    }
+    return cell;
+}
+
+/**
+ * Find the pivot column name for a simple metric reference by looking through series' pivotReference.
+ * This allows users to write `${metric_name}` instead of the full `${metric_name.pivot_dim.pivot_value}` format.
+ *
+ * Supports two pivot modes:
+ * 1. SQL pivot (pivotValuesColumnsMap exists): Look up column in pivotValuesColumnsMap
+ * 2. Legacy pivot (pivotValuesColumnsMap undefined): Use hashFieldReference(pivotReference) directly
+ *
+ * @param ref - The simple metric field reference (e.g., "orders_amount_running_total")
+ * @param params - The tooltip params array containing series information
+ * @param series - The ECharts series array with pivotReference metadata
+ * @param pivotValuesColumnsMap - Map of pivot column names to their metadata (optional, for SQL pivot)
+ * @returns The pivot column name if found, undefined otherwise
+ */
+const findPivotColumnFromSeriesRef = (
+    ref: string,
+    params: TooltipFormatterParams[],
+    series: EChartsSeries[] | undefined,
+    pivotValuesColumnsMap: Record<string, PivotValuesColumn> | undefined,
+): string | undefined => {
+    if (!series) return undefined;
+
+    for (const { seriesIndex } of params) {
+        const seriesOption =
+            typeof seriesIndex === 'number' ? series[seriesIndex] : undefined;
+
+        if (seriesOption?.pivotReference?.field === ref) {
+            // SQL pivot mode: look up in pivotValuesColumnsMap
+            if (pivotValuesColumnsMap) {
+                const pivotColumn = Object.entries(pivotValuesColumnsMap).find(
+                    ([, col]) =>
+                        col.referenceField === ref &&
+                        col.pivotValues.length ===
+                            (seriesOption.pivotReference?.pivotValues?.length ??
+                                0) &&
+                        col.pivotValues.every(
+                            (pv, i) =>
+                                pv.value ===
+                                seriesOption.pivotReference?.pivotValues?.[i]
+                                    ?.value,
+                        ),
+                );
+
+                if (pivotColumn) {
+                    return pivotColumn[0];
+                }
+            } else {
+                // Legacy pivot mode: use hashFieldReference directly
+                return hashFieldReference(seriesOption.pivotReference);
+            }
+        }
+    }
+
+    return undefined;
+};
 
 /**
  * Compute a previous period date based on the current date, granularity, and offset
@@ -100,6 +227,29 @@ type TooltipCtx = {
 };
 
 /**
+ * ECharts tooltip parameter types
+ * These represent the structure of params passed to tooltip formatters
+ */
+export interface TooltipParam {
+    seriesName?: string;
+    marker?: string;
+    encode?: {
+        x?: string | number | (string | number)[];
+        y?: string | number | (string | number)[];
+    };
+    dimensionNames?: string[];
+    data?: Record<string, unknown>;
+    value?: Record<string, unknown> | unknown[];
+    axisValue?: string | number;
+    axisValueLabel?: string | number;
+    name?: string;
+}
+
+type TooltipParams = TooltipParam | TooltipParam[];
+
+type GetDimensionNameFn = (param: TooltipParam) => string | undefined;
+
+/**
  * Get the tooltip context
  * When series are bar stacked, then it's tuple mode(@reference to applyRoundedCornersToStackData), otherwise it's dataset mode.
  * @param params - The params
@@ -108,7 +258,7 @@ type TooltipCtx = {
  * @returns The tooltip context
  */
 const getTooltipCtx = (
-    params: (TooltipFormatterParams | TooltipFormatterParams)[],
+    params: (TooltipFormatterParams | TooltipParam)[],
     stackValue: string | boolean | undefined,
     flipAxes: boolean | undefined,
 ): TooltipCtx => {
@@ -154,36 +304,45 @@ const getRawVal = (
 
 /**
  * Get the header from the params
- * @param params - The params
+ * @param params - The params (accepts both TooltipFormatterParams and TooltipParam arrays)
+ * @param itemsMap - Map of field IDs to field metadata (optional)
+ * @param xFieldId - The x-axis field ID to get timeInterval from (optional)
  * @returns The header
  */
 const getHeader = (
-    params: (TooltipFormatterParams | TooltipFormatterParams)[],
+    params: (TooltipFormatterParams | TooltipParam)[],
+    itemsMap?: ItemsMap,
+    xFieldId?: string,
 ): string => {
+    const firstParam = params[0];
+
     // First try the standard axisValueLabel or name
-    const standardHeader = params[0]?.axisValueLabel ?? params[0]?.name;
-    if (standardHeader) return standardHeader;
+    const standardHeader = firstParam?.axisValueLabel ?? firstParam?.name;
+
+    // Check if ECharts failed to format (e.g., MIN/MAX metrics on date dimensions
+    // have axis type 'value' instead of 'time', causing "Invalid Date")
+    if (standardHeader) {
+        return String(standardHeader);
+    }
+
+    // Fallback: try to format using the raw axis value
+    // This handles cases where ECharts couldn't format the value properly
+    const rawAxisValue = firstParam?.axisValue;
+    if (rawAxisValue !== undefined && rawAxisValue !== null) {
+        if (itemsMap && xFieldId) {
+            return getFormattedValue(rawAxisValue, xFieldId, itemsMap, true);
+        }
+        return String(rawAxisValue);
+    }
 
     // For tuple mode (stacked bars) with time axis, extract x-value from data array
-    const firstParam = params[0];
     if (firstParam?.value && Array.isArray(firstParam.value)) {
         // In tuple mode, first element is typically the x-axis value
         const xValue = firstParam.value[0];
         if (xValue !== undefined && xValue !== null) {
-            // Format date strings nicely
-            if (
-                typeof xValue === 'string' &&
-                xValue.match(/^\d{4}-\d{2}-\d{2}/)
-            ) {
-                try {
-                    return new Date(xValue).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                    });
-                } catch {
-                    return String(xValue);
-                }
+            // Use getFormattedValue for consistent formatting with axis labels
+            if (itemsMap && xFieldId) {
+                return getFormattedValue(xValue, xFieldId, itemsMap, true);
             }
             return String(xValue);
         }
@@ -303,11 +462,12 @@ export function createStack100TooltipFormatter(
     originalValues: Map<string, Map<string, number>>,
     getDimensionName: GetDimensionNameFn,
     xAxisField: string,
+    itemsMap?: ItemsMap,
 ) {
     return (params: TooltipParams) => {
         if (!Array.isArray(params)) return '';
 
-        const header = getHeader(params as TooltipFormatterParams[]);
+        const header = getHeader(params, itemsMap, xAxisField);
 
         const rowsHtml = params
             .map((param) => {
@@ -461,10 +621,11 @@ export const buildSqlRunnerCartesianTooltipFormatter =
                         : undefined;
                 },
                 xFieldId,
+                undefined, // No itemsMap available in SQL Runner
             )(params as TooltipParam[]);
         }
 
-        const header = getHeader(params);
+        const header = getHeader(params, undefined, xFieldId);
 
         // Build tooltip rows
         const rowsHtml = params
@@ -507,6 +668,95 @@ export const buildSqlRunnerCartesianTooltipFormatter =
         return `${formatTooltipHeader(header)}${divider}${rowsHtml}`;
     };
 
+/**
+ * Sort tooltip params based on the tooltipSort configuration
+ */
+const sortTooltipParams = (
+    params: TooltipFormatterParams[],
+    tooltipSort: TooltipSortBy | undefined,
+    series: EChartsSeries[] | undefined,
+    flipAxes: boolean | undefined,
+    ctx: TooltipCtx,
+): TooltipFormatterParams[] => {
+    if (!tooltipSort || tooltipSort === TooltipSortByOptions.DEFAULT) {
+        return params;
+    }
+
+    // Helper to extract numeric value from param for sorting
+    const getNumericValue = (param: TooltipFormatterParams): number => {
+        const { value, seriesIndex, encode, dimensionNames } = param;
+        const seriesOption =
+            typeof seriesIndex === 'number' ? series?.[seriesIndex] : undefined;
+        const effectiveEncode = encode ?? seriesOption?.encode ?? undefined;
+
+        // Try to get the value from the encode y-axis
+        const metricAxis: AxisKey = flipAxes ? 'x' : 'y';
+        const valueIdx = getValueIdxFromEncode(
+            effectiveEncode,
+            ctx,
+            !!flipAxes,
+        );
+
+        // For array values (tuple mode)
+        if (Array.isArray(value)) {
+            // Use the valueIdx if available, otherwise try index 1 (typical y-value position)
+            let idx: number;
+            if (valueIdx !== undefined) {
+                idx = valueIdx;
+            } else {
+                idx = flipAxes ? 0 : 1;
+            }
+            const numVal = toNumber(value[idx]);
+            if (!Number.isNaN(numVal)) return numVal;
+        }
+
+        // For object values (dataset mode)
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            // Try to find the metric dimension
+            const dim =
+                getDimFromEncodeAxis(
+                    effectiveEncode,
+                    dimensionNames,
+                    metricAxis,
+                ) ?? (dimensionNames?.[1] as string | undefined);
+
+            if (dim) {
+                const val = (value as Record<string, unknown>)[dim];
+                const numVal = toNumber(val);
+                if (!Number.isNaN(numVal)) return numVal;
+            }
+
+            // Fallback: find any numeric value
+            for (const v of Object.values(value as Record<string, unknown>)) {
+                const numVal = toNumber(v);
+                if (!Number.isNaN(numVal)) return numVal;
+            }
+        }
+
+        return 0;
+    };
+
+    const sorted = [...params];
+
+    switch (tooltipSort) {
+        case TooltipSortByOptions.ALPHABETICAL:
+            sorted.sort((a, b) =>
+                (a.seriesName || '').localeCompare(b.seriesName || ''),
+            );
+            break;
+        case TooltipSortByOptions.VALUE_ASCENDING:
+            sorted.sort((a, b) => getNumericValue(a) - getNumericValue(b));
+            break;
+        case TooltipSortByOptions.VALUE_DESCENDING:
+            sorted.sort((a, b) => getNumericValue(b) - getNumericValue(a));
+            break;
+        default:
+            break;
+    }
+
+    return sorted;
+};
+
 export const buildCartesianTooltipFormatter =
     ({
         itemsMap,
@@ -516,8 +766,10 @@ export const buildCartesianTooltipFormatter =
         originalValues,
         series,
         tooltipHtmlTemplate,
+        tooltipSort,
         pivotValuesColumnsMap,
         parameters,
+        rows,
     }: {
         itemsMap?: ItemsMap;
         stackValue: string | boolean | undefined;
@@ -526,8 +778,10 @@ export const buildCartesianTooltipFormatter =
         originalValues?: Map<string, Map<string, number>> | undefined;
         series?: EChartsSeries[];
         tooltipHtmlTemplate?: string;
+        tooltipSort?: TooltipSortBy;
         pivotValuesColumnsMap?: Record<string, PivotValuesColumn>;
         parameters?: ParametersValuesMap;
+        rows?: (ResultRow | Record<string, unknown>)[];
     }): TooltipComponentFormatterCallback<
         TooltipFormatterParams | TooltipFormatterParams[]
     > =>
@@ -552,13 +806,22 @@ export const buildCartesianTooltipFormatter =
                         : undefined;
                 },
                 xFieldId,
+                itemsMap,
             )(params as TooltipParam[]);
         }
 
-        const header = getHeader(params);
+        const header = getHeader(params, itemsMap, xFieldId);
+
+        const sortedParams = sortTooltipParams(
+            params,
+            tooltipSort,
+            series,
+            flipAxes,
+            ctx,
+        );
 
         // rows
-        const rowsHtml = params
+        const rowsHtml = sortedParams
             .map((param) => {
                 const {
                     marker,
@@ -810,16 +1073,73 @@ export const buildCartesianTooltipFormatter =
 
             if (ctx.dataMode === 'tuple' && Array.isArray(firstValue)) {
                 // Tuple mode (stacked bars): map dimension names to array indices
+                // When stacked, the tuple only contains [categoryValue, numericValue] for each series,
+                // so fields not in the current series won't be in dimensionNames.
+                // Fall back to looking up the value from the original rows using the x-axis value.
+                const xAxisIndex = ctx.flipAxes ? 1 : 0;
+                const xAxisValue = firstValue[xAxisIndex];
+                // Get all rows matching the x-axis value (there may be multiple due to pivoting)
+                const matchingRows =
+                    rows && xFieldId
+                        ? rows.filter(
+                              (row) =>
+                                  extractCellValue(row[xFieldId]) ===
+                                  xAxisValue,
+                          )
+                        : [];
+
                 fields?.forEach((field) => {
                     const ref = field.slice(2, -1);
                     const dimensionIndex =
                         firstParam.dimensionNames?.indexOf(ref);
 
+                    let val: unknown;
+                    let formatKey = ref;
                     if (dimensionIndex !== undefined && dimensionIndex >= 0) {
-                        const val = unwrapValue(firstValue[dimensionIndex]);
+                        val = unwrapValue(firstValue[dimensionIndex]);
+                    } else {
+                        // Fallback: search through matching rows
+                        // Try direct lookup first, then translated pivot ref for SQL pivot support
+                        const translatedKey = translatePivotRef(
+                            ref,
+                            pivotValuesColumnsMap,
+                        );
+                        const keysToTry = [ref];
+                        if (translatedKey) keysToTry.push(translatedKey);
+
+                        // Also check if ref is a simple metric name that has been pivoted
+                        const pivotColumnFromSeries =
+                            findPivotColumnFromSeriesRef(
+                                ref,
+                                params,
+                                series,
+                                pivotValuesColumnsMap,
+                            );
+
+                        if (pivotColumnFromSeries)
+                            keysToTry.push(pivotColumnFromSeries);
+
+                        for (const row of matchingRows) {
+                            for (const key of keysToTry) {
+                                const cellValue = extractCellValue(row[key]);
+                                if (cellValue !== undefined) {
+                                    val = cellValue;
+                                    formatKey = key;
+                                    break;
+                                }
+                            }
+                            if (val !== undefined) break;
+                        }
+                    }
+
+                    if (val !== undefined) {
                         const formatted = getFormattedValue(
                             val,
-                            ref,
+                            resolveFormatKey(
+                                formatKey,
+                                itemsMap,
+                                pivotValuesColumnsMap,
+                            ),
                             itemsMap,
                             undefined,
                             pivotValuesColumnsMap,
@@ -838,12 +1158,54 @@ export const buildCartesianTooltipFormatter =
                 // Dataset mode: direct property access
                 fields?.forEach((field) => {
                     const ref = field.slice(2, -1);
-                    const val = unwrapValue(
+                    let val = unwrapValue(
                         firstValue[ref as keyof typeof firstValue],
                     );
+                    let formatKey = ref;
+                    // Fallback: try translated pivot ref for SQL pivot support
+                    // TODO :: remove fallback logic when USE_SQL_PIVOT_RESULTS flag is removed
+                    if (val === undefined) {
+                        const translatedKey = translatePivotRef(
+                            ref,
+                            pivotValuesColumnsMap,
+                        );
+                        if (translatedKey) {
+                            val = unwrapValue(
+                                firstValue[
+                                    translatedKey as keyof typeof firstValue
+                                ],
+                            );
+                            if (val !== undefined) {
+                                formatKey = translatedKey;
+                            }
+                        }
+                    }
+                    // Fallback: check if ref is a simple metric name that has been pivoted
+                    if (val === undefined) {
+                        const pivotColumnFromSeries =
+                            findPivotColumnFromSeriesRef(
+                                ref,
+                                params,
+                                series,
+                                pivotValuesColumnsMap,
+                            );
+
+                        if (pivotColumnFromSeries) {
+                            val = unwrapValue(
+                                firstValue[
+                                    pivotColumnFromSeries as keyof typeof firstValue
+                                ],
+                            );
+                        }
+                    }
+
                     const formatted = getFormattedValue(
                         val,
-                        ref,
+                        resolveFormatKey(
+                            formatKey,
+                            itemsMap,
+                            pivotValuesColumnsMap,
+                        ),
                         itemsMap,
                         undefined,
                         pivotValuesColumnsMap,
@@ -876,8 +1238,19 @@ export const buildCartesianTooltipFormatter =
                 ? field.format !== undefined
                 : false;
             if (hasFormat) {
+                // Use raw value from data object for the specific dimensionId
+                // Don't use axisValue directly as it may be from a different axis
+                // (e.g., in flipped charts, axisValue might be "Phillip" but dimensionId is the date field)
+                const firstParam = params[0];
+                const rawHeaderValue =
+                    (firstParam?.data as Record<string, unknown> | undefined)?.[
+                        dimensionId
+                    ] ??
+                    firstParam?.axisValue ??
+                    header;
+
                 const headerText = getFormattedValue(
-                    header,
+                    rawHeaderValue,
                     dimensionId,
                     itemsMap,
                     undefined,
@@ -894,25 +1267,3 @@ export const buildCartesianTooltipFormatter =
             header,
         )}${divider}${tooltipHtml}${rowsHtml}`;
     };
-
-/**
- * ECharts tooltip parameter types
- * These represent the structure of params passed to tooltip formatters
- */
-export interface TooltipParam {
-    seriesName?: string;
-    marker?: string;
-    encode?: {
-        x?: string | number | (string | number)[];
-        y?: string | number | (string | number)[];
-    };
-    dimensionNames?: string[];
-    data?: Record<string, unknown>;
-    value?: Record<string, unknown> | unknown[];
-    axisValue?: string | number;
-    axisValueLabel?: string | number;
-}
-
-type TooltipParams = TooltipParam | TooltipParam[];
-
-type GetDimensionNameFn = (param: TooltipParam) => string | undefined;

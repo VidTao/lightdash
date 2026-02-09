@@ -988,9 +988,13 @@ export type SchedulerJobEvent = BaseTrack & {
     anonymousId: string;
     properties: {
         jobId: string;
+        organizationId: string;
+        projectId: string;
         schedulerId: string | undefined;
+        groupId: string | undefined;
         sendNow?: boolean;
         isThresholdAlert?: boolean;
+        error?: string;
     };
 };
 
@@ -1003,13 +1007,22 @@ export type SchedulerNotificationJobEvent = BaseTrack & {
     anonymousId: string;
     properties: {
         jobId: string;
+        organizationId: string;
+        projectId: string;
         schedulerId?: string;
+        schedulerTargetId?: string;
+        groupId: string | undefined;
         resourceType?: 'dashboard' | 'chart';
         type: 'slack' | 'email' | 'gsheets' | 'msteams';
         format?: SchedulerFormat;
         withPdf?: boolean;
         sendNow: boolean;
         isThresholdAlert?: boolean;
+        targetCount?: number;
+        succeeded?: number;
+        failed?: number;
+        partialFailure?: boolean;
+        error?: string;
     };
 };
 
@@ -1206,6 +1219,19 @@ export type WriteBackErrorEvent = BaseTrack & {
         projectId: string;
         context: QueryExecutionContext;
         error: string;
+    };
+};
+
+export type SourceCodeEvent = BaseTrack & {
+    event: 'source_code.viewed' | 'source_code.pull_request_created';
+    userId: string;
+    properties: {
+        organizationId: string;
+        projectId: string;
+        exploreName?: string;
+        filePath: string;
+        fileSize: number;
+        gitProvider: DbtProjectType.GITHUB | DbtProjectType.GITLAB;
     };
 };
 
@@ -1448,6 +1474,16 @@ export type AiAgentArtifactsRetrievedEvent = BaseTrack & {
     };
 };
 
+export type SchedulerOwnershipReassignedEvent = BaseTrack & {
+    event: 'scheduler.ownership_reassigned';
+    properties: {
+        organizationId: string;
+        projectId: string;
+        schedulerUuids: string[];
+        newOwnerUserUuid: string;
+    };
+};
+
 type TypedEvent =
     | TrackSimpleEvent
     | CreateUserEvent
@@ -1531,6 +1567,7 @@ type TypedEvent =
     | GithubInstallEvent
     | WriteBackEvent
     | WriteBackErrorEvent
+    | SourceCodeEvent
     | SchedulerTimezoneUpdateEvent
     | CreateTagEvent
     | CategoriesAppliedEvent
@@ -1548,7 +1585,8 @@ type TypedEvent =
     | McpToolCallEvent
     | AiAgentToolCallEvent
     | AiAgentArtifactVersionVerifiedEvent
-    | AiAgentArtifactsRetrievedEvent;
+    | AiAgentArtifactsRetrievedEvent
+    | SchedulerOwnershipReassignedEvent;
 
 type UntypedEvent<T extends BaseTrack> = Omit<BaseTrack, 'event'> &
     T & {
@@ -1583,7 +1621,8 @@ export class LightdashAnalytics extends Analytics {
                 version: VERSION,
                 mode: lightdashConfig.mode,
                 siteUrl:
-                    lightdashConfig.mode === LightdashMode.CLOUD_BETA
+                    lightdashConfig.mode === LightdashMode.CLOUD_BETA ||
+                    lightdashConfig.mode === LightdashMode.DEMO
                         ? lightdashConfig.siteUrl
                         : null,
                 installId: process.env.LIGHTDASH_INSTALL_ID || uuidv4(),

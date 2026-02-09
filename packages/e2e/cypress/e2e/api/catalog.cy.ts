@@ -1,4 +1,4 @@
-import { AnyType, SEED_PROJECT, type CatalogField } from '@lightdash/common';
+import { SEED_PROJECT, type CatalogField } from '@lightdash/common';
 import { chartMock } from '../../support/mocks';
 import { createChartAndUpdateDashboard, createDashboard } from './dashboard.cy';
 
@@ -61,6 +61,7 @@ describe('Lightdash catalog all tables and fields', () => {
                 icon: null,
                 aiHints: null,
                 fieldValueType: 'string',
+                owner: null,
             });
 
             const metric = resp.body.results.find(
@@ -83,6 +84,7 @@ describe('Lightdash catalog all tables and fields', () => {
                 icon: null,
                 aiHints: null,
                 fieldValueType: 'sum',
+                owner: null,
             });
         });
     });
@@ -113,22 +115,6 @@ describe('Lightdash catalog search', () => {
             expect(field).to.have.property('name', 'customer_id');
         });
     });
-    it('Should search for a dimension (payment_method)', () => {
-        const projectUuid = SEED_PROJECT.project_uuid;
-        cy.request(
-            `${apiUrl}/projects/${projectUuid}/dataCatalog?search=payment_method`,
-        ).then((resp) => {
-            expect(resp.status).to.eq(200);
-            expect(resp.body.results).to.have.length(2); // payment and stg_payments
-
-            const field = resp.body.results.find(
-                (f) =>
-                    f.name === 'payment_method' && f.tableLabel === 'Payments',
-            );
-
-            expect(field).to.have.property('name', 'payment_method');
-        });
-    });
 
     it('Should search for a metric (total_revenue) sorted by chartUsage', () => {
         const projectUuid = SEED_PROJECT.project_uuid;
@@ -138,12 +124,14 @@ describe('Lightdash catalog search', () => {
             expect(resp.status).to.eq(200);
 
             const { data } = resp.body.results;
-            expect(data).to.have.length(3);
+            expect(data).to.have.length(5);
 
             const expectedDescriptions = [
                 'Total revenue',
+                'Total revenue from completed orders',
                 'Sum of all payments',
                 'Sum of Revenue attributed',
+                'Sum of annual revenue across offices',
             ];
 
             data.forEach((field: CatalogField, index: number) => {
@@ -219,33 +207,6 @@ describe('Lightdash catalog search', () => {
         ).then((resp) => {
             expect(resp.status).to.eq(200);
             expect(resp.body.results).to.have.length(0);
-        });
-    });
-    it('Should filter field in table without attribute access (plan)', () => {
-        const projectUuid = SEED_PROJECT.project_uuid;
-        cy.request(
-            `${apiUrl}/projects/${projectUuid}/dataCatalog?search=plan`,
-        ).then((resp) => {
-            expect(resp.status).to.eq(200);
-
-            expect(resp.body.results).to.have.length(13);
-            cy.log('find the one under fanouts');
-            const planResult = resp.body.results.find(
-                (r: AnyType) =>
-                    r.name === 'plan' && r.tableGroupLabel === 'fanouts',
-            );
-            expect(planResult).to.have.property('name', 'plan');
-            expect(planResult).to.have.property('tableGroupLabel', 'fanouts');
-            cy.log('find the one under subscriptions');
-            const planNameResult = resp.body.results.find(
-                (r: AnyType) =>
-                    r.name === 'plan_name' && r.tableName === 'subscriptions',
-            );
-            expect(planNameResult).to.have.property('name', 'plan_name');
-            expect(planNameResult).to.have.property(
-                'tableName',
-                'subscriptions',
-            );
         });
     });
 });

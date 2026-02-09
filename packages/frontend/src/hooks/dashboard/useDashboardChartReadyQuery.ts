@@ -18,9 +18,9 @@ import { queuedLightdashApi } from '../../api/queuedApi';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
 import { convertDateDashboardFilters } from '../../utils/dateFilter';
 import { useExplore } from '../useExplore';
-import { useFeatureFlag } from '../useFeatureFlagEnabled';
 import { useSavedQuery } from '../useSavedQuery';
 import useSearchParams from '../useSearchParams';
+import { useServerFeatureFlag } from '../useServerOrClientFeatureFlag';
 import useDashboardFiltersForTile from './useDashboardFiltersForTile';
 
 const executeAsyncDashboardChartQuery = async (
@@ -167,7 +167,7 @@ export const useDashboardChartReadyQuery = (
         setChartsWithDateZoomApplied,
     ]);
 
-    const { data: useSqlPivotResults } = useFeatureFlag(
+    const { data: useSqlPivotResults } = useServerFeatureFlag(
         FeatureFlags.UseSqlPivotResults,
     );
 

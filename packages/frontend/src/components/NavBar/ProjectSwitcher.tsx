@@ -17,8 +17,7 @@ import {
     Text,
     TextInput,
     Tooltip,
-    UnstyledButton,
-} from '@mantine/core';
+} from '@mantine-8/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
     IconArrowRight,
@@ -36,13 +35,16 @@ import {
     useUpdateActiveProjectMutation,
 } from '../../hooks/useActiveProject';
 import { useIsTruncated } from '../../hooks/useIsTruncated';
+import { useProject } from '../../hooks/useProject';
 import { useProjects } from '../../hooks/useProjects';
 import useApp from '../../providers/App/useApp';
 import MantineIcon from '../common/MantineIcon';
+import { PolymorphicGroupButton } from '../common/PolymorphicGroupButton';
 import { CreatePreviewModal } from './CreatePreviewProjectModal';
+import classes from './ProjectSwitcher.module.css';
 
 const MENU_TEXT_PROPS = {
-    c: 'gray.1',
+    c: 'ldGray.9',
     fz: 'xs',
     fw: 500,
 };
@@ -66,41 +68,34 @@ const GroupHeader: FC<{
     const isExpanded = isVisible;
 
     return (
-        <UnstyledButton
+        <PolymorphicGroupButton
             onClick={onToggle}
-            w="100%"
-            p="xs"
-            sx={(theme) => ({
-                '&:hover': {
-                    backgroundColor: theme.colors.ldDark[6],
-                },
-            })}
+            className={classes.groupHeader}
+            gap="xs"
+            justify="space-between"
+            wrap="nowrap"
         >
-            <Group spacing="xs" position="apart" noWrap>
-                <Group spacing="xs" noWrap>
-                    <Text {...MENU_TEXT_PROPS} fw={600} c="gray.4">
-                        {title}
-                    </Text>
-                    <Badge
-                        color={badgeColor}
-                        variant="light"
-                        size="xs"
-                        radius="sm"
-                        fw={700}
-                        sx={{
-                            textTransform: 'none',
-                        }}
-                    >
-                        {count}
-                    </Badge>
-                </Group>
-                <MantineIcon
-                    icon={isExpanded ? IconChevronDown : IconChevronRight}
-                    size="sm"
-                    color="gray.5"
-                />
+            <Group gap="xs" wrap="nowrap">
+                <Text {...MENU_TEXT_PROPS} fw={600} c="ldDark.9">
+                    {title}
+                </Text>
+                <Badge
+                    color={badgeColor}
+                    variant="light"
+                    size="xs"
+                    radius="sm"
+                    fw={700}
+                    className={classes.badge}
+                >
+                    {count}
+                </Badge>
             </Group>
-        </UnstyledButton>
+            <MantineIcon
+                icon={isExpanded ? IconChevronDown : IconChevronRight}
+                size="sm"
+                color="ldGray.5"
+            />
+        </PolymorphicGroupButton>
     );
 };
 
@@ -118,14 +113,12 @@ const ProjectItem: FC<{
             onClick={() => !isActive && handleProjectChange(item.projectUuid)}
             disabled={isActive}
         >
-            <Group spacing="sm" position="apart" noWrap>
+            <Group gap="sm" justify="space-between" wrap="nowrap">
                 <Tooltip
                     withinPortal
-                    variant="xs"
                     label={item.name}
                     maw={300}
                     disabled={!isTruncated}
-                    color="dark"
                     multiline
                 >
                     <Highlight
@@ -136,25 +129,23 @@ const ProjectItem: FC<{
                                 : ''
                         }
                         {...MENU_TEXT_PROPS}
-                        truncate
+                        truncate="end"
                         maw={350}
                         fw={isActive ? 600 : 500}
-                        c={isActive ? 'gray.5' : 'inherit'}
+                        c={isActive ? 'ldGray.9' : 'inherit'}
                     >
                         {item.name}
                     </Highlight>
                 </Tooltip>
 
-                {(item.type === ProjectType.PREVIEW || isActive) && (
+                {isActive && (
                     <Badge
                         color={isActive ? 'green' : 'yellow.1'}
                         variant="light"
-                        size="xs"
+                        size="sm"
                         radius="sm"
-                        fw={400}
-                        sx={{
-                            textTransform: 'none',
-                        }}
+                        fw={450}
+                        className={classes.badge}
                     >
                         {isActive ? 'Active' : 'Preview'}
                     </Badge>
@@ -198,10 +189,18 @@ const ProjectSwitcher = () => {
 
     const { user } = useApp();
 
-    const { isInitialLoading: isLoadingProjects, data: projects } =
-        useProjects();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+    // Only fetch all projects when menu is opened
+    const { isInitialLoading: isLoadingProjects, data: projects } = useProjects(
+        {
+            enabled: isMenuOpen,
+        },
+    );
     const { isLoading: isLoadingActiveProjectUuid, activeProjectUuid } =
         useActiveProjectUuid();
+    // Fetch only the active project for the button label (lightweight)
+    const { data: activeProject } = useProject(activeProjectUuid);
     const { mutate: setLastProjectMutation } = useUpdateActiveProjectMutation();
     const location = useLocation();
     const isHomePage = !!useMatch(`/projects/${activeProjectUuid}/home`);
@@ -299,11 +298,6 @@ const ProjectSwitcher = () => {
         ],
     );
 
-    const activeProject = useMemo(() => {
-        if (!activeProjectUuid || !projects) return null;
-        return projects.find((p) => p.projectUuid === activeProjectUuid);
-    }, [activeProjectUuid, projects]);
-
     // user has permission to create preview project on an organization level
     const orgRoleCanCreatePreviews = useMemo(() => {
         return user.data?.ability.can(
@@ -315,82 +309,88 @@ const ProjectSwitcher = () => {
         );
     }, [user.data]);
 
-    const { baseProjects, previewProjects, shouldShowBase, shouldShowPreview } =
-        useMemo(() => {
-            if (!activeProjectUuid || !projects)
-                return {
-                    baseProjects: [],
-                    previewProjects: [],
-                    shouldShowBase: false,
-                    shouldShowPreview: false,
-                };
-
-            const availableProjects = projects.filter((project) => {
-                switch (project.type) {
-                    case ProjectType.DEFAULT:
-                        return true;
-                    case ProjectType.PREVIEW:
-                        // check if user has permission to create preview project on an organization level (developer, admin)
-                        // or check if user has permission to create preview project on a project level
-                        // - they should have permission (developer, admin) to the upstream project
-                        return (
-                            orgRoleCanCreatePreviews ||
-                            user.data?.ability.can(
-                                'create',
-                                subject('Project', {
-                                    upstreamProjectUuid: project.projectUuid,
-                                    type: ProjectType.PREVIEW,
-                                }),
-                            )
-                        );
-                    default:
-                        return assertUnreachable(
-                            project.type,
-                            `Unknown project type: ${project.type}`,
-                        );
-                }
-            });
-
-            // Apply search filter if query exists
-            const searchFiltered =
-                debouncedSearchQuery.length >= 2
-                    ? availableProjects.filter((project) =>
-                          project.name
-                              .toLowerCase()
-                              .includes(debouncedSearchQuery.toLowerCase()),
-                      )
-                    : availableProjects;
-
-            const base = searchFiltered.filter(
-                (p) => p.type === ProjectType.DEFAULT,
-            );
-            const preview = searchFiltered.filter(
-                (p) => p.type === ProjectType.PREVIEW,
-            );
-
-            // Determine visibility based on group states and search
-            const hasSearchResults = debouncedSearchQuery.length >= 2;
-            const showBase =
-                groupStates.base !== 'collapsed' ||
-                (hasSearchResults && base.length > 0);
-            const showPreview =
-                groupStates.preview !== 'collapsed' ||
-                (hasSearchResults && preview.length > 0);
-
+    const {
+        baseProjects,
+        previewProjects,
+        shouldShowBase,
+        shouldShowPreview,
+        showSearchInput,
+    } = useMemo(() => {
+        if (!activeProjectUuid || !projects)
             return {
-                baseProjects: base,
-                previewProjects: preview,
-                shouldShowBase: showBase && base.length > 0,
-                shouldShowPreview: showPreview && preview.length > 0,
+                baseProjects: [],
+                previewProjects: [],
+                shouldShowBase: false,
+                shouldShowPreview: false,
             };
-        }, [
-            activeProjectUuid,
-            projects,
-            orgRoleCanCreatePreviews,
-            user.data,
-            groupStates,
-            debouncedSearchQuery,
-        ]);
+
+        const availableProjects = projects.filter((project) => {
+            switch (project.type) {
+                case ProjectType.DEFAULT:
+                    return true;
+                case ProjectType.PREVIEW:
+                    // check if user has permission to create preview project on an organization level (developer, admin)
+                    // or check if user has permission to create preview project on a project level
+                    // - they should have permission (developer, admin) to the upstream project
+                    return (
+                        orgRoleCanCreatePreviews ||
+                        user.data?.ability.can(
+                            'create',
+                            subject('Project', {
+                                upstreamProjectUuid: project.projectUuid,
+                                type: ProjectType.PREVIEW,
+                            }),
+                        )
+                    );
+                default:
+                    return assertUnreachable(
+                        project.type,
+                        `Unknown project type: ${project.type}`,
+                    );
+            }
+        });
+
+        // Apply search filter if query exists
+        const searchFiltered =
+            debouncedSearchQuery.length >= 2
+                ? availableProjects.filter((project) =>
+                      project.name
+                          .toLowerCase()
+                          .includes(debouncedSearchQuery.toLowerCase()),
+                  )
+                : availableProjects;
+
+        const base = searchFiltered.filter(
+            (p) => p.type === ProjectType.DEFAULT,
+        );
+        const preview = searchFiltered.filter(
+            (p) => p.type === ProjectType.PREVIEW,
+        );
+
+        // Determine visibility based on group states and search
+        const hasSearchResults = debouncedSearchQuery.length >= 2;
+        const showBase =
+            groupStates.base !== 'collapsed' ||
+            (hasSearchResults && base.length > 0);
+        const showPreview =
+            groupStates.preview !== 'collapsed' ||
+            (hasSearchResults && preview.length > 0);
+
+        return {
+            baseProjects: base,
+            previewProjects: preview,
+            shouldShowBase: showBase && base.length > 0,
+            shouldShowPreview: showPreview && preview.length > 0,
+            showSearchInput: base.length + preview.length > 2,
+        };
+    }, [
+        activeProjectUuid,
+        projects,
+        orgRoleCanCreatePreviews,
+        user.data,
+        groupStates,
+        debouncedSearchQuery,
+    ]);
 
     const userCanCreatePreview = useMemo(() => {
         if (isLoadingProjects || !projects || !user.data) return false;
@@ -409,12 +409,8 @@ const ProjectSwitcher = () => {
             );
     }, [isLoadingProjects, projects, user.data]);
 
-    if (
-        isLoadingProjects ||
-        isLoadingActiveProjectUuid ||
-        !projects ||
-        projects.length === 0
-    ) {
+    // Don't render if we're still loading the active project UUID
+    if (isLoadingActiveProjectUuid || !activeProjectUuid) {
         return null;
     }
 
@@ -426,47 +422,28 @@ const ProjectSwitcher = () => {
                 shadow="lg"
                 arrowOffset={16}
                 offset={-2}
-                styles={{
-                    dropdown: {
-                        minWidth: 250,
-                        maxHeight: 450,
-                        overflow: 'auto',
-                    },
-                }}
+                opened={isMenuOpen}
+                onChange={setIsMenuOpen}
+                classNames={{ dropdown: classes.dropdown }}
+                portalProps={{ target: '#navbar-header' }}
             >
                 <Menu.Target>
                     <Button
-                        maw={200}
                         variant="default"
                         size="xs"
-                        disabled={
-                            isLoadingProjects || isLoadingActiveProjectUuid
-                        }
-                        sx={(theme) => ({
-                            '&:disabled': {
-                                color: theme.white,
-                                backgroundColor: theme.colors.ldDark[6],
-                                borderColor: theme.colors.ldDark[4],
-                            },
-                        })}
+                        className={classes.targetButton}
                     >
-                        <Text truncate>
+                        <Text truncate fw={500} fz="xs">
                             {activeProject?.name ?? 'Select a project'}
                         </Text>
                     </Button>
                 </Menu.Target>
 
-                <Menu.Dropdown maw={400}>
+                <Menu.Dropdown w={400}>
                     {/* Search Header */}
                     <Box
-                        pos="sticky"
-                        top={0}
-                        bg="gray.9"
-                        p="sm"
-                        sx={(theme) => ({
-                            boxShadow: `0 2px 8px ${theme.colors.gray[9]}`,
-                            borderBottom: `1px solid ${theme.colors.dark[4]}`,
-                        })}
+                        className={classes.searchHeader}
+                        display={showSearchInput ? 'block' : 'none'}
                     >
                         <TextInput
                             placeholder="Search projects..."
@@ -474,7 +451,9 @@ const ProjectSwitcher = () => {
                             onChange={(e) =>
                                 setSearchQuery(e.currentTarget.value)
                             }
-                            icon={<MantineIcon icon={IconSearch} size="sm" />}
+                            leftSection={
+                                <MantineIcon icon={IconSearch} size="sm" />
+                            }
                             rightSection={
                                 searchQuery ? (
                                     <ActionIcon
@@ -487,22 +466,22 @@ const ProjectSwitcher = () => {
                                 ) : null
                             }
                             size="xs"
-                            styles={{
-                                input: {
-                                    backgroundColor: 'transparent',
-                                    border: `1px solid var(--mantine-color-dark-4)`,
-                                    '&:focus': {
-                                        borderColor:
-                                            'var(--mantine-color-blue-6)',
-                                    },
-                                },
-                            }}
+                            classNames={{ input: classes.searchInput }}
                         />
                     </Box>
 
-                    <Stack spacing={0}>
+                    <Stack gap={0}>
+                        {/* Loading State */}
+                        {isLoadingProjects && (
+                            <Box p="lg" ta="center">
+                                <Text {...MENU_TEXT_PROPS}>
+                                    Loading projects...
+                                </Text>
+                            </Box>
+                        )}
+
                         {/* Base Projects Group */}
-                        {baseProjects.length > 0 && (
+                        {!isLoadingProjects && baseProjects.length > 0 && (
                             <Box>
                                 <GroupHeader
                                     title="Projects"
@@ -513,13 +492,8 @@ const ProjectSwitcher = () => {
                                     isVisible={shouldShowBase}
                                 />
                                 <Collapse in={shouldShowBase}>
-                                    <Box
-                                        sx={{
-                                            maxHeight: 200,
-                                            overflow: 'auto',
-                                        }}
-                                    >
-                                        <Stack spacing={0}>
+                                    <Box className={classes.projectsScroll}>
+                                        <Stack gap={0}>
                                             {baseProjects.map((item) => (
                                                 <ProjectItem
                                                     key={item.projectUuid}
@@ -543,7 +517,7 @@ const ProjectSwitcher = () => {
                         )}
 
                         {/* Preview Projects Group */}
-                        {previewProjects.length > 0 && (
+                        {!isLoadingProjects && previewProjects.length > 0 && (
                             <Box>
                                 <Menu.Divider />
                                 <GroupHeader
@@ -557,13 +531,8 @@ const ProjectSwitcher = () => {
                                     isVisible={shouldShowPreview}
                                 />
                                 <Collapse in={shouldShowPreview}>
-                                    <Box
-                                        sx={{
-                                            maxHeight: 200,
-                                            overflow: 'auto',
-                                        }}
-                                    >
-                                        <Stack spacing={0}>
+                                    <Box className={classes.projectsScroll}>
+                                        <Stack gap={0}>
                                             {previewProjects.map((item) => (
                                                 <ProjectItem
                                                     key={item.projectUuid}
@@ -587,14 +556,15 @@ const ProjectSwitcher = () => {
                         )}
 
                         {/* Empty State */}
-                        {baseProjects.length === 0 &&
+                        {!isLoadingProjects &&
+                            baseProjects.length === 0 &&
                             previewProjects.length === 0 && (
                                 <Box p="lg" ta="center">
-                                    <Stack spacing="xs" align="center">
+                                    <Stack gap="xs" align="center">
                                         <MantineIcon
                                             icon={IconSearch}
                                             size="lg"
-                                            color="gray.5"
+                                            color="ldGray.5"
                                         />
                                         <Text {...MENU_TEXT_PROPS}>
                                             {debouncedSearchQuery.length >= 2
@@ -606,16 +576,8 @@ const ProjectSwitcher = () => {
                             )}
                     </Stack>
 
-                    {/* {userCanCreatePreview && (
-                        <Box
-                            pos="sticky"
-                            bottom={0}
-                            bg="gray.9"
-                            sx={(theme) => ({
-                                // fixes scroll overlap
-                                boxShadow: `0 4px ${theme.colors.gray[9]}`,
-                            })}
-                        >
+                    {userCanCreatePreview && (
+                        <Box className={classes.stickyFooter}>
                             {(baseProjects.length > 0 ||
                                 previewProjects.length > 0) && <Menu.Divider />}
 
@@ -626,7 +588,9 @@ const ProjectSwitcher = () => {
                                     setIsCreatePreview(!isCreatePreviewOpen);
                                     e.stopPropagation();
                                 }}
-                                icon={<MantineIcon icon={IconPlus} size="md" />}
+                                leftSection={
+                                    <MantineIcon icon={IconPlus} size="md" />
+                                }
                             >
                                 <Text {...MENU_TEXT_PROPS}>Create Preview</Text>
                             </Menu.Item>
