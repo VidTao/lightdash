@@ -1,0 +1,83 @@
+version: 2
+models:
+  - name: drasko_merge_test
+    description: SQL model for Drasko merge test
+    meta:
+      label: Drasko merge test
+    columns:
+      - name: bid
+        meta:
+          dimension:
+            type: string
+      - name: date
+        meta:
+          dimension:
+            type: date
+      - name: leads
+        meta:
+          dimension:
+            type: number
+      - name: spend
+        meta:
+          dimension:
+            type: number
+      - name: state
+        meta:
+          dimension:
+            type: string
+      - name: clicks
+        meta:
+          dimension:
+            type: number
+      - name: status
+        meta:
+          dimension:
+            type: string
+      - name: channel
+        meta:
+          dimension:
+            type: string
+      - name: buyer_id
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: impressions
+        meta:
+          dimension:
+            type: number
+      - name: company_name
+        meta:
+          dimension:
+            type: string
+      - name: active_budget
+        meta:
+          dimension:
+            type: number
+      - name: allocation_id
+        meta:
+          dimension:
+            type: string
+      - name: maximum_spent
+        meta:
+          dimension:
+            type: number
+      - name: campaign_limit
+        meta:
+          dimension:
+            type: number
+      - name: allocation_type
+        meta:
+          dimension:
+            type: string
+      - name: lifetime_budget
+        meta:
+          dimension:
+            type: number
+      - name: last_payment_date
+        meta:
+          dimension:
+            type: timestamp
