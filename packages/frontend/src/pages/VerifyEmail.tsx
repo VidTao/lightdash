@@ -6,6 +6,7 @@ import {
     Stack,
     Text,
     useMantineTheme,
+    Image,
 } from '@mantine-8/core';
 import {
     IconCircleCheckFilled,

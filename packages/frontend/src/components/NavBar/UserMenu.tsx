@@ -44,7 +44,7 @@ const UserMenu: FC = () => {
                     role="menuitem"
                     component={Link}
                     to="/storeSettings"
-                    icon={<MantineIcon icon={IconUserCircle} />}
+                    leftSection={<MantineIcon icon={IconUserCircle} />}
                 >
                     Store settings
                 </Menu.Item>

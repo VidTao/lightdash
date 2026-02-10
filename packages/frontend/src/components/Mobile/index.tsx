@@ -6,12 +6,12 @@ const BratraxLogo = '/images/logo-text.png';
 import classes from './Mobile.module.css';
 
 const MobileView = () => (
-    <Box w="100vw" h="100vh" sx={{ background: '#ebf1f5' }}>
-        <Stack align="center" spacing="xl" justify="start" p="5xl">
+    <Box w="100vw" h="100vh" style={{ background: '#ebf1f5' }}>
+        <Stack align="center" gap="xl" justify="start" p="5xl">
             <Image src={BratraxLogo} alt="bratrax logo" maw="8xl" my="lg" />
             <Box
                 component="span"
-                sx={{
+                style={{
                     fontSize: '2.5rem',
                     display: 'block',
                 }}

@@ -1025,6 +1025,7 @@ export class ServiceRepository
                 new McpServiceMain({
                     lightdashConfig: this.context.lightdashConfig,
                     analytics: this.context.lightdashAnalytics,
+                    asyncQueryService: this.getAsyncQueryService(),
                     catalogService: this.getCatalogService(),
                     projectService: this.getProjectService(),
                     userAttributesModel: this.models.getUserAttributesModel(),

@@ -83,7 +83,7 @@ export const MainNavBarContent: FC<Props> = ({
                         <NotificationsMenu projectUuid={activeProjectUuid} />
                     )}
 
-                    {/* <HelpMenu />
+                    
 
                     {headwayEnabled &&
                         !isLoadingActiveProject &&

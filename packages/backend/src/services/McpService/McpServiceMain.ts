@@ -1,14 +1,19 @@
+/* eslint-disable import/extensions */
 import { subject } from '@casl/ability';
 import {
     Account,
+    AiResultType,
     AnyType,
     ApiKeyAccount,
-    CatalogFilter,
     CatalogType,
     CommercialFeatureFlags,
+    convertAiTableCalcsSchemaToTableCalcs,
     Explore,
     filterExploreByTags,
     ForbiddenError,
+    getItemLabelWithoutTableName,
+    getSlackAiEchartsConfig,
+    getValidAiQueryLimit,
     isExploreError,
     mcpToolListExploresArgsSchema,
     MissingConfigError,
@@ -16,6 +21,7 @@ import {
     OauthAccount,
     ParameterError,
     QueryExecutionContext,
+    ServiceAcctAccount,
     SessionUser,
     ToolFindContentArgs,
     toolFindContentArgsSchema,
@@ -23,18 +29,23 @@ import {
     ToolFindExploresArgsV3,
     ToolFindFieldsArgs,
     toolFindFieldsArgsSchema,
-    ToolRunMetricQueryArgs,
-    toolRunMetricQueryArgsSchema,
+    toolRunQueryArgsSchema,
+    toolRunQueryArgsSchemaTransformed,
     ToolSearchFieldValuesArgs,
     toolSearchFieldValuesArgsSchema,
-    toolGetEmbedUrlArgsSchema,
-    ToolGetEmbedUrlArgs,
+    UserAttributeValueMap,
 } from '@lightdash/common';
-import * as Sentry from '@sentry/node';
-// eslint-disable-next-line import/extensions
 import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-// eslint-disable-next-line import/extensions
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import {
+    ServerNotification,
+    ServerRequest,
+} from '@modelcontextprotocol/sdk/types.js';
+import * as Sentry from '@sentry/node';
+import { stringify } from 'csv-stringify/sync';
+import fs from 'fs/promises';
+import path from 'path';
 import { z, ZodRawShape } from 'zod';
 import {
     LightdashAnalytics,
@@ -46,37 +57,48 @@ import { McpContextModel } from '../../models/McpContextModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { SearchModel } from '../../models/SearchModel';
 import { UserAttributesModel } from '../../models/UserAttributesModel';
+import { AsyncQueryService } from '../../services/AsyncQueryService/AsyncQueryService';
 import { BaseService } from '../../services/BaseService';
 import { CatalogService } from '../../services/CatalogService/CatalogService';
+import { CsvService } from '../../services/CsvService/CsvService';
 import { FeatureFlagService } from '../../services/FeatureFlag/FeatureFlagService';
 import { ProjectService } from '../../services/ProjectService/ProjectService';
 import { SpaceService } from '../../services/SpaceService/SpaceService';
 import {
     doesExploreMatchRequiredAttributes,
     getFilteredExplore,
+    mergeUserAttributes,
+    validateUserAttributeOverrides,
 } from '../../services/UserAttributesService/UserAttributeUtils';
 import { wrapSentryTransaction } from '../../utils';
 import { VERSION } from '../../version';
+import { NO_RESULTS_RETRY_PROMPT } from '../ai/prompts/noResultsRetry';
 import { getFindContent } from '../ai/tools/findContent';
 import { getFindExplores } from '../ai/tools/findExplores';
 import { getFindFields } from '../ai/tools/findFields';
 import { getMcpListExplores } from '../ai/tools/mcpListExplores';
-import { getRunMetricQuery } from '../ai/tools/runMetricQuery';
+import { validateRunQueryTool } from '../ai/tools/runQuery';
 import { getSearchFieldValues } from '../ai/tools/searchFieldValues';
 import {
     FindContentFn,
     FindExploresFn,
     FindFieldFn,
-    RunMiniMetricQueryFn,
+    RunAsyncQueryFn,
     SearchFieldValuesFn,
 } from '../ai/types/aiAgentDependencies';
 import { AgentContext } from '../ai/utils/AgentContext';
+import { getPivotedResults } from '../ai/utils/getPivotedResults';
+import { populateCustomMetricsSQL } from '../ai/utils/populateCustomMetricsSQL';
+import { serializeData } from '../ai/utils/serializeData';
+import {
+    registerAppResource,
+    registerAppTool,
+    RESOURCE_MIME_TYPE,
+} from './mcpAppHelpers';
 import { McpSchemaCompatLayer } from './McpSchemaCompatLayer';
-import { SavedChartModel } from '../../models/SavedChartModel';
 import { ServiceRepository } from '../ServiceRepository';
+import { SavedChartModel } from '../../models/SavedChartModel';
 import { SpaceModel } from '../../models/SpaceModel';
-import { EmbedService } from '../EmbedService/EmbedService';
-import { fromSession } from '../../auth/account';
 
 export enum McpToolName {
     GET_LIGHTDASH_VERSION = 'get_lightdash_version',
@@ -95,6 +117,7 @@ export enum McpToolName {
 type McpServiceArguments = {
     lightdashConfig: LightdashConfig;
     analytics: LightdashAnalytics;
+    asyncQueryService: AsyncQueryService;
     catalogService: CatalogService;
     projectModel: ProjectModel;
     projectService: ProjectService;
@@ -106,13 +129,16 @@ type McpServiceArguments = {
     services: ServiceRepository;
     savedChartModel: SavedChartModel;
     spaceModel: SpaceModel;
-
 };
+
 
 export type ExtraContext = {
     user: SessionUser;
-    account: OauthAccount | ApiKeyAccount;
+    account: OauthAccount | ApiKeyAccount | ServiceAcctAccount;
+    /** User attribute overrides passed via X-Lightdash-User-Attributes header */
+    headerUserAttributes?: UserAttributeValueMap;
 };
+
 type McpProtocolContext = {
     authInfo?: AuthInfo & {
         extra: ExtraContext;
@@ -123,6 +149,8 @@ export class McpServiceMain extends BaseService {
     public lightdashConfig: LightdashConfig;
 
     private analytics: LightdashAnalytics;
+
+    private asyncQueryService: AsyncQueryService;
 
     private catalogService: CatalogService;
 
@@ -144,15 +172,10 @@ export class McpServiceMain extends BaseService {
 
     private mcpCompatLayer: McpSchemaCompatLayer;
 
-    private services: ServiceRepository;
-
-    private savedChartModel: SavedChartModel;
-
-    private spaceModel: SpaceModel;
-
     constructor({
         lightdashConfig,
         analytics,
+        asyncQueryService,
         catalogService,
         projectService,
         userAttributesModel,
@@ -161,13 +184,11 @@ export class McpServiceMain extends BaseService {
         projectModel,
         mcpContextModel,
         featureFlagService,
-        services,
-        savedChartModel,
-        spaceModel,
     }: McpServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
         this.analytics = analytics;
+        this.asyncQueryService = asyncQueryService;
         this.catalogService = catalogService;
         this.projectService = projectService;
         this.userAttributesModel = userAttributesModel;
@@ -176,15 +197,29 @@ export class McpServiceMain extends BaseService {
         this.spaceService = spaceService;
         this.mcpContextModel = mcpContextModel;
         this.featureFlagService = featureFlagService;
-        this.services = services;
-        this.savedChartModel = savedChartModel;
-        this.spaceModel = spaceModel;
         this.mcpCompatLayer = new McpSchemaCompatLayer();
         try {
             this.mcpServer = Sentry.wrapMcpServerWithSentry(
                 new McpServer({
                     name: 'Lightdash MCP Server',
                     version: VERSION,
+                    websiteUrl: this.lightdashConfig.siteUrl,
+                    icons: [
+                        {
+                            src: `${this.lightdashConfig.siteUrl}/logo-icon.svg`,
+                            mimeType: 'image/svg+xml',
+                        },
+                        {
+                            src: `${this.lightdashConfig.siteUrl}/favicon-32x32.png`,
+                            mimeType: 'image/png',
+                            sizes: ['32x32'],
+                        },
+                        {
+                            src: `${this.lightdashConfig.siteUrl}/apple-touch-icon.png`,
+                            mimeType: 'image/png',
+                            sizes: ['152x152'],
+                        },
+                    ],
                 }),
             );
             this.setupHandlers();
@@ -230,9 +265,12 @@ export class McpServiceMain extends BaseService {
                 description: 'Get the current Lightdash version',
                 inputSchema: {},
             },
-            async (_args, context) => {
+            async (
+                _args: Record<string, never>,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.GET_LIGHTDASH_VERSION,
                 );
                 return {
@@ -240,7 +278,7 @@ export class McpServiceMain extends BaseService {
                         {
                             type: 'text',
                             text: this.getLightdashVersion(
-                                context as McpProtocolContext,
+                                extra as McpProtocolContext,
                             ),
                         },
                     ],
@@ -254,33 +292,43 @@ export class McpServiceMain extends BaseService {
                 description: mcpToolListExploresArgsSchema.description,
                 inputSchema: this.getMcpCompatibleSchema(
                     mcpToolListExploresArgsSchema,
-                ) as AnyType,
+                ),
             },
-            async (_args, context) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 try {
                     const { user } = this.getAccount(
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
 
                     const projectUuid = await this.resolveProjectUuid(
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
 
                     this.trackToolCall(
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                         McpToolName.LIST_EXPLORES,
                         projectUuid,
                     );
 
                     const tagsFromContext = await this.getTagsFromContext(
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
+
+                    const userAttributeOverrides =
+                        await this.getUserAttributeOverridesFromContext(
+                            extra as McpProtocolContext,
+                        );
 
                     const listExplores = async () =>
                         this.getAvailableExplores(
                             user,
                             projectUuid,
                             tagsFromContext,
+                            userAttributeOverrides,
                         );
 
                     const mcpListExploresTool = getMcpListExplores({
@@ -318,19 +366,23 @@ export class McpServiceMain extends BaseService {
             {
                 description: toolFindExploresArgsSchemaV3.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolFindExploresArgsSchemaV3.omit({ type: true }),
-                ) as AnyType,
+                    toolFindExploresArgsSchemaV3,
+                ),
             },
-            async (_args, context) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const args = _args as Omit<ToolFindExploresArgsV3, 'type'>;
 
                 const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
                 const argsWithProject = { ...args, projectUuid };
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.FIND_EXPLORES,
                     projectUuid,
                 );
@@ -338,18 +390,22 @@ export class McpServiceMain extends BaseService {
                 const findExplores: FindExploresFn =
                     await this.getFindExploresFunction(
                         argsWithProject,
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
 
-                const { user } = (context as McpProtocolContext).authInfo!
-                    .extra;
+                const { user } = (extra as McpProtocolContext).authInfo!.extra;
                 const tagsFromContext = await this.getTagsFromContext(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
+                const userAttributeOverrides =
+                    await this.getUserAttributeOverridesFromContext(
+                        extra as McpProtocolContext,
+                    );
                 const availableExplores = await this.getAvailableExplores(
                     user,
                     argsWithProject.projectUuid,
                     tagsFromContext,
+                    userAttributeOverrides,
                 );
 
                 const findExploresTool = getFindExplores({
@@ -359,7 +415,6 @@ export class McpServiceMain extends BaseService {
                 });
                 const result = await findExploresTool.execute!(
                     {
-                        type: 'find_explores_v3',
                         ...argsWithProject,
                         searchQuery: args.searchQuery,
                     },
@@ -386,19 +441,23 @@ export class McpServiceMain extends BaseService {
             {
                 description: toolFindFieldsArgsSchema.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolFindFieldsArgsSchema.omit({ type: true }),
-                ) as AnyType,
+                    toolFindFieldsArgsSchema,
+                ),
             },
-            async (_args, context) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const args = _args as Omit<ToolFindFieldsArgs, 'type'>;
 
                 const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
                 const argsWithProject = { ...args, projectUuid };
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.FIND_FIELDS,
                     projectUuid,
                 );
@@ -406,7 +465,7 @@ export class McpServiceMain extends BaseService {
                 const findFields: FindFieldFn =
                     await this.getFindFieldsFunction(
                         argsWithProject,
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
 
                 const findFieldsTool = getFindFields({
@@ -414,16 +473,10 @@ export class McpServiceMain extends BaseService {
                     updateProgress: async () => {}, // No-op for MCP context
                     pageSize: 15,
                 });
-                const result = await findFieldsTool.execute!(
-                    {
-                        type: 'find_fields',
-                        ...argsWithProject,
-                    },
-                    {
-                        toolCallId: '',
-                        messages: [],
-                    },
-                );
+                const result = await findFieldsTool.execute!(argsWithProject, {
+                    toolCallId: '',
+                    messages: [],
+                });
 
                 return {
                     content: [
@@ -441,19 +494,23 @@ export class McpServiceMain extends BaseService {
             {
                 description: toolFindContentArgsSchema.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolFindContentArgsSchema.omit({ type: true }),
-                ) as AnyType,
+                    toolFindContentArgsSchema,
+                ),
             },
-            async (_args, context) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const args = _args as Omit<ToolFindContentArgs, 'type'>;
 
                 const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
                 const argsWithProject = { ...args, projectUuid };
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.FIND_CONTENT,
                     projectUuid,
                 );
@@ -461,23 +518,17 @@ export class McpServiceMain extends BaseService {
                 const findContent: FindContentFn =
                     await this.getFindContentFunction(
                         argsWithProject,
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
 
                 const findContentTool = getFindContent({
                     findContent,
                     siteUrl: this.lightdashConfig.siteUrl,
                 });
-                const result = await findContentTool.execute!(
-                    {
-                        type: 'find_content',
-                        ...argsWithProject,
-                    },
-                    {
-                        toolCallId: '',
-                        messages: [],
-                    },
-                );
+                const result = await findContentTool.execute!(argsWithProject, {
+                    toolCallId: '',
+                    messages: [],
+                });
 
                 return {
                     content: [
@@ -496,20 +547,27 @@ export class McpServiceMain extends BaseService {
                 description: 'List all accessible projects in the organization',
                 inputSchema: {},
             },
-            async (_args, context) => {
-                const { user, organizationUuid, account } = this.getAccount(
-                    context as McpProtocolContext,
+            async (
+                _args: Record<string, never>,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
+                const { user, organizationUuid } = this.getAccount(
+                    extra as McpProtocolContext,
                 );
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.LIST_PROJECTS,
                 );
 
-                const projects =
-                    await this.projectModel.getAllByOrganizationUuid(
-                        organizationUuid,
-                    );
+                const projects = await wrapSentryTransaction(
+                    'McpService.listProjects.getAllByOrganizationUuid',
+                    { organizationUuid },
+                    async () =>
+                        this.projectModel.getAllByOrganizationUuid(
+                            organizationUuid,
+                        ),
+                );
 
                 const projectList = projects.map((project) => ({
                     name: project.name,
@@ -533,18 +591,22 @@ export class McpServiceMain extends BaseService {
                 description:
                     'Set the active project for subsequent MCP operations',
                 inputSchema: {
-                    projectUuid: z.string() as AnyType,
-                    tags: z.array(z.string()).optional() as AnyType,
+                    projectUuid: z.string(),
+                    tags: z.array(z.string()).optional(),
                 },
             },
-            async (_args, context) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const args = _args as { projectUuid: string; tags?: string[] };
                 const { user, organizationUuid, account } = this.getAccount(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.SET_PROJECT,
                     args.projectUuid,
                 );
@@ -578,6 +640,12 @@ export class McpServiceMain extends BaseService {
                 if (args.tags !== undefined) {
                     tagsToSet = args.tags.length > 0 ? args.tags : null;
                 }
+
+                // Get existing context to preserve user attribute overrides
+                const existingContext = await this.mcpContextModel.getContext(
+                    user.userUuid,
+                    organizationUuid,
+                );
 
                 // Set context
                 await this.mcpContextModel.setContext({
@@ -613,13 +681,16 @@ export class McpServiceMain extends BaseService {
                 description: 'Get the currently active project',
                 inputSchema: {},
             },
-            async (_args, context) => {
+            async (
+                _args: Record<string, never>,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const { user, organizationUuid } = this.getAccount(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.GET_CURRENT_PROJECT,
                 );
 
@@ -666,59 +737,232 @@ export class McpServiceMain extends BaseService {
             },
         );
 
-        this.mcpServer.registerTool(
+        // Register chart app resource for the MCP App UI
+        const chartResourceUri = 'ui://run-metric-query/chart.html';
+        registerAppResource(
+            this.mcpServer,
+            chartResourceUri,
+            chartResourceUri,
+            { mimeType: RESOURCE_MIME_TYPE },
+            async () => {
+                const htmlPath = path.join(
+                    __dirname,
+                    'mcp-chart-app',
+                    'dist',
+                    'chart-app.html',
+                );
+                const html = await fs.readFile(htmlPath, 'utf-8');
+                return {
+                    contents: [
+                        {
+                            uri: chartResourceUri,
+                            mimeType: RESOURCE_MIME_TYPE,
+                            text: html,
+                        },
+                    ],
+                };
+            },
+        );
+
+        registerAppTool(
+            this.mcpServer,
             McpToolName.RUN_METRIC_QUERY,
             {
-                description: toolRunMetricQueryArgsSchema.description,
+                description: toolRunQueryArgsSchema.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolRunMetricQueryArgsSchema.omit({ type: true }),
-                ) as AnyType,
+                    toolRunQueryArgsSchema,
+                ),
+                _meta: { ui: { resourceUri: chartResourceUri } },
             },
-            async (_args, context) => {
-                const args = _args as Omit<ToolRunMetricQueryArgs, 'type'>;
-
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
-                const argsWithProject = { ...args, projectUuid };
+                const argsWithProject = { ..._args, projectUuid };
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.RUN_METRIC_QUERY,
                     projectUuid,
                 );
 
-                const { agentContext, runMiniMetricQuery } =
-                    await this.getRunMetricQueryDependencies(
-                        argsWithProject,
-                        context as McpProtocolContext,
+                try {
+                    const { agentContext, runAsyncQuery } =
+                        await this.getRunMetricQueryDependencies(
+                            { projectUuid },
+                            extra as McpProtocolContext,
+                        );
+
+                    const queryTool =
+                        toolRunQueryArgsSchemaTransformed.parse(
+                            argsWithProject,
+                        );
+                    const explore = agentContext.getExplore(
+                        queryTool.queryConfig.exploreName,
                     );
 
-                const runMetricQueryTool = getRunMetricQuery({
-                    runMiniMetricQuery,
-                    maxLimit: this.lightdashConfig.ai.copilot.maxQueryLimit,
-                });
+                    // Full validation including groupBy, axis, and tableCalcs
+                    validateRunQueryTool(queryTool, explore);
 
-                const result = await runMetricQueryTool.execute!(
-                    {
-                        type: 'run_metric_query',
-                        ...argsWithProject,
-                    },
-                    {
-                        toolCallId: '',
-                        messages: [],
-                        experimental_context: agentContext,
-                    },
-                );
+                    const maxLimit =
+                        this.lightdashConfig.ai.copilot.maxQueryLimit;
+                    const query = {
+                        exploreName: queryTool.queryConfig.exploreName,
+                        dimensions: queryTool.queryConfig.dimensions,
+                        metrics: queryTool.queryConfig.metrics,
+                        sorts: queryTool.queryConfig.sorts.map((sort) => ({
+                            ...sort,
+                            nullsFirst: sort.nullsFirst ?? undefined,
+                        })),
+                        limit: getValidAiQueryLimit(
+                            queryTool.queryConfig.limit,
+                            maxLimit,
+                        ),
+                        filters: queryTool.filters,
+                        additionalMetrics: queryTool.customMetrics ?? [],
+                        tableCalculations:
+                            convertAiTableCalcsSchemaToTableCalcs(
+                                queryTool.tableCalculations,
+                            ),
+                    };
 
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: await McpServiceMain.streamToolResult(result),
+                    const results = await runAsyncQuery(
+                        query,
+                        populateCustomMetricsSQL(
+                            queryTool.customMetrics,
+                            explore,
+                        ),
+                    );
+
+                    if (results.rows.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: 'text' as const,
+                                    text: NO_RESULTS_RETRY_PROMPT,
+                                },
+                            ],
+                        };
+                    }
+
+                    // Generate CSV text (backward compatible for non-UI clients)
+                    const fieldIds = Object.keys(results.rows[0]);
+                    const csvHeaders = fieldIds.map((fieldId) => {
+                        const item = results.fields[fieldId];
+                        if (!item) return fieldId;
+                        return getItemLabelWithoutTableName(item);
+                    });
+                    const csvRows = results.rows.map((row) =>
+                        CsvService.convertRowToCsv(
+                            row,
+                            results.fields,
+                            true,
+                            fieldIds,
+                        ),
+                    );
+                    const csv = stringify(csvRows, {
+                        header: true,
+                        columns: csvHeaders,
+                    });
+
+                    // Generate ECharts config using the shared AI chart
+                    // config — supports bar, line, scatter, pie, funnel,
+                    // horizontal bar, groupBy pivots, and secondary axes.
+                    const echartsOption = await getSlackAiEchartsConfig({
+                        toolArgs: {
+                            type: AiResultType.QUERY_RESULT,
+                            tool: queryTool,
                         },
-                    ],
-                };
+                        queryResults: {
+                            rows: results.rows,
+                            fields: results.fields,
+                        },
+                        getPivotedResults,
+                    });
+
+                    // Override Slack-specific settings for interactive MCP App
+                    const mcpEchartsOption = echartsOption
+                        ? {
+                              ...echartsOption,
+                              animation: true,
+                              backgroundColor: 'transparent',
+                              tooltip: {
+                                  ...(typeof echartsOption.tooltip === 'object'
+                                      ? echartsOption.tooltip
+                                      : {}),
+                                  show: true,
+                              },
+                          }
+                        : null;
+
+                    // Build "Explore from here" URL
+                    const exploreConfigState = {
+                        tableName: queryTool.queryConfig.exploreName,
+                        metricQuery: {
+                            exploreName: queryTool.queryConfig.exploreName,
+                            dimensions: queryTool.queryConfig.dimensions,
+                            metrics: queryTool.queryConfig.metrics,
+                            sorts: queryTool.queryConfig.sorts,
+                            limit: query.limit,
+                            filters: queryTool.filters ?? {},
+                            additionalMetrics: query.additionalMetrics,
+                            tableCalculations: query.tableCalculations,
+                        },
+                        tableConfig: {
+                            columnOrder: Object.keys(results.rows[0] ?? {}),
+                        },
+                        chartConfig: {
+                            type: 'table' as const,
+                            config: {
+                                showColumnCalculation: false,
+                                showRowCalculation: false,
+                                showTableNames: true,
+                                showResultsTotal: false,
+                                showSubtotals: false,
+                                columns: {},
+                                hideRowNumbers: false,
+                                conditionalFormattings: [],
+                                metricsAsRows: false,
+                            },
+                        },
+                    };
+                    const explorePath = `/projects/${projectUuid}/tables/${queryTool.queryConfig.exploreName}`;
+                    const exploreParams = `?create_saved_chart_version=${encodeURIComponent(
+                        JSON.stringify(exploreConfigState),
+                    )}&isExploreFromHere=true`;
+                    const exploreUrl = `${this.lightdashConfig.siteUrl}${explorePath}${exploreParams}`;
+
+                    return {
+                        content: [
+                            {
+                                type: 'text' as const,
+                                text: serializeData(csv, 'csv'),
+                            },
+                        ],
+                        structuredContent: {
+                            rows: results.rows,
+                            fields: results.fields,
+                            echartsOption: mcpEchartsOption,
+                            exploreUrl,
+                        },
+                    };
+                } catch (e) {
+                    const errorMessage =
+                        e instanceof Error ? e.message : String(e);
+                    return {
+                        content: [
+                            {
+                                type: 'text' as const,
+                                text: `Error running metric query: ${errorMessage}`,
+                            },
+                        ],
+                        isError: true,
+                    };
+                }
             },
         );
 
@@ -727,19 +971,23 @@ export class McpServiceMain extends BaseService {
             {
                 description: toolSearchFieldValuesArgsSchema.description,
                 inputSchema: this.getMcpCompatibleSchema(
-                    toolSearchFieldValuesArgsSchema.omit({ type: true }),
-                ) as AnyType,
+                    toolSearchFieldValuesArgsSchema,
+                ),
             },
-            async (_args, context) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            async (
+                _args: AnyType,
+                extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+            ) => {
                 const args = _args as Omit<ToolSearchFieldValuesArgs, 'type'>;
 
                 const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                 );
                 const argsWithProject = { ...args, projectUuid };
 
                 this.trackToolCall(
-                    context as McpProtocolContext,
+                    extra as McpProtocolContext,
                     McpToolName.SEARCH_FIELD_VALUES,
                     projectUuid,
                 );
@@ -747,17 +995,14 @@ export class McpServiceMain extends BaseService {
                 const searchFieldValues: SearchFieldValuesFn =
                     await this.getSearchFieldValuesFunction(
                         argsWithProject,
-                        context as McpProtocolContext,
+                        extra as McpProtocolContext,
                     );
 
                 const searchFieldValuesTool = getSearchFieldValues({
                     searchFieldValues,
                 });
                 const result = await searchFieldValuesTool.execute!(
-                    {
-                        type: 'search_field_values',
-                        ...argsWithProject,
-                    },
+                    argsWithProject,
                     {
                         toolCallId: '',
                         messages: [],
@@ -774,261 +1019,6 @@ export class McpServiceMain extends BaseService {
                 };
             },
         );
-
-        console.log('registering get_embed_url tool');
-        // Remove the try-catch wrapper and just register the tool directly
-        this.mcpServer.registerTool(
-            McpToolName.GET_EMBED_URL,
-            {
-                description: toolGetEmbedUrlArgsSchema.description,
-                inputSchema: this.getMcpCompatibleSchema(
-                    toolGetEmbedUrlArgsSchema,
-                ) as AnyType,
-            },
-            async (_args, context) => {
-                const args = _args as ToolGetEmbedUrlArgs;
-
-                const projectUuid = await this.resolveProjectUuid(
-                    context as McpProtocolContext,
-                );
-
-                this.trackToolCall(
-                    context as McpProtocolContext,
-                    McpToolName.GET_EMBED_URL,
-                    projectUuid,
-                );
-
-                const result = await this.generateEmbedUrl(
-                    args,
-                    projectUuid,
-                    context as McpProtocolContext,
-                );
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: result,
-                        },
-                    ],
-                };
-            },
-        );
-        console.log('registered get_embed_url tool!');
-    }
-
-    async generateEmbedUrl(
-        args: {
-            resource_uuid: string;
-            resource_type?: 'chart' | 'dashboard';
-            expires_in?: string;
-            dashboard_filters_interactivity?: any;
-            can_export_csv?: boolean;
-            can_export_images?: boolean;
-            return_markdown?: boolean;
-            raw_directive?: boolean;
-            height?: number;
-        },
-        projectUuid: string,
-        context: McpProtocolContext,
-    ): Promise<string> {
-        const { user, account } = context.authInfo!.extra;
-        const { organizationUuid } = user;
-
-        if (!user || !organizationUuid || !account) {
-            throw new ForbiddenError('Authentication required');
-        }
-
-        const sessionAccount = fromSession(user, account.authentication.source);
-
-
-        // Set defaults (match Python exactly)
-        const resourceType = args.resource_type || 'chart';
-        const expiresIn = args.expires_in || '8h';
-        const canExportCsv = args.can_export_csv || false;
-        const canExportImages = args.can_export_images || false;
-        const returnMarkdown = args.return_markdown !== false; // default true
-        const rawDirective = args.raw_directive || false;
-        const defaultHeight = 600;
-        const embedHeight = args.height || defaultHeight;
-
-        try {
-            let embedUrl: string;
-            let title: string;
-
-            if (resourceType === 'dashboard') {
-                // Dashboard embedding (existing JWT-based logic)
-                const embedService = this.services.getEmbedService<EmbedService>();
-
-                const embedJwtData: any = {
-                    content: {
-                        type: 'dashboard' as const,
-                        dashboardUuid: args.resource_uuid,
-                        canExportCsv,
-                        canExportImages,
-                    },
-                    userAttributes: {
-                        organizationUuid,
-                    },
-                    expiresIn,
-                };
-
-                // Add optional dashboard filter interactivity
-                if (args.dashboard_filters_interactivity) {
-                    embedJwtData.content.dashboardFiltersInteractivity = args.dashboard_filters_interactivity;
-                }
-
-                // Generate the embed URL
-                const embedUrlResult = await embedService.getEmbedUrl(
-                    sessionAccount,
-                    projectUuid,
-                    embedJwtData,
-                );
-
-                embedUrl = embedUrlResult.url;
-
-                // Try to get dashboard details for title
-                title = `Dashboard ${args.resource_uuid}`;
-                try {
-                    const dashboardService = this.services.getDashboardService();
-                    const dashboard = await dashboardService.getByIdOrSlug(
-                        user,
-                        args.resource_uuid,
-                    );
-                    title = dashboard.name;
-                } catch (error) {
-                    this.logger.warn(`Failed to get dashboard details: ${error}. Using default title.`);
-                }
-
-            } else if (resourceType === 'chart') {
-                // Chart embedding (new logic - direct URL access)
-                try {
-                    // Get chart details using savedChartModel directly (like EmbedService does)
-                    const chart = await this.savedChartModel.get(args.resource_uuid);
-                    
-                    // Check if user has access to this chart
-                    const space = await this.spaceModel.getSpaceSummary(chart.spaceUuid);
-                    const access = await this.spaceModel.getUserSpaceAccess(
-                        user.userUuid,
-                        chart.spaceUuid,
-                    );
-
-                    if (
-                        user.ability.cannot(
-                            'view',
-                            subject('SavedChart', {
-                                organizationUuid,
-                                projectUuid: chart.projectUuid,
-                                isPrivate: space.isPrivate,
-                                access,
-                            }),
-                        )
-                    ) {
-                        throw new ForbiddenError('You do not have access to this chart');
-                    }
-                    
-                    title = chart.name;
-                    
-                    // Create URL for individual chart viewing
-                    const baseUrl = this.lightdashConfig.siteUrl;
-                    embedUrl = `${baseUrl}/projects/${projectUuid}/saved/${args.resource_uuid}`;
-                    
-                } catch (error) {
-                    if (error instanceof ForbiddenError) {
-                        throw error;
-                    }
-                    throw new NotFoundError(`Chart with UUID ${args.resource_uuid} not found`);
-                }
-
-            } else {
-                throw new ParameterError(`Unsupported resource type: ${resourceType}. Supported types: 'chart', 'dashboard'`);
-            }
-
-            // Format the response (match Python logic)
-            if (rawDirective) {
-                // Return HTML artifact instruction
-                const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-    </style>
-</head>
-<body>
-    <iframe 
-        src="${embedUrl}" 
-        title="${title}"
-        allow="fullscreen"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals">
-    </iframe>
-</body>
-</html>`;
-
-                const artifactInstruction = `Please create an artifact with the following properties:
-
-:::artifact identifier="lightdash-embed-${args.resource_uuid.substring(0, 8)}" type="text/html" title="${title}"
-${htmlContent}
-:::
-
-This will embed the Lightdash ${resourceType} directly in the chat.
-
-If the embed doesn't display due to security restrictions, you can open it directly at: ${embedUrl}`;
-
-                return artifactInstruction;
-            }
-
-            if (returnMarkdown) {
-                // Return ONLY the directive, no extra text or formatting
-                // Use the exact format that works - simple title and line break before closing :::
-                const simpleTitle = `Dashboard ${args.resource_uuid}`;
-                const lightdashDirective = `:::lightdash-${resourceType}{url="${embedUrl}" title="${simpleTitle}" height="${embedHeight}"}\n:::`;
-                return lightdashDirective;
-            } else {
-                // Return JSON response
-                const result = {
-                    url: embedUrl,
-                    title,
-                    resource_type: resourceType,
-                    resource_uuid: args.resource_uuid,
-                    height: embedHeight,
-                    expires_in: resourceType === 'dashboard' ? expiresIn : null, // Charts don't use JWT expiration
-                };
-                return JSON.stringify(result, null, 2);
-            }
-
-        } catch (error) {
-            if (error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ParameterError) {
-                throw error;
-            }
-            
-            let errorMsg = error instanceof Error ? error.message : String(error);
-            
-            // Provide helpful error messages
-            if (errorMsg.includes('embedService') && errorMsg.includes('no factory or provider')) {
-                errorMsg = 'Dashboard embedding is not available in your Lightdash instance. This feature requires an enterprise license.';
-            } else if (errorMsg.includes('422')) {
-                errorMsg = `Invalid request: ${errorMsg}`;
-            } else if (errorMsg.includes('404')) {
-                errorMsg = `${resourceType === 'dashboard' ? 'Dashboard' : 'Chart'} not found. Please check the UUID.`;
-            } else {
-                errorMsg = `Failed to generate embed URL: ${errorMsg}`;
-            }
-            
-            throw new ParameterError(errorMsg);
-        }
     }
 
     async getProjectUuidFromContext(
@@ -1067,6 +1057,64 @@ If the embed doesn't display due to security restrictions, you can open it direc
         return contextRow?.context.tags || null;
     }
 
+    async getMergedUserAttributes(
+        context: McpProtocolContext,
+    ): Promise<UserAttributeValueMap> {
+        const { user, headerUserAttributes } = context.authInfo!.extra;
+        const { organizationUuid } = user;
+
+        if (!user || !organizationUuid) {
+            return {};
+        }
+
+        // Get database defaults
+        const dbAttributes =
+            await this.userAttributesModel.getAttributeValuesForOrgMember({
+                organizationUuid,
+                userUuid: user.userUuid,
+            });
+
+        // Validate header attributes if present (admin + narrowing check)
+        if (headerUserAttributes) {
+            validateUserAttributeOverrides(
+                user,
+                headerUserAttributes,
+                dbAttributes,
+            );
+        }
+
+        return mergeUserAttributes(dbAttributes, headerUserAttributes);
+    }
+
+    async getUserAttributeOverridesFromContext(
+        context: McpProtocolContext,
+    ): Promise<UserAttributeValueMap | undefined> {
+        const { user, headerUserAttributes } = context.authInfo!.extra;
+        const { organizationUuid } = user;
+
+        if (!user || !organizationUuid) {
+            return undefined;
+        }
+
+        if (!headerUserAttributes) {
+            return undefined;
+        }
+
+        // Validate header attributes (admin + narrowing check)
+        const dbAttributes =
+            await this.userAttributesModel.getAttributeValuesForOrgMember({
+                organizationUuid,
+                userUuid: user.userUuid,
+            });
+        validateUserAttributeOverrides(
+            user,
+            headerUserAttributes,
+            dbAttributes,
+        );
+
+        return headerUserAttributes;
+    }
+
     async resolveProjectUuid(context: McpProtocolContext): Promise<string> {
         // Use projectUuid from args or get from context
         const projectUuid = await this.getProjectUuidFromContext(context);
@@ -1082,6 +1130,7 @@ If the embed doesn't display due to security restrictions, you can open it direc
         user: SessionUser,
         projectUuid: string,
         availableTags: string[] | null,
+        userAttributeOverrides?: UserAttributeValueMap,
     ) {
         return wrapSentryTransaction(
             'AiAgent.getAvailableExplores',
@@ -1095,10 +1144,15 @@ If the embed doesn't display due to security restrictions, you can open it direc
                     throw new ForbiddenError('Organization not found');
                 }
 
-                const userAttributes =
+                const dbAttributes =
                     await this.userAttributesModel.getAttributeValuesForOrgMember(
                         { organizationUuid, userUuid: user.userUuid },
                     );
+
+                const userAttributes = mergeUserAttributes(
+                    dbAttributes,
+                    userAttributeOverrides,
+                );
 
                 const allExplores = Object.values(
                     await this.projectModel.findExploresFromCache(
@@ -1135,11 +1189,13 @@ If the embed doesn't display due to security restrictions, you can open it direc
         projectUuid: string,
         availableTags: string[] | null,
         exploreName: string,
+        userAttributeOverrides?: UserAttributeValueMap,
     ) {
         const explores = await this.getAvailableExplores(
             user,
             projectUuid,
             availableTags,
+            userAttributeOverrides,
         );
 
         const explore = explores.find((e) => e.name === exploreName);
@@ -1185,16 +1241,11 @@ If the embed doesn't display due to security restrictions, you can open it direc
         // Get tags from context for filtering
         const tagsFromContext = await this.getTagsFromContext(context);
 
+        // Get merged user attributes (DB + session overrides)
+        const userAttributes = await this.getMergedUserAttributes(context);
+
         const findExplores: FindExploresFn = (args) =>
             wrapSentryTransaction('McpService.findExplores', args, async () => {
-                const userAttributes =
-                    await this.userAttributesModel.getAttributeValuesForOrgMember(
-                        {
-                            organizationUuid,
-                            userUuid: user.userUuid,
-                        },
-                    );
-
                 const searchResults = await this.catalogService.searchCatalog({
                     projectUuid,
                     userAttributes,
@@ -1291,21 +1342,19 @@ If the embed doesn't display due to security restrictions, you can open it direc
         // Get tags from context for filtering
         const tagsFromContext = await this.getTagsFromContext(context);
 
+        // Get merged user attributes (DB + session overrides)
+        const userAttributes = await this.getMergedUserAttributes(context);
+        const userAttributeOverrides =
+            await this.getUserAttributeOverridesFromContext(context);
+
         const findFields: FindFieldFn = (args) =>
             wrapSentryTransaction('McpService.findFields', args, async () => {
-                const userAttributes =
-                    await this.userAttributesModel.getAttributeValuesForOrgMember(
-                        {
-                            organizationUuid,
-                            userUuid: user.userUuid,
-                        },
-                    );
-
                 const explore = await this.getExplore(
                     user,
                     projectUuid,
                     tagsFromContext,
                     args.table,
+                    userAttributeOverrides,
                 );
 
                 const { data: catalogItems, pagination } =
@@ -1401,13 +1450,11 @@ If the embed doesn't display due to security restrictions, you can open it direc
     }
 
     async getRunMetricQueryDependencies(
-        toolArgs: Omit<ToolRunMetricQueryArgs, 'type'> & {
-            projectUuid: string;
-        },
+        toolArgs: { projectUuid: string },
         context: McpProtocolContext,
     ): Promise<{
         agentContext: AgentContext;
-        runMiniMetricQuery: RunMiniMetricQueryFn;
+        runAsyncQuery: RunAsyncQueryFn;
     }> {
         const { user, account } = context.authInfo!.extra;
         const { organizationUuid } = user;
@@ -1436,37 +1483,31 @@ If the embed doesn't display due to security restrictions, you can open it direc
 
         // Get tags from context and fetch available explores
         const tagsFromContext = await this.getTagsFromContext(context);
+        const userAttributeOverrides =
+            await this.getUserAttributeOverridesFromContext(context);
         const explores = await this.getAvailableExplores(
             user,
             projectUuid,
             tagsFromContext,
+            userAttributeOverrides,
         );
         const agentContext = new AgentContext(explores);
 
-        const runMiniMetricQuery: RunMiniMetricQueryFn = async (
+        const runAsyncQuery: RunAsyncQueryFn = async (
             metricQuery,
-            maxLimit,
             additionalMetrics,
         ) =>
-            this.projectService.runMetricQuery({
+            this.asyncQueryService.executeMetricQueryAndGetResults({
                 account,
                 projectUuid,
                 metricQuery: {
                     ...metricQuery,
                     additionalMetrics: additionalMetrics ?? [],
                 },
-                exploreName: metricQuery.exploreName,
-                csvLimit: maxLimit,
                 context: QueryExecutionContext.MCP,
-                chartUuid: undefined,
-                queryTags: {
-                    project_uuid: projectUuid,
-                    user_uuid: user.userUuid,
-                    organization_uuid: organizationUuid,
-                },
             });
 
-        return { agentContext, runMiniMetricQuery };
+        return { agentContext, runAsyncQuery };
     }
 
     async getSearchFieldValuesFunction(
@@ -1500,6 +1541,10 @@ If the embed doesn't display due to security restrictions, you can open it direc
             throw new ForbiddenError();
         }
 
+        // Get user attribute overrides for row-level security
+        const userAttributeOverrides =
+            await this.getUserAttributeOverridesFromContext(context);
+
         const searchFieldValues: SearchFieldValuesFn = (args) =>
             wrapSentryTransaction(
                 'McpService.searchFieldValues',
@@ -1522,6 +1567,7 @@ If the embed doesn't display due to security restrictions, you can open it direc
                             andFilters,
                             false,
                             undefined,
+                            userAttributeOverrides,
                         );
                     return results;
                 },

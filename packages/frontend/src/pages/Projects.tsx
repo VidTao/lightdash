@@ -6,7 +6,6 @@ import { useActiveProjectUuid } from '../hooks/useActiveProject';
 const Projects: FC = () => {
     const { isLoading: isActiveProjectLoading, activeProjectUuid } =
         useActiveProjectUuid();
-    const { isLoading: isChartDataLoading, data: chartData } = useCharts(activeProjectUuid);
 
     // If loading is done and there's no active project, user has no projects
     if (!isActiveProjectLoading && !activeProjectUuid) {

@@ -243,7 +243,7 @@ const Settings: React.FC = () => {
                                                 exact
                                                 to={`/storeSettings/${item.key}`}
                                                 label={item.label}
-                                                icon={item.icon}
+                                                leftSection={item.icon}
                                             />
                                         ))}
                                     </Stack>

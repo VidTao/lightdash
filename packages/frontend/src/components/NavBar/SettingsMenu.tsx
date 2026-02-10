@@ -84,7 +84,7 @@ const SettingsMenu: FC = () => {
                 {userCanViewOrganization && (
                     <Menu.Item
                         component={Link}
-                        icon={<MantineIcon icon={IconBuildingStore} />}
+                        leftSection={<MantineIcon icon={IconBuildingStore} />}
                         to={`/storeSettings`}
                     >
                         Store settings

@@ -595,7 +595,7 @@ const ProjectSwitcher = () => {
                                 <Text {...MENU_TEXT_PROPS}>Create Preview</Text>
                             </Menu.Item>
                         </Box>
-                    )} */}
+                    )} 
                 </Menu.Dropdown>
             </Menu>
 

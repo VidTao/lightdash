@@ -45,6 +45,7 @@ type StyleProps = {
     isSidebarResizing?: boolean;
     backgroundColor?: string;
     fullPageScroll?: boolean;
+    noContentMaxWidth?: boolean
 };
 
 const usePageStyles = createStyles<string, StyleProps>((theme, params) => {

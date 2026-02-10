@@ -809,7 +809,7 @@ export class ProjectModel {
             .where('project_uuid', projectUuid)
             .first();
         if (!result) {
-            throw new NotExistsError(
+            throw new NotFoundError(
                 `Cannot find project with id: ${projectUuid}`,
             );
         }
