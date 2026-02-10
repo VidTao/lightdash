@@ -1,0 +1,71 @@
+version: 2
+models:
+  - name: campaign_daily_metrics_extended
+    description: SQL model for Campaign daily metrics extended
+    meta:
+      label: Campaign daily metrics extended
+    columns:
+      - name: date
+        meta:
+          dimension:
+            type: date
+      - name: clicks
+        meta:
+          dimension:
+            type: number
+      - name: platform
+        meta:
+          dimension:
+            type: string
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: leads_sold
+        meta:
+          dimension:
+            type: number
+      - name: campaign_id
+        meta:
+          dimension:
+            type: string
+      - name: daily_spend
+        meta:
+          dimension:
+            type: number
+      - name: impressions
+        meta:
+          dimension:
+            type: number
+      - name: leads_total
+        meta:
+          dimension:
+            type: number
+      - name: lead_revenue
+        meta:
+          dimension:
+            type: number
+      - name: allocation_id
+        meta:
+          dimension:
+            type: string
+      - name: campaign_name
+        meta:
+          dimension:
+            type: string
+      - name: campaign_type
+        meta:
+          dimension:
+            type: string
+      - name: leads_invalid
+        meta:
+          dimension:
+            type: number
+      - name: campaign_status
+        meta:
+          dimension:
+            type: string
+      - name: platform_reported_leads
+        meta:
+          dimension:
+            type: number
