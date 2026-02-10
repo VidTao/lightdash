@@ -4,6 +4,7 @@ import {
     isCustomDimension,
     isDimension,
     isMetric,
+    isNumericItem,
     isTableCalculation,
     MapChartType,
     MapTileBackground,
@@ -14,15 +15,18 @@ import {
     Group,
     RangeSlider,
     Select,
+    Slider,
     Stack,
     Switch,
     Text,
-} from '@mantine/core';
-import { useHover } from '@mantine/hooks';
+} from '@mantine-8/core';
+import { useHover } from '@mantine-8/hooks';
 import { IconPlus, IconX } from '@tabler/icons-react';
-import { memo, useMemo, type FC } from 'react';
+import debounce from 'lodash/debounce';
+import { memo, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { DEFAULT_MAP_COLORS } from '../../../hooks/useMapChartConfig';
 import FieldSelect from '../../common/FieldSelect';
+import GradientBar from '../../common/GradientBar';
 import { isMapVisualizationConfig } from '../../LightdashVisualization/types';
 import { useVisualizationContext } from '../../LightdashVisualization/useVisualizationContext';
 import ColorSelector from '../ColorSelector';
@@ -46,7 +50,7 @@ const ColorItem: FC<ColorItemProps> = ({
     const { hovered, ref } = useHover();
 
     return (
-        <Stack spacing={4} align="center">
+        <Stack gap="xs" align="center">
             <Text size="xs" fw={500} h={16}>
                 {label || '\u00A0'}
             </Text>
@@ -79,6 +83,31 @@ const ColorItem: FC<ColorItemProps> = ({
 export const Display: FC = memo(() => {
     const { visualizationConfig, itemsMap } = useVisualizationContext();
 
+    // Ref to hold the current setDataLayerOpacity function
+    const setDataLayerOpacityRef = useRef<
+        ((opacity: number | undefined) => void) | null
+    >(null);
+
+    // Stable debounced function that calls the ref
+    const debouncedSetDataLayerOpacity = useRef(
+        debounce((value: number) => {
+            setDataLayerOpacityRef.current?.(value);
+        }, 100),
+    ).current;
+
+    // Local state for immediate slider feedback (initialized with default, synced via effect)
+    const [localOpacity, setLocalOpacity] = useState(0.7);
+
+    // Get the config opacity value (only available when it's a map config)
+    const configOpacity = isMapVisualizationConfig(visualizationConfig)
+        ? (visualizationConfig.chartConfig.validConfig.dataLayerOpacity ?? 0.7)
+        : 0.7;
+
+    // Sync local state when config changes externally
+    useEffect(() => {
+        setLocalOpacity(configOpacity);
+    }, [configOpacity]);
+
     // Get all available fields for selection (dimensions, metrics, and table calculations)
     const availableFields = useMemo(() => {
         if (!itemsMap) return [];
@@ -107,8 +136,12 @@ export const Display: FC = memo(() => {
             setMinBubbleSize,
             setMaxBubbleSize,
             setSizeFieldId,
+            setValueFieldId,
+            setHeatmapConfig,
             setTileBackground,
             setBackgroundColor,
+            setNoDataColor,
+            setDataLayerOpacity,
         },
     } = visualizationConfig;
 
@@ -117,6 +150,7 @@ export const Display: FC = memo(() => {
     const isScatterMap =
         !validConfig.locationType ||
         validConfig.locationType === MapChartType.SCATTER;
+    const isAreaMap = validConfig.locationType === MapChartType.AREA;
     const isBackgroundNone =
         validConfig.tileBackground === MapTileBackground.NONE;
 
@@ -127,98 +161,148 @@ export const Display: FC = memo(() => {
             : undefined
         : undefined;
 
+    // Get selected value field object and check if it's numeric
+    const valueField = itemsMap
+        ? validConfig.valueFieldId
+            ? itemsMap[validConfig.valueFieldId]
+            : undefined
+        : undefined;
+    const isValueFieldNumeric = isNumericItem(valueField);
+    const isHeatmap = validConfig.locationType === MapChartType.HEATMAP;
+    // Show color range for numeric values OR heatmaps (which use density-based coloring)
+    const showColorRange = isValueFieldNumeric || isHeatmap;
+    const hasSizeField = !!validConfig.sizeFieldId;
+
+    // Update the ref with the current function
+    setDataLayerOpacityRef.current = setDataLayerOpacity;
+
     return (
         <Stack>
             <Config>
                 <Config.Section>
-                    <Config.Heading>Color range</Config.Heading>
-                    <Group spacing="xs" align="flex-start">
-                        {colors.map((color, index) => {
-                            const isFirst = index === 0;
-                            const isLast = index === colors.length - 1;
-                            const label = isFirst
-                                ? 'Low'
-                                : isLast
-                                ? 'High'
-                                : '';
-                            // Can only remove middle colors (not first or last)
-                            const canRemove =
-                                !isFirst && !isLast && colors.length > 2;
+                    <Config.Heading>Colors</Config.Heading>
+                    {!isHeatmap && (
+                        <Config.Group>
+                            <FieldSelect
+                                label="Color based on"
+                                placeholder="Select field (optional)"
+                                item={valueField}
+                                items={availableFields}
+                                onChange={(newField) =>
+                                    setValueFieldId(
+                                        newField
+                                            ? getItemId(newField)
+                                            : undefined,
+                                    )
+                                }
+                                hasGrouping
+                                clearable
+                            />
+                        </Config.Group>
+                    )}
+                    {showColorRange && (
+                        <Config.Group mb="xs">
+                            <Stack w="100%" gap="xs">
+                                <Config.Label>Color range</Config.Label>
+                                <Group gap="xs" align="flex-start">
+                                    {colors.map((color, index) => {
+                                        const isFirst = index === 0;
+                                        const isLast =
+                                            index === colors.length - 1;
+                                        const label = isFirst
+                                            ? 'Low'
+                                            : isLast
+                                              ? 'High'
+                                              : '';
+                                        // Can only remove middle colors (not first or last)
+                                        const canRemove =
+                                            !isFirst &&
+                                            !isLast &&
+                                            colors.length > 2;
 
-                            return (
-                                <ColorItem
-                                    key={index}
-                                    color={color}
-                                    label={label}
-                                    canRemove={canRemove}
-                                    onColorChange={(newColor) =>
-                                        updateColor(index, newColor)
-                                    }
-                                    onRemove={() => removeColor(index)}
-                                />
-                            );
-                        })}
-                        {canAddColor && (
-                            <Stack spacing={4} align="center">
-                                <Text size="xs" fw={500} h={16}>
-                                    {'\u00A0'}
-                                </Text>
-                                <ActionIcon
-                                    size="sm"
-                                    variant="light"
-                                    onClick={addColor}
-                                >
-                                    <IconPlus size={14} />
-                                </ActionIcon>
+                                        return (
+                                            <ColorItem
+                                                key={index}
+                                                color={color}
+                                                label={label}
+                                                canRemove={canRemove}
+                                                onColorChange={(newColor) =>
+                                                    updateColor(index, newColor)
+                                                }
+                                                onRemove={() =>
+                                                    removeColor(index)
+                                                }
+                                            />
+                                        );
+                                    })}
+                                    {canAddColor && (
+                                        <Stack gap={4} align="center">
+                                            <Text size="xs" fw={500} h={16}>
+                                                {'\u00A0'}
+                                            </Text>
+                                            <ActionIcon
+                                                size="sm"
+                                                variant="light"
+                                                onClick={addColor}
+                                            >
+                                                <IconPlus size={14} />
+                                            </ActionIcon>
+                                        </Stack>
+                                    )}
+                                </Group>
+                                <GradientBar colors={colors} />
                             </Stack>
-                        )}
-                    </Group>
-                </Config.Section>
-            </Config>
-
-            <Config>
-                <Config.Section>
-                    <Config.Heading>Legend</Config.Heading>
-                    <Config.Group>
-                        <Config.Label>Show legend</Config.Label>
-                        <Switch
-                            checked={validConfig.showLegend ?? false}
-                            onChange={(e) =>
-                                setShowLegend(e.currentTarget.checked)
-                            }
-                        />
-                    </Config.Group>
-                </Config.Section>
-            </Config>
-
-            <Config>
-                <Config.Section>
-                    <Config.Heading>Background map</Config.Heading>
-                    <Select
-                        data={[
-                            { value: MapTileBackground.NONE, label: 'None' },
-
-                            { value: MapTileBackground.LIGHT, label: 'Light' },
-                            {
-                                value: MapTileBackground.OPENSTREETMAP,
-                                label: 'OpenStreetMap',
-                            },
-                            { value: MapTileBackground.DARK, label: 'Dark' },
-                            {
-                                value: MapTileBackground.SATELLITE,
-                                label: 'Satellite',
-                            },
-                        ]}
-                        value={
-                            validConfig.tileBackground ??
-                            MapTileBackground.LIGHT
-                        }
-                        onChange={(value) =>
-                            setTileBackground(
-                                (value as MapTileBackground) || undefined,
-                            )
-                        }
-                    />
+                        </Config.Group>
+                    )}
+                    {!showColorRange && !isAreaMap && (
+                        <Config.Group>
+                            <Config.Label>Color</Config.Label>
+                            <ColorSelector
+                                color={colors[Math.floor(colors.length / 2)]}
+                                swatches={ECHARTS_DEFAULT_COLORS}
+                                onColorChange={(newColor) => {
+                                    // Set a single color in the middle of the range
+                                    updateColor(
+                                        Math.floor(colors.length / 2),
+                                        newColor,
+                                    );
+                                }}
+                            />
+                        </Config.Group>
+                    )}
+                    {(isScatterMap || isAreaMap) && (
+                        <>
+                            <Config.Label mt="sm">
+                                Data layer opacity
+                            </Config.Label>
+                            <Slider
+                                min={0.1}
+                                max={1}
+                                step={0.1}
+                                value={localOpacity}
+                                onChange={(value) => {
+                                    setLocalOpacity(value);
+                                    debouncedSetDataLayerOpacity(value);
+                                }}
+                                marks={[
+                                    { value: 0.1, label: '0.1' },
+                                    { value: 0.5, label: '0.5' },
+                                    { value: 1, label: '1' },
+                                ]}
+                                mb="md"
+                            />
+                        </>
+                    )}
+                    {(isAreaMap || isScatterMap) && (
+                        <Config.Group>
+                            <Config.Label>No data color</Config.Label>
+                            <ColorSelector
+                                color={validConfig.noDataColor ?? '#f3f3f3'}
+                                swatches={ECHARTS_DEFAULT_COLORS}
+                                onColorChange={setNoDataColor}
+                            />
+                        </Config.Group>
+                    )}
                     {isBackgroundNone && (
                         <Config.Group>
                             <Config.Label>Background color</Config.Label>
@@ -250,25 +334,106 @@ export const Display: FC = memo(() => {
                             clearable
                         />
                         <Text size="xs" c="dimmed" mt="xs" mb="xs">
-                            Size range
+                            {hasSizeField ? 'Size range' : 'Size'}
                         </Text>
-                        <RangeSlider
-                            min={0}
-                            max={100}
+                        {hasSizeField ? (
+                            <RangeSlider
+                                min={0}
+                                max={100}
+                                step={1}
+                                minRange={1}
+                                value={[
+                                    validConfig.minBubbleSize ?? 5,
+                                    validConfig.maxBubbleSize ?? 20,
+                                ]}
+                                onChange={([min, max]) => {
+                                    setMinBubbleSize(min);
+                                    setMaxBubbleSize(max);
+                                }}
+                                marks={[
+                                    { value: 0, label: '0' },
+                                    { value: 50, label: '50' },
+                                    { value: 100, label: '100' },
+                                ]}
+                                mb="md"
+                            />
+                        ) : (
+                            <Slider
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={validConfig.minBubbleSize ?? 5}
+                                onChange={(value) => {
+                                    setMinBubbleSize(value);
+                                    setMaxBubbleSize(value);
+                                }}
+                                marks={[
+                                    { value: 0, label: '0' },
+                                    { value: 50, label: '50' },
+                                    { value: 100, label: '100' },
+                                ]}
+                                mb="md"
+                            />
+                        )}
+                    </Config.Section>
+                </Config>
+            )}
+
+            {isHeatmap && (
+                <Config>
+                    <Config.Section>
+                        <Config.Heading>Heatmap</Config.Heading>
+                        <Text size="xs" mt="sm">
+                            Radius
+                        </Text>
+                        <Slider
+                            min={1}
+                            max={50}
                             step={1}
-                            minRange={1}
-                            value={[
-                                validConfig.minBubbleSize ?? 5,
-                                validConfig.maxBubbleSize ?? 20,
+                            value={validConfig.heatmapConfig?.radius ?? 25}
+                            onChange={(value) =>
+                                setHeatmapConfig({ radius: value })
+                            }
+                            marks={[
+                                { value: 1, label: '1' },
+                                { value: 25, label: '25' },
+                                { value: 50, label: '50' },
                             ]}
-                            onChange={([min, max]) => {
-                                setMinBubbleSize(min);
-                                setMaxBubbleSize(max);
-                            }}
+                            mb="md"
+                        />
+                        <Text size="xs" mt="sm">
+                            Blur
+                        </Text>
+                        <Slider
+                            min={0}
+                            max={30}
+                            step={1}
+                            value={validConfig.heatmapConfig?.blur ?? 15}
+                            onChange={(value) =>
+                                setHeatmapConfig({ blur: value })
+                            }
                             marks={[
                                 { value: 0, label: '0' },
-                                { value: 50, label: '50' },
-                                { value: 100, label: '100' },
+                                { value: 15, label: '15' },
+                                { value: 30, label: '30' },
+                            ]}
+                            mb="md"
+                        />
+                        <Text size="xs" mt="sm">
+                            Opacity
+                        </Text>
+                        <Slider
+                            min={0.1}
+                            max={1}
+                            step={0.1}
+                            value={validConfig.heatmapConfig?.opacity ?? 0.6}
+                            onChange={(value) =>
+                                setHeatmapConfig({ opacity: value })
+                            }
+                            marks={[
+                                { value: 0.1, label: '0.1' },
+                                { value: 0.5, label: '0.5' },
+                                { value: 1, label: '1' },
                             ]}
                             mb="md"
                         />
@@ -288,6 +453,49 @@ export const Display: FC = memo(() => {
                             }
                         />
                     </Config.Group>
+                </Config.Section>
+            </Config>
+
+            <Config>
+                <Config.Section>
+                    <Config.Heading>Legend</Config.Heading>
+                    <Config.Group>
+                        <Config.Label>Show legend</Config.Label>
+                        <Switch
+                            checked={validConfig.showLegend ?? false}
+                            onChange={(e) =>
+                                setShowLegend(e.currentTarget.checked)
+                            }
+                        />
+                    </Config.Group>
+                </Config.Section>
+            </Config>
+
+            <Config>
+                <Config.Section>
+                    <Config.Heading>Background map</Config.Heading>
+                    <Select
+                        data={[
+                            { value: MapTileBackground.NONE, label: 'None' },
+                            {
+                                value: MapTileBackground.OPENSTREETMAP,
+                                label: 'OpenStreetMap',
+                            },
+                            {
+                                value: MapTileBackground.SATELLITE,
+                                label: 'Satellite',
+                            },
+                        ]}
+                        value={
+                            validConfig.tileBackground ??
+                            MapTileBackground.OPENSTREETMAP
+                        }
+                        onChange={(value) =>
+                            setTileBackground(
+                                (value as MapTileBackground) || undefined,
+                            )
+                        }
+                    />
                 </Config.Section>
             </Config>
         </Stack>

@@ -3,6 +3,7 @@ import { IconAlertCircle } from '@tabler/icons-react';
 import { type FC } from 'react';
 import { useParams } from 'react-router';
 import { useMount } from 'react-use';
+import { DocumentTitle } from '../components/common/DocumentTitle';
 import SuboptimalState from '../components/common/SuboptimalState/SuboptimalState';
 const BratraxLogo = '/images/logo-text.png';
 
@@ -21,7 +22,7 @@ const AuthPopupResult: FC = () => {
 
     return (
         <>
-            <title>Authentication - Bratrax</title>
+            <DocumentTitle title="Authentication" />
 
             <Stack>
                 <Image
@@ -60,7 +61,7 @@ export const SuccessAuthPopupResult: FC = () => {
 
     return (
         <>
-            <title>Authentication - Bratrax</title>
+            <DocumentTitle title="Authentication" />
 
             <Stack>
                 <Image

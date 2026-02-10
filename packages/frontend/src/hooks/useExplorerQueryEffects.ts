@@ -22,7 +22,7 @@ import {
     useExplorerSelector,
 } from '../features/explorer/store';
 import { useExplorerQueryManager } from './useExplorerQueryManager';
-import { useFeatureFlag } from './useFeatureFlagEnabled';
+import { useServerFeatureFlag } from './useServerOrClientFeatureFlag';
 
 /**
  * Effects layer for Explorer query orchestration
@@ -55,7 +55,7 @@ export const useExplorerQueryEffects = ({
     const fromDashboard = useExplorerSelector(selectFromDashboard);
     const isExploreFromHere = useExplorerSelector(selectIsExploreFromHere);
 
-    const { data: useSqlPivotResults } = useFeatureFlag(
+    const { data: useSqlPivotResults } = useServerFeatureFlag(
         FeatureFlags.UseSqlPivotResults,
     );
 
@@ -136,17 +136,6 @@ export const useExplorerQueryEffects = ({
             dispatch(explorerActions.setUnpivotedQueryArgs(null));
         }
     }, [validQueryArgs, needsUnpivotedData, isResultsOpen, dispatch]);
-
-    // Effect 4: Sync complete column order when query results change
-    const { queryResults } = useExplorerQueryManager();
-
-    useEffect(() => {
-        if (queryResults.columns) {
-            dispatch(
-                explorerActions.setCompleteColumnOrder(queryResults.columns),
-            );
-        }
-    }, [queryResults.columns, dispatch]);
 
     // No return - this hook just orchestrates effects
 };

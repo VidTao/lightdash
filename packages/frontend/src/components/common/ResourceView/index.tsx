@@ -104,7 +104,9 @@ const ResourceView: FC<ResourceViewProps> = ({
     }
 
     const items =
-        hasTabs && activeTabId ? itemsByTabs.get(activeTabId) ?? [] : allItems;
+        hasTabs && activeTabId
+            ? (itemsByTabs.get(activeTabId) ?? [])
+            : allItems;
 
     return (
         <>
@@ -140,7 +142,7 @@ const ResourceView: FC<ResourceViewProps> = ({
                                                                 icon={
                                                                     IconInfoCircle
                                                                 }
-                                                                color="ldGray.6"
+                                                                color="ldGray.9"
                                                             />
                                                         </Tooltip>
                                                     ) : null
@@ -148,7 +150,7 @@ const ResourceView: FC<ResourceViewProps> = ({
                                             >
                                                 {tab.name ? (
                                                     <Text
-                                                        color="ldGray.7"
+                                                        color="ldGray.9"
                                                         fz={15}
                                                         fw={500}
                                                     >

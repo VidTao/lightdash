@@ -1,10 +1,13 @@
 import assertUnreachable from '../utils/assertUnreachable';
 import { type ViewStatistics } from './analytics';
+import { type DateZoom } from './api/paginatedQuery';
 import { type ConditionalFormattingConfig } from './conditionalFormatting';
 import { type ChartSourceType } from './content';
 import { type CompactOrAlias, type FieldId } from './field';
+import { type KnexPaginatedData } from './knex-paginate';
 import { type MetricQuery, type MetricQueryRequest } from './metricQuery';
 import { type ParametersValuesMap } from './parameters';
+import type { SchedulerAndTargets } from './scheduler';
 // eslint-disable-next-line import/no-cycle
 import { type SpaceShare } from './space';
 import { type LightdashUser, type UpdatedByUser } from './user';
@@ -139,6 +142,8 @@ export type GaugeChart = {
     showAxisLabels?: boolean;
     sections?: GaugeSection[];
     customLabel?: string;
+    showPercentage?: boolean;
+    customPercentageLabel?: string;
 };
 
 export enum MapChartLocation {
@@ -162,6 +167,11 @@ export enum MapTileBackground {
     SATELLITE = 'satellite',
 }
 
+export type MapFieldConfig = {
+    visible?: boolean;
+    label?: string;
+};
+
 export type MapChart = {
     mapType?: MapChartLocation;
     customGeoJsonUrl?: string;
@@ -169,8 +179,12 @@ export type MapChart = {
     // Lat/Long fields
     latitudeFieldId?: string;
     longitudeFieldId?: string;
-    // Country/Region field
+    // Country/Region field for area maps
     locationFieldId?: string;
+    // GeoJSON property key to match against (e.g., 'name', 'ISO3166-1-Alpha-3')
+    // For World map: matches against countries.geojson properties
+    // For US map: matches against us-states.geojson properties
+    geoJsonPropertyKey?: string;
     // Common fields
     valueFieldId?: string;
     showLegend?: boolean;
@@ -184,9 +198,21 @@ export type MapChart = {
     minBubbleSize?: number;
     maxBubbleSize?: number;
     sizeFieldId?: string;
-    // Tile background
+    // Heatmap settings
+    heatmapConfig?: {
+        radius?: number;
+        blur?: number;
+        opacity?: number;
+    };
+    // Data layer opacity for scatter and area maps (0.1 to 1, default 0.7)
+    dataLayerOpacity?: number;
     tileBackground?: MapTileBackground;
     backgroundColor?: string;
+    // Color for regions with no matching data (area maps only)
+    noDataColor?: string;
+    // Field configuration (controls tooltip visibility and custom labels)
+    fieldConfig?: Record<string, MapFieldConfig>;
+    saveMapExtent?: boolean;
 };
 
 export enum FunnelChartDataInput {
@@ -309,6 +335,7 @@ export type Series = {
     label?: {
         show?: boolean;
         position?: 'left' | 'top' | 'right' | 'bottom' | 'inside';
+        showOverlappingLabels?: boolean;
     };
     hidden?: boolean;
     areaStyle?: Record<string, unknown>;
@@ -350,6 +377,16 @@ export type EchartsGrid = {
     height?: string;
 };
 
+export const TooltipSortByOptions = {
+    DEFAULT: 'default',
+    ALPHABETICAL: 'alphabetical',
+    VALUE_ASCENDING: 'value_ascending',
+    VALUE_DESCENDING: 'value_descending',
+} as const;
+
+export type TooltipSortBy =
+    (typeof TooltipSortByOptions)[keyof typeof TooltipSortByOptions];
+
 export type CompleteEChartsConfig = {
     legend?: EchartsLegend;
     grid?: EchartsGrid;
@@ -357,7 +394,10 @@ export type CompleteEChartsConfig = {
     xAxis: XAxis[];
     yAxis: Axis[];
     tooltip?: string;
+    tooltipSort?: TooltipSortBy;
     showAxisTicks?: boolean;
+    axisLabelFontSize?: number;
+    axisTitleFontSize?: number;
 };
 
 export type EChartsConfig = Partial<CompleteEChartsConfig>;
@@ -379,10 +419,13 @@ export type XAxis = Axis & {
 
 export enum XAxisSortType {
     DEFAULT = 'default',
+    CATEGORY = 'category',
     BAR_TOTALS = 'bar_totals',
 }
 
 export enum XAxisSort {
+    DEFAULT = 'default',
+    DEFAULT_REVERSED = 'default_reversed',
     ASCENDING = 'ascending',
     DESCENDING = 'descending',
     BAR_TOTALS_ASCENDING = 'bar_totals_ascending',
@@ -392,15 +435,20 @@ export enum XAxisSort {
 export function getXAxisSort(
     xAxis: Pick<XAxis, 'sortType' | 'inverse'> | undefined,
 ): XAxisSort {
-    if (!xAxis) return XAxisSort.ASCENDING;
+    if (!xAxis) return XAxisSort.DEFAULT;
 
     switch (xAxis.sortType) {
+        case XAxisSortType.CATEGORY:
+            return xAxis.inverse ? XAxisSort.DESCENDING : XAxisSort.ASCENDING;
         case XAxisSortType.BAR_TOTALS:
             return xAxis.inverse
                 ? XAxisSort.BAR_TOTALS_DESCENDING
                 : XAxisSort.BAR_TOTALS_ASCENDING;
+        case XAxisSortType.DEFAULT:
         default:
-            return xAxis.inverse ? XAxisSort.DESCENDING : XAxisSort.ASCENDING;
+            return xAxis.inverse
+                ? XAxisSort.DEFAULT_REVERSED
+                : XAxisSort.DEFAULT;
     }
 }
 
@@ -411,8 +459,11 @@ export type CompleteCartesianChartLayout = {
     showGridX?: boolean | undefined;
     showGridY?: boolean | undefined;
     showXAxis?: boolean | undefined;
-    showYAxis?: boolean | undefined;
+    showYAxis?: boolean | undefined; // Legacy: controls all Y-axes together
+    showLeftYAxis?: boolean | undefined; // Controls left/primary Y-axis visibility independently
+    showRightYAxis?: boolean | undefined; // Controls right/secondary Y-axis visibility independently
     stack?: boolean | string | undefined; // Support both old boolean and new StackType string for backward compatibility
+    connectNulls?: boolean | undefined; // only applicable for line series, defaults to true
 };
 
 export type CartesianChartLayout = Partial<CompleteCartesianChartLayout>;
@@ -855,6 +906,7 @@ export type CalculateSubtotalsFromQuery = CalculateTotalFromQuery & {
     columnOrder: string[];
     pivotDimensions?: string[];
     parameters?: ParametersValuesMap;
+    dateZoom?: DateZoom;
 };
 
 export type ApiCalculateSubtotalsResponse = {
@@ -908,4 +960,19 @@ export type SkippedReplaceCustomFields = {
             };
         };
     };
+};
+
+export type ApiSavedChartSchedulersResponse = {
+    status: 'ok';
+    results: SchedulerAndTargets[];
+};
+
+export type ApiSavedChartPaginatedSchedulersResponse = {
+    status: 'ok';
+    results: KnexPaginatedData<SchedulerAndTargets[]>;
+};
+
+export type ApiCreateSavedChartSchedulerResponse = {
+    status: 'ok';
+    results: SchedulerAndTargets;
 };

@@ -17,6 +17,7 @@ import { CsvService } from './CsvService/CsvService';
 import { DashboardService } from './DashboardService/DashboardService';
 import { DownloadFileService } from './DownloadFileService/DownloadFileService';
 import { FeatureFlagService } from './FeatureFlag/FeatureFlagService';
+import { FunnelService } from './FunnelService/FunnelService';
 import { GdriveService } from './GdriveService/GdriveService';
 import { GithubAppService } from './GithubAppService/GithubAppService';
 import { GitIntegrationService } from './GitIntegrationService/GitIntegrationService';
@@ -98,6 +99,7 @@ interface ServiceManifest {
     contentService: ContentService;
     coderService: CoderService;
     featureFlagService: FeatureFlagService;
+    funnelService: FunnelService;
     spotlightService: SpotlightService;
     lightdashAnalyticsService: LightdashAnalyticsService;
     asyncQueryService: AsyncQueryService;
@@ -331,6 +333,7 @@ export class ServiceRepository
                     schedulerClient: this.clients.getSchedulerClient(),
                     slackClient: this.clients.getSlackClient(),
                     catalogModel: this.models.getCatalogModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -509,6 +512,7 @@ export class ServiceRepository
                     resourceViewItemModel:
                         this.models.getResourceViewItemModel(),
                     projectModel: this.models.getProjectModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -636,6 +640,9 @@ export class ServiceRepository
                     dashboardModel: this.models.getDashboardModel(),
                     catalogModel: this.models.getCatalogModel(),
                     permissionsService: this.getPermissionsService(),
+                    googleDriveClient: this.clients.getGoogleDriveClient(),
+                    userService: this.getUserService(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -654,6 +661,11 @@ export class ServiceRepository
                     projectModel: this.models.getProjectModel(),
                     schedulerClient: this.clients.getSchedulerClient(),
                     slackClient: this.clients.getSlackClient(),
+                    userModel: this.models.getUserModel(),
+                    googleDriveClient: this.clients.getGoogleDriveClient(),
+                    userService: this.getUserService(),
+                    jobModel: this.models.getJobModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -668,6 +680,7 @@ export class ServiceRepository
                     searchModel: this.models.getSearchModel(),
                     spaceModel: this.models.getSpaceModel(),
                     userAttributesModel: this.models.getUserAttributesModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -716,6 +729,7 @@ export class ServiceRepository
                     projectModel: this.models.getProjectModel(),
                     spaceModel: this.models.getSpaceModel(),
                     pinnedListModel: this.models.getPinnedListModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -737,6 +751,7 @@ export class ServiceRepository
                     analytics: this.context.lightdashAnalytics,
                     slackAuthenticationModel:
                         this.models.getSlackAuthenticationModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -796,6 +811,7 @@ export class ServiceRepository
                     dashboardModel: this.models.getDashboardModel(),
                     spaceModel: this.models.getSpaceModel(),
                     schedulerClient: this.clients.getSchedulerClient(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -809,10 +825,12 @@ export class ServiceRepository
                     analytics: this.context.lightdashAnalytics,
                     projectModel: this.models.getProjectModel(),
                     savedChartModel: this.models.getSavedChartModel(),
+                    savedSqlModel: this.models.getSavedSqlModel(),
                     dashboardModel: this.models.getDashboardModel(),
                     spaceModel: this.models.getSpaceModel(),
                     schedulerClient: this.clients.getSchedulerClient(),
                     promoteService: this.getPromoteService(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -831,6 +849,7 @@ export class ServiceRepository
                     spaceModel: this.models.getSpaceModel(),
                     tagsModel: this.models.getTagsModel(),
                     changesetModel: this.models.getChangesetModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -852,9 +871,8 @@ export class ServiceRepository
             'metricsExplorerService',
             () =>
                 new MetricsExplorerService({
-                    lightdashConfig: this.context.lightdashConfig,
-                    catalogModel: this.models.getCatalogModel(),
                     projectService: this.getProjectService(),
+                    asyncQueryService: this.getAsyncQueryService(),
                     catalogService: this.getCatalogService(),
                     projectModel: this.models.getProjectModel(),
                 }),
@@ -872,6 +890,7 @@ export class ServiceRepository
                     savedChartModel: this.models.getSavedChartModel(),
                     spaceModel: this.models.getSpaceModel(),
                     dashboardModel: this.models.getDashboardModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -903,6 +922,7 @@ export class ServiceRepository
                     savedSqlModel: this.models.getSavedSqlModel(),
                     schedulerClient: this.clients.getSchedulerClient(),
                     analyticsModel: this.models.getAnalyticsModel(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -920,6 +940,7 @@ export class ServiceRepository
                     dashboardService: this.getDashboardService(),
                     savedChartService: this.getSavedChartService(),
                     savedSqlService: this.getSavedSqlService(),
+                    featureFlagModel: this.models.getFeatureFlagModel(),
                 }),
         );
     }
@@ -931,6 +952,19 @@ export class ServiceRepository
                 new FeatureFlagService({
                     lightdashConfig: this.context.lightdashConfig,
                     featureFlagModel: this.models.getFeatureFlagModel(),
+                }),
+        );
+    }
+
+    public getFunnelService(): FunnelService {
+        return this.getService(
+            'funnelService',
+            () =>
+                new FunnelService({
+                    analytics: this.context.lightdashAnalytics,
+                    lightdashConfig: this.context.lightdashConfig,
+                    projectModel: this.models.getProjectModel(),
+                    projectService: this.getProjectService(),
                 }),
         );
     }
@@ -991,6 +1025,7 @@ export class ServiceRepository
                 new McpServiceMain({
                     lightdashConfig: this.context.lightdashConfig,
                     analytics: this.context.lightdashAnalytics,
+                    asyncQueryService: this.getAsyncQueryService(),
                     catalogService: this.getCatalogService(),
                     projectService: this.getProjectService(),
                     userAttributesModel: this.models.getUserAttributesModel(),

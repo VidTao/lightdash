@@ -1,31 +1,33 @@
 import { subject } from '@casl/ability';
 import {
-    ResourceViewItemType,
     type Dashboard,
     type FeatureFlags,
+    ResourceViewItemType,
 } from '@lightdash/common';
 import {
     ActionIcon,
     Box,
     Button,
+    Divider,
     Group,
     Menu,
     Popover,
-    Stack,
     Text,
     Title,
     Tooltip,
-} from '@mantine/core';
+    UnstyledButton,
+} from '@mantine-8/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
-    IconArrowsMaximize,
-    IconArrowsMinimize,
     IconCopy,
+    IconDatabase,
     IconDatabaseExport,
     IconDots,
     IconFolderPlus,
     IconFolderSymlink,
     IconInfoCircle,
+    IconMaximize,
+    IconMinimize,
     IconPencil,
     IconPin,
     IconPinnedOff,
@@ -34,10 +36,10 @@ import {
     IconUpload,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { useToggle } from 'react-use';
-import AIDashboardSummary from '../../../ee/features/aiDashboardSummary';
+import AIDashboardSummary from '../../../ee/features/ambientAi/components/aiDashboardSummary';
 import { PromotionConfirmDialog } from '../../../features/promotion/components/PromotionConfirmDialog';
 import {
     usePromoteDashboardDiffMutation,
@@ -46,24 +48,25 @@ import {
 import { DashboardSchedulersModal } from '../../../features/scheduler';
 import { getSchedulerUuidFromUrlParams } from '../../../features/scheduler/utils';
 import { useDashboardPinningMutation } from '../../../hooks/pinning/useDashboardPinningMutation';
-import { useFeatureFlagEnabled } from '../../../hooks/useFeatureFlagEnabled';
 import { useProject } from '../../../hooks/useProject';
+import { useClientFeatureFlag } from '../../../hooks/useServerOrClientFeatureFlag';
 import useApp from '../../../providers/App/useApp';
 import useTracking from '../../../providers/Tracking/useTracking';
 import { EventName } from '../../../types/Events';
 import AddTileButton from '../../DashboardTiles/AddTileButton';
 import MantineIcon from '../MantineIcon';
 import PageHeader from '../Page/PageHeader';
-import SlugInfo from '../PageHeader/SlugInfo';
-import SpaceAndDashboardInfo from '../PageHeader/SpaceAndDashboardInfo';
-import { UpdatedInfo } from '../PageHeader/UpdatedInfo';
-import ViewInfo from '../PageHeader/ViewInfo';
+import DashboardInfoOverlay from '../PageHeader/DashboardInfoOverlay';
 import SpaceActionModal from '../SpaceActionModal';
 import { ActionType } from '../SpaceActionModal/types';
 import TransferItemsModal from '../TransferItemsModal/TransferItemsModal';
 import DashboardUpdateModal from '../modal/DashboardUpdateModal';
 import { DashboardRefreshButton } from './DashboardRefreshButton';
-import ShareLinkButton from './ShareLinkButton';
+import { ShareLinkButton } from './ShareLinkButton';
+import {
+    DASHBOARD_HEADER_HEIGHT,
+    DASHBOARD_HEADER_ZINDEX,
+} from './dashboard.constants';
 
 type DashboardHeaderProps = {
     dashboard: Dashboard;
@@ -87,6 +90,7 @@ type DashboardHeaderProps = {
     onToggleFullscreen: () => void;
     setAddingTab: (value: React.SetStateAction<boolean>) => void;
     onEditClicked: () => void;
+    className?: string;
 };
 
 const DashboardHeader = ({
@@ -111,12 +115,14 @@ const DashboardHeader = ({
     onToggleFullscreen,
     setAddingTab,
     onEditClicked,
+    className,
 }: DashboardHeaderProps) => {
-    const isDashboardSummariesEnabled = useFeatureFlagEnabled(
+    const isDashboardSummariesEnabled = useClientFeatureFlag(
         'ai-dashboard-summary' as FeatureFlags,
     );
 
-    const { search } = useLocation();
+    const { search, pathname } = useLocation();
+    const navigate = useNavigate();
     const { projectUuid, dashboardUuid } = useParams<{
         projectUuid: string;
         dashboardUuid: string;
@@ -144,13 +150,47 @@ const DashboardHeader = ({
         isLoading: promoteDashboardDiffLoading,
     } = usePromoteDashboardDiffMutation();
 
+    // Capture scheduler UUID from URL for deep linking to edit mode
+    const [initialSchedulerUuid, setInitialSchedulerUuid] = useState<
+        string | undefined
+    >(() => getSchedulerUuidFromUrlParams(search) ?? undefined);
+
+    const hasProcessedUrlParams = useRef(false);
     useEffect(() => {
+        if (hasProcessedUrlParams.current) return;
+
         const schedulerUuidFromUrlParams =
             getSchedulerUuidFromUrlParams(search);
-        if (schedulerUuidFromUrlParams) {
-            toggleScheduledDeliveriesModal(true);
+
+        if (!schedulerUuidFromUrlParams) {
+            return;
         }
-    }, [search, toggleScheduledDeliveriesModal]);
+
+        hasProcessedUrlParams.current = true;
+        toggleScheduledDeliveriesModal(true);
+
+        // Clear URL params to prevent modal from reopening on close
+        const newParams = new URLSearchParams(search);
+        newParams.delete('scheduler_uuid');
+        void navigate(
+            { pathname, search: newParams.toString() },
+            { replace: true },
+        );
+    }, [search, pathname, navigate, toggleScheduledDeliveriesModal]);
+
+    // Clear initial UUID when modal is closed so reopening shows the list
+    const wasScheduledDeliveriesModalOpen = useRef(false);
+    useEffect(() => {
+        // Only clear when transitioning from open to closed, not on initial render
+        if (
+            wasScheduledDeliveriesModalOpen.current &&
+            !isScheduledDeliveriesModalOpen
+        ) {
+            setInitialSchedulerUuid(undefined);
+        }
+        wasScheduledDeliveriesModalOpen.current =
+            isScheduledDeliveriesModalOpen;
+    }, [isScheduledDeliveriesModalOpen]);
 
     const isPinned = useMemo(() => {
         return Boolean(dashboard?.pinnedListUuid);
@@ -221,13 +261,15 @@ const DashboardHeader = ({
     return (
         <PageHeader
             cardProps={{
-                h: 'auto',
+                px: 'xl',
+                py: 0,
+                h: DASHBOARD_HEADER_HEIGHT,
+                style: { zIndex: DASHBOARD_HEADER_ZINDEX },
+                className,
             }}
         >
-            <Group spacing="xs" style={{ flex: 1 }}>
-                <Title order={4} fw={600}>
-                    {dashboard.name}
-                </Title>
+            <Group gap="xs" flex={1} wrap="nowrap">
+                <Title order={6}>{dashboard.name}</Title>
 
                 <Popover
                     withinPortal
@@ -238,55 +280,38 @@ const DashboardHeader = ({
                     }}
                 >
                     <Popover.Target>
-                        <ActionIcon color="dark">
+                        <ActionIcon
+                            variant="subtle"
+                            size="md"
+                            radius="md"
+                            color="ldGray.6"
+                        >
                             <MantineIcon icon={IconInfoCircle} />
                         </ActionIcon>
                     </Popover.Target>
 
-                    <Popover.Dropdown maw={500}>
-                        <Stack spacing="xs">
-                            {dashboard.description && (
-                                <Text
-                                    fz="xs"
-                                    color="ldGray.7"
-                                    fw={500}
-                                    style={{ whiteSpace: 'pre-line' }}
-                                >
-                                    {dashboard.description}
-                                </Text>
-                            )}
-
-                            <UpdatedInfo
-                                updatedAt={dashboard.updatedAt}
-                                user={dashboard.updatedByUser}
-                            />
-
-                            <ViewInfo
-                                views={dashboard.views}
-                                firstViewedAt={dashboard.firstViewedAt}
-                            />
-
-                            <SlugInfo slug={dashboard.slug} />
-
-                            {dashboard.spaceName && (
-                                <SpaceAndDashboardInfo
-                                    space={{
-                                        link: `/projects/${projectUuid}/spaces/${dashboard.spaceUuid}`,
-                                        name: dashboard.spaceName,
-                                    }}
-                                />
-                            )}
-                        </Stack>
+                    <Popover.Dropdown maw={500} p={0}>
+                        <DashboardInfoOverlay
+                            dashboard={dashboard}
+                            projectUuid={projectUuid}
+                        />
                     </Popover.Dropdown>
                 </Popover>
 
                 {isEditMode && userCanManageDashboard && (
                     <ActionIcon
-                        color="dark"
+                        variant="subtle"
+                        size="md"
+                        color="ldGray.6"
+                        radius="md"
                         disabled={isSaving}
                         onClick={handleEditClick}
                     >
-                        <MantineIcon icon={IconPencil} />
+                        <MantineIcon
+                            icon={IconPencil}
+                            size={14}
+                            strokeWidth={2.25}
+                        />
                     </ActionIcon>
                 )}
 
@@ -324,27 +349,15 @@ const DashboardHeader = ({
                 )}
             </Group>
 
-            {oldestCacheTime && (
-                <Text
-                    color="gray"
-                    mr="sm"
-                    sx={{ fontSize: '11px', textAlign: 'end' }}
-                >
-                    Dashboard uses cached data from
-                    <Text fw={700}>
-                        {dayjs(oldestCacheTime).format('MMM D, YYYY h:mm A')}{' '}
-                    </Text>
-                </Text>
-            )}
-
             {userCanManageDashboard && isEditMode ? (
-                <Group spacing="xs">
+                <Group gap="xs">
                     <AddTileButton
                         onAddTiles={onAddTiles}
                         disabled={isSaving}
                         setAddingTab={setAddingTab}
                         activeTabUuid={activeTabUuid}
                         dashboardTabs={dashboardTabs}
+                        radius="md"
                     />
 
                     <Tooltip
@@ -353,6 +366,8 @@ const DashboardHeader = ({
                         position="bottom"
                         label="No changes to save"
                         disabled={hasDashboardChanged}
+                        openDelay={200}
+                        transitionProps={{ transition: 'fade', duration: 150 }}
                     >
                         <Box>
                             <Button
@@ -376,7 +391,7 @@ const DashboardHeader = ({
                     </Button>
                 </Group>
             ) : (
-                <Group spacing="xs">
+                <Group gap="sm">
                     {isDashboardSummariesEnabled &&
                         projectUuid &&
                         dashboardUuid && (
@@ -388,6 +403,70 @@ const DashboardHeader = ({
                                 }
                             />
                         )}
+
+                    {!!userCanManageDashboard && !isFullscreen && (
+                        <Tooltip
+                            label="Edit dashboard"
+                            withinPortal
+                            position="bottom"
+                            openDelay={200}
+                            transitionProps={{
+                                transition: 'fade',
+                                duration: 150,
+                            }}
+                        >
+                            <ActionIcon
+                                radius="md"
+                                onClick={onEditClicked}
+                                bg="foreground"
+                                c="background"
+                                size="md"
+                            >
+                                <MantineIcon
+                                    icon={IconPencil}
+                                    color="background"
+                                    size="md"
+                                />
+                            </ActionIcon>
+                        </Tooltip>
+                    )}
+
+                    {(userCanExportData ||
+                        (!isEditMode &&
+                            document.fullscreenEnabled &&
+                            isFullScreenFeatureEnabled) ||
+                        !isFullscreen) && <Divider orientation="vertical" />}
+
+                    {oldestCacheTime && (
+                        <Tooltip
+                            label={`Dashboard uses cached data from ${dayjs(
+                                oldestCacheTime,
+                            ).format('MMM D, YYYY h:mm A')}`}
+                            withinPortal
+                            position="bottom"
+                            openDelay={200}
+                            transitionProps={{
+                                transition: 'fade',
+                                duration: 150,
+                            }}
+                        >
+                            <UnstyledButton>
+                                <Group gap={6}>
+                                    <MantineIcon
+                                        icon={IconDatabase}
+                                        size="sm"
+                                        color="ldGray.6"
+                                    />
+
+                                    <Text fz={11} c="dimmed">
+                                        {dayjs(oldestCacheTime).format(
+                                            'MMM D, h:mm A',
+                                        )}
+                                    </Text>
+                                </Group>
+                            </UnstyledButton>
+                        </Tooltip>
+                    )}
 
                     {userCanExportData && (
                         <DashboardRefreshButton
@@ -406,36 +485,29 @@ const DashboardHeader = ({
                                 }
                                 withinPortal
                                 position="bottom"
+                                openDelay={200}
+                                transitionProps={{
+                                    transition: 'fade',
+                                    duration: 150,
+                                }}
                             >
                                 <ActionIcon
                                     variant="default"
+                                    size="md"
+                                    radius="md"
                                     onClick={onToggleFullscreen}
                                 >
                                     <MantineIcon
                                         icon={
                                             isFullscreen
-                                                ? IconArrowsMinimize
-                                                : IconArrowsMaximize
+                                                ? IconMinimize
+                                                : IconMaximize
                                         }
+                                        size="md"
                                     />
                                 </ActionIcon>
                             </Tooltip>
                         )}
-
-                    {!!userCanManageDashboard && !isFullscreen && (
-                        <Tooltip
-                            label="Edit dashboard"
-                            withinPortal
-                            position="bottom"
-                        >
-                            <ActionIcon
-                                variant="default"
-                                onClick={onEditClicked}
-                            >
-                                <MantineIcon icon={IconPencil} />
-                            </ActionIcon>
-                        </Tooltip>
-                    )}
 
                     {userCanExportData && !isFullscreen && (
                         <ShareLinkButton url={`${window.location.href}`} />
@@ -453,7 +525,11 @@ const DashboardHeader = ({
                             }
                         >
                             <Menu.Target>
-                                <ActionIcon variant="default">
+                                <ActionIcon
+                                    variant="default"
+                                    size="md"
+                                    radius="md"
+                                >
                                     <MantineIcon icon={IconDots} />
                                 </ActionIcon>
                             </Menu.Target>
@@ -462,7 +538,7 @@ const DashboardHeader = ({
                                 {!!userCanManageDashboard && (
                                     <>
                                         <Menu.Item
-                                            icon={
+                                            leftSection={
                                                 <MantineIcon icon={IconCopy} />
                                             }
                                             onClick={onDuplicate}
@@ -471,7 +547,7 @@ const DashboardHeader = ({
                                         </Menu.Item>
 
                                         <Menu.Item
-                                            icon={
+                                            leftSection={
                                                 <MantineIcon
                                                     icon={IconFolderSymlink}
                                                 />
@@ -489,7 +565,7 @@ const DashboardHeader = ({
                                     <Menu.Item
                                         component="button"
                                         role="menuitem"
-                                        icon={
+                                        leftSection={
                                             isPinned ? (
                                                 <MantineIcon
                                                     icon={IconPinnedOff}
@@ -508,7 +584,9 @@ const DashboardHeader = ({
 
                                 {!!userCanCreateDeliveries && (
                                     <Menu.Item
-                                        icon={<MantineIcon icon={IconSend} />}
+                                        leftSection={
+                                            <MantineIcon icon={IconSend} />
+                                        }
                                         onClick={() => {
                                             toggleScheduledDeliveriesModal(
                                                 true,
@@ -534,7 +612,7 @@ const DashboardHeader = ({
                                                     project?.upstreamProjectUuid ===
                                                     undefined
                                                 }
-                                                icon={
+                                                leftSection={
                                                     <MantineIcon
                                                         icon={
                                                             IconDatabaseExport
@@ -556,7 +634,9 @@ const DashboardHeader = ({
                                 {(userCanExportData ||
                                     userCanManageDashboard) && (
                                     <Menu.Item
-                                        icon={<MantineIcon icon={IconUpload} />}
+                                        leftSection={
+                                            <MantineIcon icon={IconUpload} />
+                                        }
                                         onClick={onExport}
                                     >
                                         Export dashboard
@@ -567,7 +647,7 @@ const DashboardHeader = ({
                                     <>
                                         <Menu.Divider />
                                         <Menu.Item
-                                            icon={
+                                            leftSection={
                                                 <MantineIcon
                                                     icon={IconTrash}
                                                     color="red"
@@ -577,7 +657,7 @@ const DashboardHeader = ({
                                             color="red"
                                         >
                                             Delete
-                                        </Menu.Item>{' '}
+                                        </Menu.Item>
                                     </>
                                 )}
                             </Menu.Dropdown>
@@ -606,6 +686,7 @@ const DashboardHeader = ({
                             onClose={() =>
                                 toggleScheduledDeliveriesModal(false)
                             }
+                            initialSchedulerUuid={initialSchedulerUuid}
                         />
                     )}
                     {(promoteDashboardDiff || promoteDashboardDiffLoading) &&
@@ -620,7 +701,7 @@ const DashboardHeader = ({
                                 onConfirm={() => {
                                     promoteDashboard(dashboardUuid);
                                 }}
-                            ></PromotionConfirmDialog>
+                            />
                         )}
                 </Group>
             )}

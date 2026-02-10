@@ -1,5 +1,6 @@
-import { type ItemsMap } from '@lightdash/common';
-import React, { type FC } from 'react';
+import { SchedulerFormat, type ItemsMap } from '@lightdash/common';
+import { useDebouncedValue } from '@mantine-8/hooks';
+import { useState, type FC } from 'react';
 import {
     selectParameterDefinitions,
     selectParameters,
@@ -21,6 +22,8 @@ interface DashboardSchedulersProps {
     name: string;
     isOpen: boolean;
     onClose: () => void;
+    /** If provided, opens directly in edit mode for this scheduler */
+    initialSchedulerUuid?: string;
 }
 
 export const DashboardSchedulersModal: FC<DashboardSchedulersProps> = ({
@@ -28,7 +31,12 @@ export const DashboardSchedulersModal: FC<DashboardSchedulersProps> = ({
     name,
     ...modalProps
 }) => {
-    const schedulersQuery = useDashboardSchedulers(dashboardUuid);
+    const [searchQuery, setSearchQuery] = useState<string | undefined>();
+    const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
+    const schedulersQuery = useDashboardSchedulers({
+        dashboardUuid,
+        searchQuery: debouncedSearchQuery,
+    });
     const createMutation = useDashboardSchedulerCreateMutation();
 
     // Extract parameter data from dashboard context
@@ -48,6 +56,8 @@ export const DashboardSchedulersModal: FC<DashboardSchedulersProps> = ({
             isChart={false}
             currentParameterValues={currentParameterValues}
             availableParameters={availableParameters}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
             {...modalProps}
         />
     );
@@ -60,14 +70,29 @@ interface ChartSchedulersProps {
     isThresholdAlert?: boolean;
     itemsMap?: ItemsMap;
     onClose: () => void;
+    /** If provided, opens directly in edit mode for this scheduler */
+    initialSchedulerUuid?: string;
 }
+
+// Formats for scheduled deliveries (excludes Google Sheets which has its own modal)
+const DELIVERY_FORMATS = [
+    SchedulerFormat.CSV,
+    SchedulerFormat.XLSX,
+    SchedulerFormat.IMAGE,
+];
 
 export const ChartSchedulersModal: FC<ChartSchedulersProps> = ({
     chartUuid,
     name,
     ...modalProps
 }) => {
-    const chartSchedulersQuery = useChartSchedulers(chartUuid);
+    const [searchQuery, setSearchQuery] = useState<string | undefined>();
+    const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
+    const chartSchedulersQuery = useChartSchedulers({
+        chartUuid,
+        searchQuery: debouncedSearchQuery,
+        formats: DELIVERY_FORMATS,
+    });
     const createMutation = useChartSchedulerCreateMutation();
 
     // Extract parameter data from Redux
@@ -83,6 +108,8 @@ export const ChartSchedulersModal: FC<ChartSchedulersProps> = ({
             isChart
             currentParameterValues={currentParameterValues}
             availableParameters={availableParameters}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
             {...modalProps}
         />
     );

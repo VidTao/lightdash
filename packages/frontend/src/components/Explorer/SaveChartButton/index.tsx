@@ -1,16 +1,22 @@
 import { getItemId, getMetrics } from '@lightdash/common';
 import { Button, Tooltip } from '@mantine-8/core';
 import { IconDeviceFloppy } from '@tabler/icons-react';
-import { useMemo, useState, type FC } from 'react';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import {
+    useAmbientAiEnabled,
+    useGenerateChartMetadata,
+} from '../../../ee/features/ambientAi';
 import {
     selectHasUnsavedChanges,
     selectIsValidQuery,
     selectSavedChart,
     selectUnsavedChartVersion,
+    selectUnsavedChartVersionForSave,
     useExplorerSelector,
 } from '../../../features/explorer/store';
 import { useExplore } from '../../../hooks/useExplore';
 import { useExplorerQuery } from '../../../hooks/useExplorerQuery';
+import { useProjectUuid } from '../../../hooks/useProjectUuid';
 import { useAddVersionMutation } from '../../../hooks/useSavedQuery';
 import useSearchParams from '../../../hooks/useSearchParams';
 import MantineIcon from '../../common/MantineIcon';
@@ -20,7 +26,13 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
     isExplorer,
     disabled,
 }) => {
+    const isAmbientAiEnabled = useAmbientAiEnabled();
+    const projectUuid = useProjectUuid();
     const unsavedChartVersion = useExplorerSelector(selectUnsavedChartVersion);
+    // For saving: enriched with map extent (only subscribes here to avoid re-renders elsewhere)
+    const unsavedChartVersionForSave = useExplorerSelector(
+        selectUnsavedChartVersionForSave,
+    );
 
     const savedChart = useExplorerSelector(selectSavedChart);
 
@@ -41,13 +53,15 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
     const { missingRequiredParameters } = useExplorerQuery();
 
     const [isQueryModalOpen, setIsQueryModalOpen] = useState<boolean>(false);
+    // Track if user clicked save while metadata is still loading
+    const [isPendingOpen, setIsPendingOpen] = useState(false);
 
     const update = useAddVersionMutation();
     const handleSavedQueryUpdate = () => {
-        if (savedChart?.uuid && unsavedChartVersion) {
+        if (savedChart?.uuid && unsavedChartVersionForSave) {
             update.mutate({
                 uuid: savedChart.uuid,
-                payload: unsavedChartVersion,
+                payload: unsavedChartVersionForSave,
             });
         }
     };
@@ -61,6 +75,28 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
         );
     }, [explore, unsavedChartVersion.metricQuery.additionalMetrics]);
 
+    // Open modal when metadata generation completes (if user clicked while loading)
+    const handleMetadataComplete = useCallback(() => {
+        setIsPendingOpen((pending) => {
+            if (pending) {
+                setIsQueryModalOpen(true);
+            }
+            return false;
+        });
+    }, []);
+
+    // AI metadata generation - triggered on hover for new charts
+    const {
+        generatedMetadata,
+        trigger: triggerMetadataGeneration,
+        isLoading: isGeneratingMetadata,
+    } = useGenerateChartMetadata({
+        projectUuid,
+        explore,
+        unsavedChartVersion,
+        onComplete: handleMetadataComplete,
+    });
+
     const isDisabled =
         disabled ||
         !unsavedChartVersion.tableName ||
@@ -69,9 +105,15 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
         !!missingRequiredParameters?.length;
 
     const handleSaveChart = () => {
-        return savedChart
-            ? handleSavedQueryUpdate()
-            : setIsQueryModalOpen(true);
+        if (savedChart) {
+            handleSavedQueryUpdate();
+        } else if (isGeneratingMetadata) {
+            // Metadata still loading - wait for it to complete
+            setIsPendingOpen(true);
+        } else {
+            // Metadata ready or not triggered - open immediately
+            setIsQueryModalOpen(true);
+        }
     };
 
     return (
@@ -91,7 +133,7 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
                     variant={isExplorer ? 'default' : undefined}
                     color={isExplorer ? 'blue' : 'green.7'}
                     size="xs"
-                    loading={update.isLoading}
+                    loading={update.isLoading || isPendingOpen}
                     leftSection={
                         isExplorer ? (
                             <MantineIcon icon={IconDeviceFloppy} />
@@ -100,6 +142,12 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
                     {...(isDisabled && {
                         'data-disabled': true,
                     })}
+                    // Trigger metadata generation on mouse enter if available
+                    onMouseEnter={() => {
+                        if (savedChart) return;
+                        if (!isAmbientAiEnabled) return;
+                        triggerMetadataGeneration();
+                    }}
                     style={{
                         '&[data-disabled="true"]': {
                             pointerEvents: 'all',
@@ -111,13 +159,18 @@ const SaveChartButton: FC<{ isExplorer?: boolean; disabled?: boolean }> = ({
                 </Button>
             </Tooltip>
 
-            {unsavedChartVersion && (
+            {unsavedChartVersionForSave && (
                 <ChartCreateModal
-                    isOpen={isQueryModalOpen}
-                    savedData={unsavedChartVersion}
-                    onClose={() => setIsQueryModalOpen(false)}
-                    onConfirm={() => setIsQueryModalOpen(false)}
+                    opened={isQueryModalOpen}
+                    savedData={unsavedChartVersionForSave}
+                    onClose={() => {
+                        setIsQueryModalOpen(false);
+                    }}
+                    onConfirm={() => {
+                        setIsQueryModalOpen(false);
+                    }}
                     defaultSpaceUuid={spaceUuid ?? undefined}
+                    chartMetadata={generatedMetadata ?? undefined}
                 />
             )}
         </>

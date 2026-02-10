@@ -14,6 +14,7 @@ import {
     type FunnelChartConfig,
     type GaugeChartConfig,
     type Item,
+    type ItemsMap,
     type MapChartConfig,
     type Metric,
     type MetricQuery,
@@ -65,6 +66,7 @@ export enum ActionType {
     TOGGLE_CUSTOM_DIMENSION_MODAL,
     TOGGLE_FORMAT_MODAL,
     UPDATE_METRIC_FORMAT,
+    UPDATE_DIMENSION_FORMAT,
     REPLACE_FIELDS,
     SET_PARAMETER_REFERENCES,
 }
@@ -72,6 +74,23 @@ export enum ActionType {
 export type ChartConfigCache<T = AnyType> = {
     chartConfig: T;
     pivotConfig?: { columns: string[] };
+};
+
+/**
+ * Map extent representing the current view state of a map.
+ * Used for saving/restoring map position.
+ */
+export type MapExtent = {
+    zoom: number;
+    lat: number;
+    lng: number;
+};
+
+// Extended cache type for map charts that includes temporary map extent
+export type MapChartConfigCache = ChartConfigCache<MapChartConfig['config']> & {
+    // Temporary map extent - updated on pan/zoom, read at save time
+    // This is NOT used during render to avoid re-renders on map interaction
+    tempMapExtent?: MapExtent | null;
 };
 
 export type ConfigCacheMap = {
@@ -82,7 +101,7 @@ export type ConfigCacheMap = {
     [ChartType.CARTESIAN]: ChartConfigCache<CartesianChartConfig['config']>;
     [ChartType.TREEMAP]: ChartConfigCache<TreemapChartConfig['config']>;
     [ChartType.GAUGE]: ChartConfigCache<GaugeChartConfig['config']>;
-    [ChartType.MAP]: ChartConfigCache<MapChartConfig['config']>;
+    [ChartType.MAP]: MapChartConfigCache;
     [ChartType.CUSTOM]: ChartConfigCache<CustomVisConfig['config']>;
 };
 
@@ -187,11 +206,18 @@ export type Action =
       }
     | {
           type: ActionType.TOGGLE_FORMAT_MODAL;
-          payload?: { metric: Metric };
+          payload?: { item: Metric | Dimension };
       }
     | {
           type: ActionType.UPDATE_METRIC_FORMAT;
           payload: { metric: Metric; formatOptions: CustomFormat | undefined };
+      }
+    | {
+          type: ActionType.UPDATE_DIMENSION_FORMAT;
+          payload: {
+              dimension: Dimension;
+              formatOptions: CustomFormat | undefined;
+          };
       }
     | {
           type: ActionType.REPLACE_FIELDS;
@@ -227,7 +253,7 @@ export interface ExplorerReduceState {
     modals: {
         format: {
             isOpen: boolean;
-            metric?: Metric;
+            item?: Metric | Dimension;
         };
         additionalMetric: {
             isOpen: boolean;
@@ -252,6 +278,11 @@ export interface ExplorerReduceState {
             description?: string;
             fieldItem?: Item | AdditionalMetric;
         };
+        periodOverPeriodComparison: {
+            isOpen: boolean;
+            metric?: Metric;
+            itemsMap?: ItemsMap;
+        };
     };
 
     // Query execution state - manages TanStack Query arguments and history
@@ -262,9 +293,6 @@ export interface ExplorerReduceState {
         unpivotedQueryUuidHistory: string[];
         // Flag to trigger a query execution from components (works regardless of auto-fetch setting)
         pendingFetch: boolean;
-        // Complete column order including PoP columns (derived from query results)
-        // This is synced when query results arrive with popMetadata
-        completeColumnOrder: string[];
     };
     fromDashboard?: string;
     isExploreFromHere?: boolean;

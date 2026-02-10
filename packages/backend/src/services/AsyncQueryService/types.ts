@@ -84,7 +84,8 @@ export type ExecuteAsyncUnderlyingDataQueryArgs = CommonAsyncQueryArgs & {
     filters: Filters;
     underlyingDataItemId?: string;
     dateZoom?: DateZoom;
-    limit?: number;
+    limit?: number | null;
+    sorts?: SortField[];
 };
 
 export type ExecuteAsyncQueryReturn = {
@@ -159,9 +160,4 @@ export type RunAsyncWarehouseQueryArgs = {
     };
     pivotConfiguration?: PivotConfiguration;
     originalColumns?: ResultColumns;
-    /**
-     * Set of metric field IDs that have period-over-period comparison enabled.
-     * Used to add popMetadata to the corresponding ResultColumns.
-     */
-    popEnabledMetrics?: Set<string>;
 };

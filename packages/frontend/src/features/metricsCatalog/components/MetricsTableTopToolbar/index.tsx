@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
     DEFAULT_SPOTLIGHT_TABLE_COLUMN_CONFIG,
     SpotlightTableColumns,
+    type CatalogCategoryFilterMode,
     type CatalogField,
 } from '@lightdash/common';
 import {
@@ -46,8 +47,9 @@ import {
 } from '@tabler/icons-react';
 import isEqual from 'lodash/isEqual';
 import { type MRT_TableInstance } from 'mantine-react-table';
-import { memo, useCallback, useMemo, type FC } from 'react';
+import { memo, useCallback, useMemo, useState, type FC } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { useDebounce } from 'react-use';
 import MantineIcon from '../../../../components/common/MantineIcon';
 import useTracking from '../../../../providers/Tracking/useTracking';
 import { TotalMetricsDot } from '../../../../svgs/metricsCatalog';
@@ -67,8 +69,9 @@ import {
 } from '../../store/metricsCatalogSlice';
 import { MetricCatalogView } from '../../types';
 import CategoriesFilter from './CategoriesFilter';
+import OwnersFilter from './OwnersFilter';
 import SegmentedControlHoverCard from './SegmentedControlHoverCard';
-
+import TableFilter from './TableFilter';
 type MetricsTableTopToolbarProps = GroupProps & {
     search: string | undefined;
     setSearch: (search: string) => void;
@@ -76,8 +79,14 @@ type MetricsTableTopToolbarProps = GroupProps & {
     setSelectedCategories: (
         categories: CatalogField['categories'][number]['tagUuid'][],
     ) => void;
+    categoryFilterMode: CatalogCategoryFilterMode;
+    setCategoryFilterMode: (mode: CatalogCategoryFilterMode) => void;
+    selectedTables: string[];
+    setSelectedTables: (tables: string[]) => void;
+    selectedOwners: string[];
+    setSelectedOwners: (owners: string[]) => void;
     totalResults: number;
-    isValidMetricsNodeCount: boolean;
+    hasMetricsSelected: boolean;
     isValidMetricsEdgeCount: boolean;
     showCategoriesFilter?: boolean;
     isValidMetricsTree: boolean;
@@ -125,7 +134,7 @@ const SortableColumn: FC<{
                     fz={13}
                     radius="md"
                     fw={500}
-                    color="ldDark.5"
+                    color="ldDark.9"
                 >
                     {column.name}
                 </Text>
@@ -149,19 +158,35 @@ const SortableColumn: FC<{
 
 export const MetricsTableTopToolbar: FC<MetricsTableTopToolbarProps> = memo(
     ({
-        search,
-        setSearch,
+        search: _search,
+        setSearch: _setSearch,
         totalResults,
         selectedCategories,
         setSelectedCategories,
+        categoryFilterMode,
+        setCategoryFilterMode,
+        selectedTables,
+        setSelectedTables,
+        selectedOwners,
+        setSelectedOwners,
         showCategoriesFilter,
         isValidMetricsTree,
-        isValidMetricsNodeCount,
+        hasMetricsSelected,
         isValidMetricsEdgeCount,
         metricCatalogView,
         table,
         ...props
     }) => {
+        const [search, setSearch] = useState(_search);
+
+        useDebounce(
+            () => {
+                _setSearch(search ?? '');
+            },
+            300,
+            [search],
+        );
+
         const userUuid = useAppSelector(
             (state) => state.metricsCatalog.user?.userUuid,
         );
@@ -375,7 +400,7 @@ export const MetricsTableTopToolbar: FC<MetricsTableTopToolbarProps> = memo(
                             h={20}
                             sx={{
                                 alignSelf: 'center',
-                                borderColor: '#DEE2E6',
+                                borderColor: 'ldGray.3',
                             }}
                         />
                     )}
@@ -383,8 +408,21 @@ export const MetricsTableTopToolbar: FC<MetricsTableTopToolbarProps> = memo(
                         <CategoriesFilter
                             selectedCategories={selectedCategories}
                             setSelectedCategories={setSelectedCategories}
+                            categoryFilterMode={categoryFilterMode}
+                            setCategoryFilterMode={setCategoryFilterMode}
                         />
                     )}
+
+                    {/* TODO :: permissions for table filter */}
+                    <TableFilter
+                        selectedTables={selectedTables}
+                        setSelectedTables={setSelectedTables}
+                    />
+
+                    <OwnersFilter
+                        selectedOwners={selectedOwners}
+                        setSelectedOwners={setSelectedOwners}
+                    />
                 </Group>
                 <Group spacing="xs">
                     <Badge
@@ -592,9 +630,7 @@ export const MetricsTableTopToolbar: FC<MetricsTableTopToolbarProps> = memo(
                                 label: (
                                     <SegmentedControlHoverCard
                                         totalMetricsCount={totalResults}
-                                        isValidMetricsNodeCount={
-                                            isValidMetricsNodeCount
-                                        }
+                                        hasMetricsSelected={hasMetricsSelected}
                                         isValidMetricsEdgeCount={
                                             isValidMetricsEdgeCount
                                         }

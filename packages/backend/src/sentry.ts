@@ -4,27 +4,39 @@ import { lightdashConfig } from './config/lightdashConfig';
 import { VERSION } from './version';
 
 export const IGNORE_ERRORS = [
+    'WarehouseConnectionError',
     'WarehouseQueryError',
     'FieldReferenceError',
     'NotEnoughResults',
     'CompileError',
-    'NotExistsError',
     'NotFoundError',
     'ForbiddenError',
     'TokenError',
     'AuthorizationError',
     'SshTunnelError',
     'ReadFileError',
+    'AiAgentValidatorError',
+    'UserInfoError', // Google oauth2 error when using invalid credentials
 ];
+
+const spotlightEnabled =
+    process.env.NODE_ENV === 'development' && !!process.env.SENTRY_SPOTLIGHT;
+
+// Use a dummy DSN when Spotlight is enabled but no real DSN is configured.
+// This allows Sentry to initialize and send events to Spotlight locally.
+const SPOTLIGHT_DUMMY_DSN = 'https://0@o0.ingest.sentry.io/0';
 
 Sentry.init({
     release: VERSION,
     enabled: process.env.NODE_ENV !== 'test',
-    dsn: lightdashConfig.sentry.backend.dsn,
+    dsn:
+        lightdashConfig.sentry.backend.dsn ||
+        (spotlightEnabled ? SPOTLIGHT_DUMMY_DSN : ''),
     environment:
         process.env.NODE_ENV === 'development'
             ? 'development'
             : lightdashConfig.mode,
+    spotlight: spotlightEnabled,
     integrations: [
         /**
          * Some integrations are enabled by default
@@ -53,10 +65,7 @@ Sentry.init({
     ],
     ignoreErrors: IGNORE_ERRORS,
     tracesSampler: (context) => {
-        if (
-            process.env.NODE_ENV === 'development' &&
-            process.env.SENTRY_SPOTLIGHT
-        ) {
+        if (spotlightEnabled) {
             return 1.0;
         }
 

@@ -10,10 +10,45 @@ import { type SchedulerTaskName } from './schedulerTaskList';
 
 export type SchedulerTargetType = 'email' | 'slack' | 'gsheets' | 'msteams';
 
+// Partial failure types for different scenarios
+export enum PartialFailureType {
+    MISSING_TARGETS = 'missing_targets',
+    DASHBOARD_CHART = 'dashboard_chart',
+    DASHBOARD_SQL_CHART = 'dashboard_sql_chart',
+}
+
+export type DashboardChartPartialFailure = {
+    type: PartialFailureType.DASHBOARD_CHART;
+    chartUuid: string;
+    chartName: string;
+    tileUuid: string;
+    error: string;
+};
+
+export type DashboardSqlChartPartialFailure = {
+    type: PartialFailureType.DASHBOARD_SQL_CHART;
+    savedSqlUuid: string;
+    chartName: string;
+    tileUuid: string;
+    error: string;
+};
+
+export type MissingTargetsPartialFailure = {
+    type: PartialFailureType.MISSING_TARGETS;
+};
+
+// Union of all partial failure types
+export type PartialFailure =
+    | DashboardChartPartialFailure
+    | DashboardSqlChartPartialFailure
+    | MissingTargetsPartialFailure;
+
 export type SchedulerDetails = {
     projectUuid?: string;
     organizationUuid?: string;
     createdByUserUuid?: string;
+    /** Partial failures that occurred during the scheduled delivery (e.g., some charts failed in a dashboard export) */
+    partialFailures?: PartialFailure[];
     [key: string]: AnyType;
 };
 

@@ -98,6 +98,7 @@ export const lightdashConfigMock: LightdashConfig = {
         path: '/metrics',
     },
     chart: { versionHistory: { daysLimit: 0 } },
+    dashboard: { maxTilesPerTab: 50, maxTabsPerDashboard: 20 },
     database: {
         connectionUri: undefined,
         maxConnections: undefined,
@@ -109,6 +110,9 @@ export const lightdashConfigMock: LightdashConfig = {
     },
     pylon: {
         appId: '',
+    },
+    headway: {
+        enabled: false,
     },
     lightdashSecret: 'look away this is a secret',
     logging: {
@@ -178,6 +182,8 @@ export const lightdashConfigMock: LightdashConfig = {
         },
     },
     staticIp: '',
+    signupUrl: undefined,
+    helpMenuUrl: undefined,
     trustProxy: false,
     mode: LightdashMode.DEFAULT,
     license: {
@@ -198,6 +204,7 @@ export const lightdashConfigMock: LightdashConfig = {
         csvCellsLimit: 100000,
         timezone: undefined,
         useSqlPivotResults: false,
+        showExecutionTime: false,
     },
     ai: {
         copilot: {
@@ -212,15 +219,9 @@ export const lightdashConfigMock: LightdashConfig = {
             providers: {
                 openai: {
                     apiKey: 'mock_api_key',
-                    modelName: 'mock_model_name',
+                    modelName: 'gpt-4.1-2025-04-14',
                     embeddingModelName: 'text-embedding-3-small',
-                    temperature: 0.2,
-                    responsesApi: false,
-                    reasoning: {
-                        enabled: false,
-                        reasoningSummary: 'auto',
-                        reasoningEffort: 'medium',
-                    },
+                    zeroDataRetention: false,
                 },
             },
             verifiedAnswerSimilarityThreshold: 0.6,
@@ -261,6 +262,8 @@ export const lightdashConfigMock: LightdashConfig = {
     headlessBrowser: {
         internalLightdashHost: 'https://test.lightdash.cloud',
         browserEndpoint: 'ws://headless-browser:3000',
+        maxScreenshotRetries: 5,
+        retryBaseDelayMs: 3000,
     },
     contentAsCode: {
         maxDownloads: 100,
@@ -288,6 +291,21 @@ export const lightdashConfigMock: LightdashConfig = {
         enabled: true,
     },
     echarts6: {
+        enabled: false,
+    },
+    editYamlInUi: {
+        enabled: false,
+    },
+    partialCompilation: {
+        enabled: false,
+    },
+    funnelBuilder: {
+        enabled: false,
+    },
+    maps: {
+        enabled: false,
+    },
+    nestedSpacesPermissions: {
         enabled: false,
     },
 };

@@ -5,6 +5,7 @@ import {
     isOpenIdIdentityIssuerType,
     LightdashMode,
     LocalIssuerTypes,
+    LOGIN_PAGE_ID,
     SEED_ORG_1_ADMIN_EMAIL,
     SEED_ORG_1_ADMIN_PASSWORD,
     type OpenIdIdentityIssuerType,
@@ -69,8 +70,8 @@ const Login: FC<{}> = () => {
     const redirectUrl = location.state?.from
         ? `${location.state.from.pathname}${location.state.from.search}`
         : redirectParam
-        ? redirectParam
-        : '/';
+          ? redirectParam
+          : '/';
 
     const form = useForm<LoginParams>({
         initialValues: {
@@ -307,7 +308,11 @@ const Login: FC<{}> = () => {
                         )}
                         <Text mx="auto" mt="md">
                             Don't have an account?{' '}
-                            <Anchor href="/register">Sign up</Anchor>
+                            <Anchor
+                                href={health.data?.signupUrl || '/register'}
+                            >
+                                Sign up
+                            </Anchor>
                         </Text>
                     </Stack>
                 </form>

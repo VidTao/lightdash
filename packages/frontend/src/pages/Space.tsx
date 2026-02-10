@@ -5,7 +5,8 @@ import {
     ResourceViewItemType,
     type ResourceViewSpaceItem,
 } from '@lightdash/common';
-import { ActionIcon, Box, Button, Group, Menu, Stack } from '@mantine/core';
+import { Menu } from '@mantine-8/core';
+import { ActionIcon, Box, Button, Group, Stack } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
     IconDots,
@@ -16,7 +17,6 @@ import {
 } from '@tabler/icons-react';
 import { useCallback, useState, type FC } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import AddResourceToSpaceModal from '../components/Explorer/SpaceBrowser/AddResourceToSpaceModal';
 import CreateResourceToSpace from '../components/Explorer/SpaceBrowser/CreateResourceToSpace';
 import { SpaceBrowserMenu } from '../components/Explorer/SpaceBrowser/SpaceBrowserMenu';
 import { AddToSpaceResources } from '../components/Explorer/SpaceBrowser/types';
@@ -82,7 +82,6 @@ const Space: FC = () => {
         useState<boolean>(false);
     const [isCreateNestedSpaceOpen, setIsCreateNestedSpaceOpen] =
         useState<boolean>(false);
-    const [addToSpace, setAddToSpace] = useState<AddToSpaceResources>();
     const [createToSpace, setCreateToSpace] = useState<AddToSpaceResources>();
 
     const { mutateAsync: contentAction, isLoading: isContentActionLoading } =
@@ -210,7 +209,7 @@ const Space: FC = () => {
                                         {userCanManageSpace && (
                                             <>
                                                 <Menu.Item
-                                                    icon={
+                                                    leftSection={
                                                         <MantineIcon
                                                             icon={
                                                                 IconFolderPlus
@@ -231,7 +230,7 @@ const Space: FC = () => {
 
                                         {userCanCreateDashboards ? (
                                             <Menu.Item
-                                                icon={
+                                                leftSection={
                                                     <MantineIcon
                                                         icon={IconPlus}
                                                     />
@@ -248,7 +247,7 @@ const Space: FC = () => {
 
                                         {userCanCreateCharts ? (
                                             <Menu.Item
-                                                icon={
+                                                leftSection={
                                                     <MantineIcon
                                                         icon={IconPlus}
                                                     />
@@ -354,13 +353,6 @@ const Space: FC = () => {
                             : 'shared'
                     }
                 />
-
-                {addToSpace && (
-                    <AddResourceToSpaceModal
-                        resourceType={addToSpace}
-                        onClose={() => setAddToSpace(undefined)}
-                    />
-                )}
 
                 {createToSpace && (
                     <CreateResourceToSpace resourceType={createToSpace} />

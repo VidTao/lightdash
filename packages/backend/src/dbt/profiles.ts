@@ -3,6 +3,7 @@ import {
     assertUnreachable,
     BigqueryAuthenticationType,
     CreateWarehouseCredentials,
+    ParameterError,
     SnowflakeAuthenticationType,
     WarehouseTypes,
 } from '@lightdash/common';
@@ -76,9 +77,8 @@ const credentialsTarget = (
                     threads: DEFAULT_THREADS,
                     keepalives_idle: credentials.keepalivesIdle,
                     sslmode: credentials.sslmode,
-                    sslrootcert: require.resolve(
-                        '@lightdash/warehouses/dist/warehouseClients/ca-bundle-aws-redshift.crt',
-                    ),
+                    sslrootcert:
+                        require.resolve('@lightdash/warehouses/dist/warehouseClients/ca-bundle-aws-redshift.crt'),
                     ra3_node: credentials.ra3Node || true,
                 },
                 environment: {
@@ -103,9 +103,8 @@ const credentialsTarget = (
                     sslmode: credentials.sslmode,
                     ...(credentials.host.endsWith('.rds.amazonaws.com')
                         ? {
-                              sslrootcert: require.resolve(
-                                  '@lightdash/warehouses/dist/warehouseClients/ca-bundle-aws-rds-global.pem',
-                              ),
+                              sslrootcert:
+                                  require.resolve('@lightdash/warehouses/dist/warehouseClients/ca-bundle-aws-rds-global.pem'),
                           }
                         : {}),
                 },
@@ -223,6 +222,26 @@ const credentialsTarget = (
                 environment: {
                     [envVar('user')]: credentials.user,
                     [envVar('password')]: credentials.password,
+                },
+            };
+        case WarehouseTypes.ATHENA:
+            return {
+                target: {
+                    type: WarehouseTypes.ATHENA,
+                    region_name: credentials.region,
+                    database: credentials.database,
+                    schema: credentials.schema,
+                    s3_staging_dir: credentials.s3StagingDir,
+                    s3_data_dir: credentials.s3DataDir || undefined,
+                    work_group: credentials.workGroup || undefined,
+                    threads: credentials.threads || DEFAULT_THREADS,
+                    num_retries: credentials.numRetries || undefined,
+                    aws_access_key_id: envVarReference('accessKeyId'),
+                    aws_secret_access_key: envVarReference('secretAccessKey'),
+                },
+                environment: {
+                    [envVar('accessKeyId')]: credentials.accessKeyId,
+                    [envVar('secretAccessKey')]: credentials.secretAccessKey,
                 },
             };
         default:

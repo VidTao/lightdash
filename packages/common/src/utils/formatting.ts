@@ -444,6 +444,7 @@ export function formatValueWithExpression(expression: string, value: unknown) {
             return formatWithExpression(
                 expression,
                 moment(sanitizedValue).toDate(),
+                { ignoreTimezone: true },
             );
         }
 
@@ -718,7 +719,7 @@ export function convertCustomFormatToFormatExpression(
         case CustomFormatType.ID:
         case CustomFormatType.DATE:
         case CustomFormatType.TIMESTAMP: {
-            // No implementation yet
+            // No format expression needed
             break;
         }
         default: {

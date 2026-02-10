@@ -14,6 +14,8 @@ export const BaseResponse: HealthState = {
     localDbtEnabled: true,
     siteUrl: 'https://test.lightdash.cloud',
     staticIp: '',
+    signupUrl: undefined,
+    helpMenuUrl: undefined,
     hasEmailClient: false,
     hasExtendedUsageAnalytics: false,
     hasMicrosoftTeams: false,
@@ -21,9 +23,6 @@ export const BaseResponse: HealthState = {
     hasGitlab: false,
     hasHeadlessBrowser: false,
     hasSlack: false,
-    slack: {
-        multiAgentChannelEnabled: false,
-    },
     auth: {
         disablePasswordAuthentication: false,
         google: {
@@ -72,12 +71,20 @@ export const BaseResponse: HealthState = {
     posthog: undefined,
     pylon: {
         appId: '',
+        verificationHash: undefined,
+    },
+    headway: {
+        enabled: false,
     },
     query: {
         csvCellsLimit: 100000,
         maxLimit: 5000,
         maxPageSize: 2500,
         defaultLimit: 500,
+    },
+    dashboard: {
+        maxTilesPerTab: 50,
+        maxTabsPerDashboard: 20,
     },
     rudder: {
         dataPlaneUrl: '',
@@ -104,8 +111,12 @@ export const BaseResponse: HealthState = {
     ai: {
         analyticsProjectUuid: undefined,
         analyticsDashboardUuid: undefined,
+        isAmbientAiEnabled: false,
     },
     echarts6: {
+        enabled: false,
+    },
+    funnelBuilder: {
         enabled: false,
     },
 };

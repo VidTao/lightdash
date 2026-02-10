@@ -6,7 +6,7 @@ import {
     isVizTableConfig,
     type DashboardSqlChartTile,
 } from '@lightdash/common';
-import { Box, Menu } from '@mantine/core';
+import { Box, Menu } from '@mantine-8/core';
 import {
     IconAlertCircle,
     IconFilePencil,
@@ -26,7 +26,6 @@ import useDashboardFiltersForTile from '../../hooks/dashboard/useDashboardFilter
 import useSearchParams from '../../hooks/useSearchParams';
 import useApp from '../../providers/App/useApp';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
-import { formatChartErrorMessage } from '../../utils/chartErrorUtils';
 import ChartView from '../DataViz/visualizations/ChartView';
 import { Table } from '../DataViz/visualizations/Table';
 import LinkMenuItem from '../common/LinkMenuItem';
@@ -35,11 +34,10 @@ import SuboptimalState from '../common/SuboptimalState/SuboptimalState';
 import ExportDataModal from './ExportDataModal';
 import TileBase from './TileBase';
 
-interface Props
-    extends Pick<
-        React.ComponentProps<typeof TileBase>,
-        'tile' | 'onEdit' | 'onDelete' | 'isEditMode'
-    > {
+interface Props extends Pick<
+    React.ComponentProps<typeof TileBase>,
+    'tile' | 'onEdit' | 'onDelete' | 'isEditMode'
+> {
     tile: DashboardSqlChartTile;
     minimal?: boolean;
 }
@@ -60,7 +58,7 @@ const DashboardOptions = memo(
         slug: string;
     }) => (
         <LinkMenuItem
-            icon={<MantineIcon icon={IconFilePencil} />}
+            leftSection={<MantineIcon icon={IconFilePencil} />}
             href={`/projects/${projectUuid}/sql-runner/${slug}/edit`}
             disabled={isEditMode}
             target="_blank"
@@ -90,6 +88,12 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
         (c) => c.updateSqlChartTilesMetadata,
     );
     const parameters = useDashboardContext((c) => c.parameterValues);
+    const markTileScreenshotReady = useDashboardContext(
+        (c) => c.markTileScreenshotReady,
+    );
+    const markTileScreenshotErrored = useDashboardContext(
+        (c) => c.markTileScreenshotErrored,
+    );
     const dashboardFilters = useDashboardFiltersForTile(tile.uuid);
 
     const closeDataExportModal = useCallback(
@@ -143,6 +147,30 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
         updateSqlChartTilesMetadata,
     ]);
 
+    useEffect(() => {
+        if (!savedSqlUuid) {
+            markTileScreenshotErrored(tile.uuid);
+            return;
+        }
+        if (chartError || chartResultsError) {
+            markTileScreenshotErrored(tile.uuid);
+            return;
+        }
+        if (!isChartLoading && !isChartResultsLoading && chartResultsData) {
+            markTileScreenshotReady(tile.uuid);
+        }
+    }, [
+        savedSqlUuid,
+        isChartLoading,
+        isChartResultsLoading,
+        chartResultsData,
+        chartError,
+        chartResultsError,
+        tile.uuid,
+        markTileScreenshotReady,
+        markTileScreenshotErrored,
+    ]);
+
     const userCanExportData = user.data?.ability.can(
         'manage',
         subject('ExportCsv', {
@@ -168,16 +196,16 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
                 chartName={tile.properties.chartName ?? ''}
                 tile={tile}
                 isLoading={!!savedSqlUuid && isChartLoading}
+                hasError
                 title={tileTitle}
+                chartKind={null}
                 {...rest}
             >
                 {(!savedSqlUuid || !isChartLoading) && (
                     <SuboptimalState
                         icon={IconAlertCircle}
-                        title={formatChartErrorMessage(
-                            tile.properties.chartName,
-                            errorMessage,
-                        )}
+                        title={tileTitle}
+                        description={errorMessage}
                     />
                 )}
             </TileBase>
@@ -193,6 +221,8 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
                 tile={tile}
                 title={tile.properties.title || tile.properties.chartName || ''}
                 isLoading={isChartResultsLoading}
+                hasError={!!chartResultsError}
+                chartKind={chartData.config.type}
                 {...rest}
                 titleHref={`/projects/${projectUuid}/sql-runner/${chartData.slug}`}
                 extraMenuItems={
@@ -210,11 +240,11 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
                 {chartResultsError && (
                     <SuboptimalState
                         icon={IconAlertCircle}
-                        title={formatChartErrorMessage(
-                            tile.properties.chartName,
+                        title={tile.properties.chartName}
+                        description={
                             chartResultsError?.error?.message ||
-                                'No data available',
-                        )}
+                            'No data available'
+                        }
                     />
                 )}
             </TileBase>
@@ -229,6 +259,8 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
             titleHref={`/projects/${projectUuid}/sql-runner/${chartData.slug}`}
             tile={tile}
             title={tile.properties.title || tile.properties.chartName || ''}
+            chartKind={chartData.config.type}
+            fullWidth={chartData.config.type === ChartKind.TABLE}
             {...rest}
             extraMenuItems={
                 projectUuid &&
@@ -242,7 +274,7 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
                             />
                         )}
                         <Menu.Item
-                            icon={<MantineIcon icon={IconTableExport} />}
+                            leftSection={<MantineIcon icon={IconTableExport} />}
                             disabled={isEditMode}
                             onClick={() => setIsDataExportModalOpen(true)}
                         >
@@ -255,7 +287,7 @@ const SqlChartTile: FC<Props> = ({ tile, isEditMode, ...rest }) => {
             {chartData.config.type === ChartKind.TABLE &&
                 isVizTableConfig(chartData.config) && (
                     // So that the Table tile isn't cropped by the overflow
-                    <Box w="100%" h="100%" sx={{ overflow: 'auto' }}>
+                    <Box w="100%" h="100%" style={{ overflow: 'auto' }}>
                         <Table
                             resultsRunner={chartResultsData.resultsRunner}
                             columnsConfig={chartData.config.columns}

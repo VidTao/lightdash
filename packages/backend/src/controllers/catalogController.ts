@@ -7,12 +7,16 @@ import {
     ApiGetMetricPeek,
     ApiMetricsCatalog,
     ApiSegmentDimensionsResponse,
+    CatalogOwner,
     getItemId,
+    type ApiFilterDimensionsResponse,
     type ApiGetMetricsTree,
+    type ApiGetMetricsTreePayload,
     type ApiMetricsTreeEdgePayload,
     type ApiMetricsWithAssociatedTimeDimensionResponse,
     type ApiSort,
     type ApiSuccessEmpty,
+    type CatalogCategoryFilterMode,
     type CatalogItemIcon,
     type KnexPaginateArgs,
 } from '@lightdash/common';
@@ -47,6 +51,7 @@ import { BaseController } from './baseController';
 export class CatalogController extends BaseController {
     /**
      * Get catalog items
+     * @summary Get catalog
      * @param projectUuid
      * @param query contains filters for the catalog items
      * - search: string
@@ -88,6 +93,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Get catalog metadata for tables
+     * @summary Get table metadata
      * @param projectUuid
      * @param table Table name to get metadata for
      * @returns ApiCatalogMetadataResults
@@ -114,6 +120,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Get catalog analytics for tables
+     * @summary Get table analytics
      * @param projectUuid
      * @param table Table name to get analytics for
      * @returns ApiCatalogAnalyticsResults
@@ -140,6 +147,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Get catalog analytics for fields
+     * @summary Get field analytics
      * @param projectUuid
      * @param field Field name to get analytics for
      * @param table Table where this field belongs
@@ -174,6 +182,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Get metrics catalog
+     * @summary List metrics in catalog
      * @param projectUuid
      * @param query contains filters for the catalog items as well as pagination
      * - search: string
@@ -194,6 +203,9 @@ export class CatalogController extends BaseController {
         @Query() sort?: ApiSort['sort'],
         @Query() order?: ApiSort['order'],
         @Query() categories?: ApiCatalogSearch['catalogTags'],
+        @Query() categoriesFilterMode?: CatalogCategoryFilterMode,
+        @Query() tables?: ApiCatalogSearch['tables'],
+        @Query() ownerUserUuids?: ApiCatalogSearch['ownerUserUuids'],
     ): Promise<ApiMetricsCatalog> {
         this.setStatus(200);
 
@@ -222,6 +234,9 @@ export class CatalogController extends BaseController {
                 {
                     searchQuery: search,
                     catalogTags: categories,
+                    catalogTagsFilterMode: categoriesFilterMode,
+                    tables,
+                    ownerUserUuids,
                 },
                 sortArgs,
             );
@@ -234,6 +249,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Get metric by table and metric name
+     * @summary Get metric
      * @param projectUuid
      * @param tableName
      * @param metricName
@@ -263,6 +279,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Get metrics with time dimensions
+     * @summary Get metrics with time dimensions
      * @param projectUuid
      * @returns ApiMetricsWithAssociatedTimeDimensionResponse
      */
@@ -273,6 +290,7 @@ export class CatalogController extends BaseController {
     async getMetricsWithTimeDimensions(
         @Path() projectUuid: string,
         @Request() req: express.Request,
+        @Query() tableName?: string,
     ): Promise<ApiMetricsWithAssociatedTimeDimensionResponse> {
         this.setStatus(200);
 
@@ -282,6 +300,40 @@ export class CatalogController extends BaseController {
                 req.user!,
                 projectUuid,
                 CatalogSearchContext.SPOTLIGHT,
+                tableName,
+            );
+
+        return {
+            status: 'ok',
+            results,
+        };
+    }
+
+    /**
+     * Get dimensions that can be used to filter metrics
+     * @summary Get filter dimensions
+     * @param projectUuid
+     * @param tableName
+     * @returns ApiFilterDimensionsResponse
+     */
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('/{tableName}/filter-dimensions')
+    @OperationId('getFilterDimensions')
+    async getFilterDimensions(
+        @Path() projectUuid: string,
+        @Path() tableName: string,
+        @Request() req: express.Request,
+    ): Promise<ApiFilterDimensionsResponse> {
+        this.setStatus(200);
+
+        const results = await this.services
+            .getCatalogService()
+            .getFilterDimensions(
+                req.user!,
+                projectUuid,
+                tableName,
+                CatalogSearchContext.METRICS_EXPLORER,
             );
 
         return {
@@ -292,8 +344,9 @@ export class CatalogController extends BaseController {
 
     /**
      * Get dimensions that can be used to segment metrics
+     * @summary Get segment dimensions
      * @param projectUuid
-     * @param metric
+     * @param tableName
      * @returns ApiSegmentDimensionsResponse
      */
     @Middlewares([allowApiKeyAuthentication, isAuthenticated])
@@ -322,6 +375,10 @@ export class CatalogController extends BaseController {
         };
     }
 
+    /**
+     * Add a category to a catalog item
+     * @summary Add category to catalog item
+     */
     @Middlewares([
         allowApiKeyAuthentication,
         isAuthenticated,
@@ -350,6 +407,10 @@ export class CatalogController extends BaseController {
         };
     }
 
+    /**
+     * Remove a category from a catalog item
+     * @summary Remove category from catalog item
+     */
     @Middlewares([
         allowApiKeyAuthentication,
         isAuthenticated,
@@ -375,6 +436,10 @@ export class CatalogController extends BaseController {
         };
     }
 
+    /**
+     * Update the icon for a catalog item
+     * @summary Update catalog item icon
+     */
     @Middlewares([
         allowApiKeyAuthentication,
         isAuthenticated,
@@ -405,11 +470,16 @@ export class CatalogController extends BaseController {
         };
     }
 
+    /**
+     * Get the metrics tree structure (deprecated, use POST instead)
+     * @summary Get metrics tree
+     * @deprecated Use POST /metrics/tree instead for large metric lists
+     */
     @Middlewares([allowApiKeyAuthentication, isAuthenticated])
     @SuccessResponse('200', 'Success')
     @Get('/metrics/tree')
-    @OperationId('getMetricsTree')
-    async getMetricsTree(
+    @OperationId('getMetricsTreeLegacy')
+    async getMetricsTreeLegacy(
         @Path() projectUuid: string,
         @Request() req: express.Request,
         @Query() metricUuids: string[],
@@ -426,6 +496,35 @@ export class CatalogController extends BaseController {
         };
     }
 
+    /**
+     * Get the metrics tree structure
+     * @summary Get metrics tree
+     */
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Post('/metrics/tree')
+    @OperationId('getMetricsTree')
+    async getMetricsTree(
+        @Path() projectUuid: string,
+        @Request() req: express.Request,
+        @Body() body: ApiGetMetricsTreePayload,
+    ): Promise<ApiGetMetricsTree> {
+        this.setStatus(200);
+
+        const results = await this.services
+            .getCatalogService()
+            .getMetricsTree(req.user!, projectUuid, body.metricUuids);
+
+        return {
+            status: 'ok',
+            results,
+        };
+    }
+
+    /**
+     * Create an edge in the metrics tree
+     * @summary Create metrics tree edge
+     */
     @Middlewares([
         allowApiKeyAuthentication,
         isAuthenticated,
@@ -450,6 +549,10 @@ export class CatalogController extends BaseController {
         };
     }
 
+    /**
+     * Delete an edge from the metrics tree
+     * @summary Delete metrics tree edge
+     */
     @Middlewares([
         allowApiKeyAuthentication,
         isAuthenticated,
@@ -482,6 +585,7 @@ export class CatalogController extends BaseController {
 
     /**
      * Check if there are any metrics in catalog
+     * @summary Check if metrics exist in catalog
      * @param projectUuid
      * @returns boolean indicating if there are metrics
      */
@@ -498,6 +602,30 @@ export class CatalogController extends BaseController {
         const results = await this.services
             .getCatalogService()
             .hasMetricsInCatalog(req.user!, projectUuid);
+
+        return {
+            status: 'ok',
+            results,
+        };
+    }
+
+    /**
+     * Get distinct metric owners for filter dropdown
+     * @summary List metric owners
+     */
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('/metrics/owners')
+    @OperationId('getMetricOwners')
+    async getMetricOwners(
+        @Path() projectUuid: string,
+        @Request() req: express.Request,
+    ): Promise<{ status: 'ok'; results: CatalogOwner[] }> {
+        this.setStatus(200);
+
+        const results = await this.services
+            .getCatalogService()
+            .getMetricOwners(req.user!, projectUuid);
 
         return {
             status: 'ok',

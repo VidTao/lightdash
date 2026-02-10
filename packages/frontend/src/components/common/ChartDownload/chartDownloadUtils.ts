@@ -1,6 +1,13 @@
+import { ChartType } from '@lightdash/common';
 import JsPDF from 'jspdf';
 
 const FILE_NAME = 'lightdash_chart';
+export const CHART_TYPES_WITHOUT_IMAGE_EXPORT = [
+    ChartType.CUSTOM,
+    ChartType.BIG_NUMBER,
+    ChartType.TABLE,
+    ChartType.MAP,
+];
 
 export enum DownloadType {
     JPEG = 'JPEG',

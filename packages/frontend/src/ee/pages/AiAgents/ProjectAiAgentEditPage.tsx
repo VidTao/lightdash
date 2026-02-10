@@ -147,8 +147,8 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
     const activeTab = location.pathname.includes('/evals')
         ? 'evals'
         : location.pathname.includes('/verified-artifacts')
-        ? 'verified-artifacts'
-        : 'setup';
+          ? 'verified-artifacts'
+          : 'setup';
 
     const { mutateAsync: createAgent } = useProjectCreateAiAgentMutation(
         projectUuid!,
@@ -363,7 +363,7 @@ const ProjectAiAgentEditPage: FC<Props> = ({ isCreateMode = false }) => {
             <AppShell.Main
                 pt={0}
                 pr={0}
-                pb={0}
+                pb="emptySpace"
                 mih={`calc(100vh - ${navbarHeight}px)`}
                 bg="ldGray.0"
             >

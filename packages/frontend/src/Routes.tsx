@@ -22,9 +22,9 @@ import NavBar from './components/NavBar';
 import PrivateRoute from './components/PrivateRoute';
 import ProjectRoute from './components/ProjectRoute';
 import UserCompletionModal from './components/UserCompletionModal';
+import FunnelBuilder from './features/funnelBuilder/FunnelBuilderPage';
 import { MetricCatalogView } from './features/metricsCatalog/types';
 import AuthPopupResult from './pages/AuthPopupResult';
-import Catalog from './pages/Catalog';
 import ChartHistory from './pages/ChartHistory';
 import CreateProject from './pages/CreateProject';
 import CreateProjectSettings from './pages/CreateProjectSettings';
@@ -62,7 +62,7 @@ const DashboardPageWrapper: FC = () => {
 
     return (
         <>
-            <NavBar />
+            <NavBar isFixed={false} />
             <TrackPage name={PageName.DASHBOARD}>
                 <Dashboard key={dashboardUuid} />
             </TrackPage>
@@ -160,6 +160,10 @@ const MINIMAL_ROUTES: RouteObject[] = [
             },
             {
                 path: '/minimal/projects/:projectUuid/dashboards/:dashboardUuid',
+                element: <MinimalDashboard />,
+            },
+            {
+                path: '/minimal/projects/:projectUuid/dashboards/:dashboardUuid/view/tabs/:tabUuid',
                 element: <MinimalDashboard />,
             },
         ],
@@ -469,12 +473,12 @@ const APP_ROUTES: RouteObject[] = [
                         ),
                     },
                     {
-                        path: '/projects/:projectUuid/catalog',
+                        path: '/projects/:projectUuid/funnel-builder',
                         element: (
                             <>
                                 <NavBar />
-                                <TrackPage name={PageName.CATALOG}>
-                                    <Catalog />
+                                <TrackPage name={PageName.FUNNEL_BUILDER}>
+                                    <FunnelBuilder />
                                 </TrackPage>
                             </>
                         ),

@@ -1,4 +1,5 @@
 import { subject } from '@casl/ability';
+import { Button, getDefaultZIndex, Menu } from '@mantine-8/core';
 import {
     IconBuildingBank,
     IconDatabase,
@@ -6,8 +7,6 @@ import {
     IconBuildingStore,
 } from '@tabler/icons-react';
 import { type FC } from 'react';
-
-import { Button, Menu } from '@mantine/core';
 import { Link } from 'react-router';
 import { useActiveProjectUuid } from '../../hooks/useActiveProject';
 import useApp from '../../providers/App/useApp';
@@ -47,6 +46,8 @@ const SettingsMenu: FC = () => {
             position="bottom-end"
             arrowOffset={16}
             offset={-2}
+            zIndex={getDefaultZIndex('max')}
+            portalProps={{ target: '#navbar-header' }}
         >
             <Menu.Target>
                 <Button
@@ -63,7 +64,7 @@ const SettingsMenu: FC = () => {
                 {activeProjectUuid && userCanCreateProject && (
                     <Menu.Item
                         component={Link}
-                        icon={<MantineIcon icon={IconDatabase} />}
+                        leftSection={<MantineIcon icon={IconDatabase} />}
                         to={`/generalSettings/projectManagement/${activeProjectUuid}/settings`}
                     >
                         Project settings
@@ -73,7 +74,7 @@ const SettingsMenu: FC = () => {
                 {userCanViewOrganization && (
                     <Menu.Item
                         component={Link}
-                        icon={<MantineIcon icon={IconBuildingBank} />}
+                        leftSection={<MantineIcon icon={IconBuildingBank} />}
                         to={`/generalSettings/organization`}
                     >
                         Organization settings
@@ -83,7 +84,7 @@ const SettingsMenu: FC = () => {
                 {userCanViewOrganization && (
                     <Menu.Item
                         component={Link}
-                        icon={<MantineIcon icon={IconBuildingStore} />}
+                        leftSection={<MantineIcon icon={IconBuildingStore} />}
                         to={`/storeSettings`}
                     >
                         Store settings

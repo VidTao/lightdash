@@ -1,4 +1,4 @@
-import { Stack } from '@mantine/core';
+import { Stack } from '@mantine-8/core';
 import { useMemo, type FC } from 'react';
 import { Navigate, useParams, useRoutes, type RouteObject } from 'react-router';
 import CompilationHistory from '../components/CompilationHistory';
@@ -10,6 +10,7 @@ import ProjectTablesConfiguration from '../components/ProjectTablesConfiguration
 import SettingsScheduler from '../components/SettingsScheduler';
 import SettingsUsageAnalytics from '../components/SettingsUsageAnalytics';
 import { SettingsValidator } from '../components/SettingsValidator';
+import { DocumentTitle } from '../components/common/DocumentTitle';
 import ErrorState from '../components/common/ErrorState';
 import PageBreadcrumbs from '../components/common/PageBreadcrumbs';
 import SuboptimalState from '../components/common/SuboptimalState/SuboptimalState';
@@ -97,9 +98,9 @@ const ProjectSettings: FC = () => {
 
     return (
         <>
-            <title>Project Settings - Bratrax</title>
+            <DocumentTitle title="Project Settings" />
 
-            <Stack spacing="xl">
+            <Stack gap="xl">
                 <PageBreadcrumbs
                     items={[
                         {

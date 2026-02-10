@@ -4,14 +4,13 @@ import {
     Stack,
     Text,
     createPolymorphicComponent,
-    useMantineColorScheme,
     type MenuItemProps,
-} from '@mantine/core';
+} from '@mantine-8/core';
 import { type Icon as TablerIconType } from '@tabler/icons-react';
 import { forwardRef, type ReactNode } from 'react';
 import MantineIcon, { type MantineIconProps } from './MantineIcon';
 
-interface LargeMenuItemProps extends Omit<MenuItemProps, 'icon'> {
+interface LargeMenuItemProps extends Omit<MenuItemProps, 'leftSection'> {
     icon: TablerIconType;
     iconProps?: Omit<MantineIconProps, 'icon'>;
     title: string;
@@ -23,33 +22,28 @@ const LargeMenuItem: ReturnType<
 > = createPolymorphicComponent<'button', LargeMenuItemProps>(
     forwardRef<HTMLButtonElement, LargeMenuItemProps>(
         ({ icon, title, description, iconProps, ...rest }, ref) => {
-            const { colorScheme } = useMantineColorScheme();
             return (
-                <Menu.Item<'button'>
+                <Menu.Item
                     ref={ref}
-                    icon={
-                        <Card
-                            p="sm"
-                            bg={
-                                colorScheme === 'dark' ? 'ldDark.7' : 'ldGray.7'
-                            }
-                            radius="sm"
-                        >
+                    leftSection={
+                        <Card p="sm" bg="ldDark.6" radius="md">
                             <MantineIcon
                                 icon={icon}
                                 size="lg"
-                                color="ldDark.0"
+                                color="white"
                                 {...iconProps}
                             />
                         </Card>
                     }
                     {...rest}
                 >
-                    <Stack spacing="xxs">
-                        <Text color="white" fw={600}>
+                    <Stack gap="xxs">
+                        <Text c="white" fw={600} fz="sm">
                             {title}
                         </Text>
-                        <Text color="dimmed">{description}</Text>
+                        <Text c="ldDark.8" fz="xs">
+                            {description}
+                        </Text>
                     </Stack>
                 </Menu.Item>
             );

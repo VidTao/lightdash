@@ -1,5 +1,9 @@
-import { type DashboardMarkdownTile } from '@lightdash/common';
-import { Menu, Text, useMantineTheme } from '@mantine/core';
+import {
+    MARKDOWN_TILE_CLASS,
+    type DashboardMarkdownTile,
+} from '@lightdash/common';
+import { Menu } from '@mantine-8/core';
+import { Text, useMantineTheme } from '@mantine/core';
 import { IconCopy } from '@tabler/icons-react';
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import React, { useCallback, useMemo, useState, type FC } from 'react';
@@ -24,7 +28,7 @@ const MarkdownTile: FC<Props> = (props) => {
 
     const {
         tile: {
-            properties: { title, content },
+            properties: { title, content, hideFrame },
             uuid,
         },
         isEditMode,
@@ -81,7 +85,8 @@ const MarkdownTile: FC<Props> = (props) => {
 
     return (
         <TileBase
-            title={title}
+            title={hideFrame ? '' : title}
+            transparent={hideFrame}
             lockHeaderVisibility={isCommentsMenuOpen}
             visibleHeaderElement={
                 tileHasComments ? dashboardComments : undefined
@@ -90,7 +95,7 @@ const MarkdownTile: FC<Props> = (props) => {
             extraMenuItems={
                 isEditMode && (
                     <Menu.Item
-                        icon={<MantineIcon icon={IconCopy} />}
+                        leftSection={<MantineIcon icon={IconCopy} />}
                         onClick={handleDuplicate}
                     >
                         Duplicate
@@ -108,12 +113,13 @@ const MarkdownTile: FC<Props> = (props) => {
                     '.wmde-markdown': {
                         fontSize: '14px',
                         backgroundColor: 'transparent',
+                        fontFamily: theme.fontFamily,
                     },
                 }}
             >
                 <div data-color-mode={theme.colorScheme}>
                     <MarkdownPreview
-                        className="markdown-tile"
+                        className={MARKDOWN_TILE_CLASS}
                         source={content}
                         rehypePlugins={[
                             [rehypeExternalLinks, { target: '_blank' }],
