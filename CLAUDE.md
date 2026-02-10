@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Lightdash is an open-source business intelligence tool (Looker alternative) that connects to dbt projects to enable self-service analytics. It's a TypeScript monorepo built with modern web technologies.
+**Bratrax** is a fork of Lightdash (open-source BI tool, Looker alternative) that connects to dbt projects to enable self-service analytics. It's a TypeScript monorepo built with modern web technologies.
+
+### Licensing Model
+-   Everything outside `packages/backend/src/ee/` is **MIT licensed** (free to use/modify)
+-   Everything under `packages/backend/src/ee/` is **Source Available** (requires Enterprise Subscription for production use; copying/distributing is forbidden)
+-   **NEVER copy code from `/ee/` into other directories** - this violates the license
 
 ## Architecture
 
@@ -12,6 +17,8 @@ Lightdash is an open-source business intelligence tool (Looker alternative) that
 
 -   `packages/common/` - Shared utilities, types, and business logic
 -   `packages/backend/` - Node.js/Express API server with database layer
+-   `packages/backend/src/ee/` - Enterprise Edition (Source Available license - DO NOT COPY)
+-   `packages/backend/src/bratrax/` - **Bratrax custom extension module** (our own implementations)
 -   `packages/frontend/` - React web application with Vite build system
 -   `packages/warehouses/` - Data warehouse client adapters (BigQuery, Snowflake, Postgres, etc.)
 -   `packages/cli/` - Command-line interface for dbt project management
@@ -153,7 +160,6 @@ pnpm -F backend rollback-last
     -   Import from `@lightdash/common`: `import { assertUnreachable } from '@lightdash/common';`
     -   This provides compile-time safety when new union members are added
 
-<<<<<<< HEAD
 ## Spotlight Feature Setup
 
 Spotlight is Lightdash's metrics-focused suite including Metrics Catalog, Metrics Explorer, and Canvas View (alpha).
@@ -205,7 +211,6 @@ Spotlight is Lightdash's metrics-focused suite including Metrics Catalog, Metric
 - Metrics link in nav only shows when `hasMetricsInCatalog` returns true
 - Only supports time intervals: DAY, WEEK, MONTH, YEAR
 - Canvas View for metric trees is in alpha, accessed via `/projects/{projectUuid}/metrics/canvas`
-=======
 ## Security Best Practices
 
 ### Warehouse Credentials Protection
@@ -258,7 +263,59 @@ export const sensitiveCredentialsFieldNames = [
 -   `XxxCredentials` types are `Omit<CreateXxxCredentials, SensitiveCredentialsFieldNames>` (used for API responses)
 -   `ProjectModel.get()` filters credentials using this array before returning to API controllers
 -   `ProjectModel.getWithSensitiveFields()` returns unfiltered data for internal use only
->>>>>>> upstream/main
+
+## Bratrax Extension Module
+
+### Architecture
+
+Bratrax extends Lightdash via the **provider pattern** instead of copying EE code. The core `ServiceRepository` (MIT licensed) supports service/model overrides through providers:
+
+```typescript
+// packages/backend/src/index.ts - single integration point
+import { getBratraxAppArguments } from './bratrax';
+
+const app = new App({
+    lightdashConfig,
+    ...(await getBratraxAppArguments()),  // replaces getEnterpriseAppArguments()
+});
+```
+
+### Provider Pattern
+
+`getBratraxAppArguments()` returns the same shape as the EE equivalent:
+-   `serviceProviders` - Override services (AI, embedding, etc.)
+-   `modelProviders` - Override data access models
+-   `clientProviders` - Override clients (scheduler, Slack, etc.)
+-   `schedulerWorkerFactory` - Custom background job worker
+-   `customExpressMiddlewares` - Additional Express middleware
+
+Services are registered via `ServiceRepository.getService()` which checks providers first, then falls back to default factory. EE services are typed as `unknown` in `ServiceManifest`, so any implementation can be provided.
+
+### Directory Structure
+```
+packages/backend/src/bratrax/
+├── index.ts                    # getBratraxAppArguments()
+├── services/                   # Original service implementations
+├── models/                     # Original data access models
+├── controllers/                # TSOA API controllers
+├── database/
+│   ├── entities/               # Table definitions
+│   └── migrations/             # Bratrax-specific migrations
+└── scheduler/                  # Background job extensions
+```
+
+### Rules for Bratrax Development
+1.  **NEVER import from `../ee/` or copy EE code** - write original implementations
+2.  **DO use MIT-licensed infrastructure**: ServiceRepository, ModelRepository, TSOA, Knex, common package
+3.  **DO study EE for feature parity** (understand WHAT it does), but write HOW yourself
+4.  **Migrations go in `src/bratrax/database/migrations/`** (not in `src/ee/database/migrations/`)
+5.  **On upstream merge**: Only `src/index.ts` (one line) conflicts; `/bratrax/` is untouched by upstream
+
+### Upstream Merge Strategy
+-   EE directory (`src/ee/`) updates cleanly from upstream (we don't modify it)
+-   Bratrax directory (`src/bratrax/`) is untouched by upstream (they don't know about it)
+-   Core MIT code merges normally
+-   Only conflict: `src/index.ts` import line - trivial to resolve
 
 ## Development Troubleshooting
 
