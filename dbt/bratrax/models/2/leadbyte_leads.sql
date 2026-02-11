@@ -28,8 +28,14 @@ SELECT
   COALESCE(su.lead_c3, vi.lead_c3) AS lead_c3,
   COALESCE(su.lead_sid, vi.lead_sid) AS lead_sid,
   COALESCE(su.lead_ssid, vi.lead_ssid) AS lead_ssid,
-  COALESCE(su.received_at_utc, vi.received_at_utc) AS received_at_utc,
-  COALESCE(su.date, vi.date) AS date,
+  TIMESTAMP_ADD(
+    COALESCE(su.received_at_utc, vi.received_at_utc), 
+    INTERVAL 7 HOUR
+  ) AS received_at_utc,
+  DATE(TIMESTAMP_ADD(
+    COALESCE(su.received_at_utc, vi.received_at_utc), 
+    INTERVAL 7 HOUR
+  )) AS date,
   COALESCE(su.country, vi.country) AS country,
   
   -- ============================================================
@@ -59,11 +65,11 @@ SELECT
   su.campaign_delivery_model,
   
   -- ============================================================
-  -- Buyer Info (from sold_unsold, enriched from clients)
+  -- Buyer Info (from sold_unsold only)
   -- ============================================================
   su.buyer_id,
   su.buyer_bid,
-  COALESCE(c.company_name, su.buyer_name) AS buyer_name,
+  su.buyer_name,
   
   -- ============================================================
   -- Delivery Info (from sold_unsold + deliveries_list)
@@ -103,9 +109,8 @@ SELECT
   -- Lead Status (Derived)
   -- ============================================================
   CASE 
-    WHEN COALESCE(su.campaign_reference, vi.campaign_reference) LIKE '%DISQUALIFIED%' THEN 'Disqualified'
-    WHEN su.lead_id IS NOT NULL AND su.revenue > 0 THEN 'Sold - PPL'
-    WHEN su.lead_id IS NOT NULL THEN 'Sold - Retainer'
+    WHEN su.lead_id IS NULL THEN 'Validation Only'
+    WHEN su.revenue > 0 THEN 'Sold'
     ELSE 'Unsold'
   END AS lead_status,
   
@@ -114,11 +119,7 @@ SELECT
   -- ============================================================
   vi.lead_id IS NOT NULL AS in_valid_invalid,
   su.lead_id IS NOT NULL AS in_sold_unsold,
-  CASE
-    WHEN COALESCE(su.campaign_reference, vi.campaign_reference) LIKE '%DISQUALIFIED%' THEN FALSE
-    WHEN su.lead_id IS NOT NULL THEN TRUE
-    ELSE FALSE
-  END AS is_sold,
+  su.revenue > 0 AS is_sold,
   
   -- ============================================================
   -- Metadata
@@ -139,10 +140,6 @@ FULL OUTER JOIN `bratrax-without-flattening.cod.leadbyte_webhook_sold_unsold` su
 
 LEFT JOIN `bratrax-without-flattening.cod.leadbyte_deliveries_list` d
   ON su.delivery_name = d.Reference
-  AND d.status = 'Active'
 
 LEFT JOIN `bratrax-without-flattening.cod.us_states_view` st
   ON COALESCE(su.state, vi.state) = st.state_raw
-
-LEFT JOIN `bratrax-without-flattening.cod.clients` c
-  ON su.buyer_id = c.buyer_id

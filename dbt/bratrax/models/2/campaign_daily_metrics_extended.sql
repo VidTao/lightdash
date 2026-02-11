@@ -10,6 +10,9 @@ WITH campaign_leads AS (
     lead_date as date,
     client_id,
     attributed_campaign_id as campaign_id,
+    buyer_bid,
+    buyer_name,
+    delivery_name,
     COUNT(lead_id) as leads_total,
     COUNT(CASE WHEN in_sold_unsold = TRUE THEN 1 END) as leads_sold,
     COUNT(CASE WHEN in_valid_invalid = TRUE AND in_sold_unsold = FALSE THEN 1 END) as leads_invalid,
@@ -17,7 +20,7 @@ WITH campaign_leads AS (
   FROM `bratrax-without-flattening.cod.vw_lead_attribution_complete`
   WHERE final_attribution_status IN ('matched_to_campaign', 'attributed_no_campaign_match')
     AND attributed_campaign_id IS NOT NULL
-  GROUP BY 1, 2, 3
+  GROUP BY 1, 2, 3, 4, 5, 6
 )
 
 SELECT 
@@ -29,6 +32,9 @@ SELECT
   pc.allocation_id,
   pc.status as campaign_status,
   pc.campaign_type,
+  cl.buyer_bid,
+  cl.buyer_name,
+  cl.delivery_name,
   cdm.spend as daily_spend,
   cdm.impressions,
   cdm.clicks,
