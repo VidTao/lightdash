@@ -19,11 +19,13 @@ import {
     allowApiKeyAuthentication, // ← Changed from allowOauthAuthentication
 } from '../controllers/authentication';
 import Logger from '../logging/logger';
-import { ExtraContext, McpServiceMain } from '../services/McpService/McpServiceMain';import { userAttributeOverridesSchema } from '../services/UserAttributesService/UserAttributeUtils';
+import type { BratraxMcpService } from '../bratrax/mcp/BratraxMcpService';
+import type { ExtraContext } from '../bratrax/mcp/types';
+import { userAttributeOverridesSchema } from '../services/UserAttributesService/UserAttributeUtils';
 
 const mcpRouter: Router = express.Router({ mergeParams: true });
 
-function getMcpService(req: express.Request): McpServiceMain {
+function getMcpService(req: express.Request): BratraxMcpService {
     try {
         return req.services.getMcpServiceMain();
     } catch (e) {
