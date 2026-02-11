@@ -57,6 +57,18 @@ models:
         meta:
           dimension:
             type: string
+      - name: buyer_bid
+        meta:
+          dimension:
+            type: number
+      - name: buyer_name
+        meta:
+          dimension:
+            type: string
+      - name: delivery_name
+        meta:
+          dimension:
+            type: string
       - name: leads_invalid
         meta:
           dimension:
