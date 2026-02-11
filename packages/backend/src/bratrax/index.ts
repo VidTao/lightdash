@@ -1,17 +1,29 @@
 import { BratraxMcpService } from './mcp/BratraxMcpService';
+import { BratraxEmbedService } from './services/BratraxEmbedService';
 
 /**
  * Returns provider overrides for the Bratrax extension module.
  *
  * This function mirrors the shape of `getEnterpriseAppArguments()` from
  * the EE module, letting it slot into the same integration point in
- * `src/index.ts`.  Currently it only supplies an MCP service provider;
- * additional providers (models, clients, middleware) can be added here
- * as Bratrax features grow.
+ * `src/index.ts`.  Currently it supplies an MCP service provider and
+ * an embed service provider; additional providers (models, clients,
+ * middleware) can be added here as Bratrax features grow.
  */
 export async function getBratraxAppArguments() {
     return {
         serviceProviders: {
+            embedService: ({
+                context,
+                models,
+            }: {
+                context: { lightdashConfig: any };
+                models: any;
+            }) =>
+                new BratraxEmbedService({
+                    database: models.getDatabase(),
+                    lightdashConfig: context.lightdashConfig,
+                }),
             mcpServiceMain: ({
                 context,
                 repository,

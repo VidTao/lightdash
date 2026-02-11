@@ -9,6 +9,7 @@ import {
     CommercialFeatureFlags,
     convertAiTableCalcsSchemaToTableCalcs,
     CreateDashboardWithCharts,
+    CreateEmbedJwt,
     CreateSavedChart,
     Explore,
     filterExploreByTags,
@@ -93,6 +94,7 @@ import {
     type ExtraContext,
     type McpProtocolContext,
 } from './types';
+import { BratraxEmbedService } from '../services/BratraxEmbedService';
 import { ExploreContext } from './utils/exploreContext';
 import { populateCustomMetricsSQL } from './utils/customMetrics';
 import { serializeData } from './utils/serializeData';
@@ -1332,39 +1334,36 @@ export class BratraxMcpService extends BaseService {
             let title: string;
 
             if (resourceType === 'dashboard') {
-                const embedService = this.services.getEmbedService<{
-                    getEmbedUrl(
-                        account: AnyType,
-                        projectUuid: string,
-                        data: AnyType,
-                    ): Promise<{ url: string }>;
-                }>();
+                const embedService =
+                    this.services.getEmbedService<BratraxEmbedService>();
 
-                const embedJwtData: AnyType = {
-                    content: {
-                        type: 'dashboard' as const,
-                        dashboardUuid: args.resource_uuid,
-                        canExportCsv,
-                        canExportImages,
-                    },
-                    userAttributes: {
-                        organizationUuid,
-                    },
-                    expiresIn,
+                const dashboardContent: CreateEmbedJwt['content'] = {
+                    type: 'dashboard' as const,
+                    dashboardUuid: args.resource_uuid,
+                    canExportCsv,
+                    canExportImages,
                 };
-
-                if (args.dashboard_filters_interactivity) {
-                    embedJwtData.content.dashboardFiltersInteractivity =
+                if (
+                    args.dashboard_filters_interactivity &&
+                    'enabled' in args.dashboard_filters_interactivity
+                ) {
+                    (dashboardContent as AnyType).dashboardFiltersInteractivity =
                         args.dashboard_filters_interactivity;
                 }
 
-                const embedUrlResult = await embedService.getEmbedUrl(
-                    sessionAccount,
-                    projectUuid,
-                    embedJwtData,
-                );
+                const jwtData: CreateEmbedJwt = {
+                    content: dashboardContent,
+                    userAttributes: {
+                        organizationUuid,
+                    },
+                };
 
-                embedUrl = embedUrlResult.url;
+                const embedResult = await embedService.getEmbedUrl(
+                    projectUuid,
+                    jwtData,
+                    expiresIn,
+                );
+                embedUrl = embedResult.url;
 
                 title = `Dashboard ${args.resource_uuid}`;
                 try {
