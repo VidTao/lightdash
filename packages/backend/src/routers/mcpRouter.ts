@@ -83,9 +83,6 @@ const returnHeaderIfUnauthenticated = (
     if (req.account?.isAuthenticated()) {
         next();
     } else {
-        // For API Key authentication, we still provide OAuth metadata for MCP spec compliance
-        const oauthService = req.services.getOauthService();
-        const baseUrl = oauthService.getSiteUrl();
         res.set('WWW-Authenticate', 'ApiKey');
         res.status(401).json({ error: 'Unauthorized' });
     }
@@ -129,16 +126,16 @@ const conditionalAuth = (
 // - It follows the same pattern as other protocol-specific endpoints (OAuth)
 mcpRouter.all(
     '/',
-    // Only check for API key in headers, don't return 401 if missing
+    // Attempt API key authentication if header present
     (req, res, next) => {
         if (req.headers.authorization?.startsWith('ApiKey ')) {
-            // Process API key authentication
             allowApiKeyAuthentication(req, res, next);
         } else {
-            // Allow unauthenticated access (or return different error)
             next();
         }
     },
+    // Block unauthenticated requests for tool calls; allow handshake methods through
+    conditionalAuth,
     async (req, res) => {
         try {
             console.log('MCP Request:', {
@@ -210,6 +207,7 @@ mcpRouter.all(
                         extra = {
                             user: req.user,
                             account: apiKeyAuth,
+                            headerUserAttributes,
                         };
                         authReq.auth = {
                             token: apiKeyAuth.authentication.source,
