@@ -45,6 +45,7 @@ export enum BratraxMcpToolName {
     RUN_METRIC_QUERY = 'run_metric_query',
     SEARCH_FIELD_VALUES = 'search_field_values',
     GET_EMBED_URL = 'get_embed_url',
+    GENERATE_DASHBOARD = 'generate_dashboard',
 }
 
 /**

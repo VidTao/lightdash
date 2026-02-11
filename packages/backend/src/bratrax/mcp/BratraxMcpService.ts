@@ -5,8 +5,11 @@ import {
     AiResultType,
     AnyType,
     CatalogType,
+    ChartType,
     CommercialFeatureFlags,
     convertAiTableCalcsSchemaToTableCalcs,
+    CreateDashboardWithCharts,
+    CreateSavedChart,
     Explore,
     filterExploreByTags,
     ForbiddenError,
@@ -20,6 +23,9 @@ import {
     ParameterError,
     QueryExecutionContext,
     SessionUser,
+    toolDashboardV2ArgsSchema,
+    toolDashboardV2ArgsSchemaTransformed,
+    ToolDashboardV2ArgsTransformed,
     ToolFindContentArgs,
     toolFindContentArgsSchema,
     toolFindExploresArgsSchemaV3,
@@ -28,6 +34,7 @@ import {
     toolFindFieldsArgsSchema,
     toolRunQueryArgsSchema,
     toolRunQueryArgsSchemaTransformed,
+    ToolRunQueryArgsTransformed,
     ToolGetEmbedUrlArgs,
     toolGetEmbedUrlArgsSchema,
     ToolSearchFieldValuesArgs,
@@ -414,6 +421,58 @@ export class BratraxMcpService extends BaseService {
         return { content: [{ type: 'text' as const, text }] };
     }
 
+    /**
+     * Build a MetricQuery object from a transformed visualization config.
+     * Shared by run_metric_query and generate_dashboard tools.
+     */
+    private buildMetricQueryFromViz(
+        viz: ToolRunQueryArgsTransformed,
+        explore: Explore,
+    ) {
+        const maxLimit = this.lightdashConfig.ai.copilot.maxQueryLimit;
+        return {
+            exploreName: viz.queryConfig.exploreName,
+            dimensions: viz.queryConfig.dimensions,
+            metrics: viz.queryConfig.metrics,
+            sorts: viz.queryConfig.sorts.map((s) => ({
+                ...s,
+                nullsFirst: s.nullsFirst ?? undefined,
+            })),
+            limit: getValidAiQueryLimit(viz.queryConfig.limit, maxLimit),
+            filters: viz.filters,
+            additionalMetrics: populateCustomMetricsSQL(
+                viz.customMetrics,
+                explore,
+            ),
+            tableCalculations: convertAiTableCalcsSchemaToTableCalcs(
+                viz.tableCalculations,
+            ),
+        };
+    }
+
+    /**
+     * Map the AI schema's defaultVizType string to Lightdash's ChartType enum.
+     */
+    // eslint-disable-next-line class-methods-use-this
+    private mapChartType(
+        defaultVizType: string | null | undefined,
+    ): ChartType {
+        switch (defaultVizType) {
+            case 'table':
+                return ChartType.TABLE;
+            case 'pie':
+                return ChartType.PIE;
+            case 'funnel':
+                return ChartType.FUNNEL;
+            case 'bar':
+            case 'horizontal':
+            case 'line':
+            case 'scatter':
+            default:
+                return ChartType.CARTESIAN;
+        }
+    }
+
     // ── tool registration ──────────────────────────────────────────────
 
     private registerTools(): void {
@@ -428,6 +487,7 @@ export class BratraxMcpService extends BaseService {
         this.registerRunMetricQuery();
         this.registerSearchFieldValues();
         this.registerGetEmbedUrl();
+        this.registerGenerateDashboard();
     }
 
     private registerGetVersion(): void {
@@ -867,26 +927,10 @@ export class BratraxMcpService extends BaseService {
                         queryTool.queryConfig.exploreName,
                     );
 
-                    const maxLimit = this.lightdashConfig.ai.copilot.maxQueryLimit;
-                    const metricQuery = {
-                        exploreName: queryTool.queryConfig.exploreName,
-                        dimensions: queryTool.queryConfig.dimensions,
-                        metrics: queryTool.queryConfig.metrics,
-                        sorts: queryTool.queryConfig.sorts.map((s) => ({
-                            ...s,
-                            nullsFirst: s.nullsFirst ?? undefined,
-                        })),
-                        limit: getValidAiQueryLimit(
-                            queryTool.queryConfig.limit,
-                            maxLimit,
-                        ),
-                        filters: queryTool.filters,
-                        additionalMetrics: queryTool.customMetrics ?? [],
-                        tableCalculations:
-                            convertAiTableCalcsSchemaToTableCalcs(
-                                queryTool.tableCalculations,
-                            ),
-                    };
+                    const metricQuery = this.buildMetricQueryFromViz(
+                        queryTool,
+                        explore,
+                    );
 
                     const results =
                         await this.asyncQueryService.executeMetricQueryAndGetResults(
@@ -1065,6 +1109,164 @@ export class BratraxMcpService extends BaseService {
                     );
 
                 return this.textResult(JSON.stringify(results, null, 2));
+            },
+        );
+    }
+
+    private registerGenerateDashboard(): void {
+        this.mcpServer.registerTool(
+            BratraxMcpToolName.GENERATE_DASHBOARD,
+            {
+                description: toolDashboardV2ArgsSchema.description,
+                inputSchema: this.compatSchema(toolDashboardV2ArgsSchema),
+            },
+            async (_args: AnyType, extra: AnyType) => {
+                const ctx = extra as McpProtocolContext;
+                const projectUuid = await this.resolveProjectUuid(ctx);
+                this.trackToolCall(
+                    ctx,
+                    BratraxMcpToolName.GENERATE_DASHBOARD,
+                    projectUuid,
+                );
+
+                try {
+                    const { user } = ctx.authInfo!.extra;
+                    await this.requireProjectAccess(ctx, projectUuid);
+
+                    // Parse and transform input
+                    const args: ToolDashboardV2ArgsTransformed =
+                        toolDashboardV2ArgsSchemaTransformed.parse({
+                            ..._args,
+                            projectUuid,
+                        });
+
+                    const tags = await this.getTagsFromContext(ctx);
+                    const attrOverrides =
+                        await this.getUserAttributeOverrides(ctx);
+                    const explores = await this.getAvailableExplores(
+                        user,
+                        projectUuid,
+                        tags,
+                        attrOverrides,
+                    );
+                    const exploreCtx = new ExploreContext(explores);
+
+                    // Find first accessible space for the dashboard
+                    const space =
+                        await this.spaceModel.getFirstAccessibleSpace(
+                            projectUuid,
+                            user.userUuid,
+                        );
+
+                    // Validate each visualization in parallel
+                    const vizResults = await Promise.allSettled(
+                        args.visualizations.map(async (viz, idx) => {
+                            const explore = exploreCtx.getExplore(
+                                viz.queryConfig.exploreName,
+                            );
+                            const metricQuery = this.buildMetricQueryFromViz(
+                                viz,
+                                explore,
+                            );
+
+                            const chartType = this.mapChartType(
+                                viz.chartConfig?.defaultVizType,
+                            );
+
+                            const chart: CreateSavedChart = {
+                                name: viz.title || `Chart ${idx + 1}`,
+                                description: viz.description || undefined,
+                                tableName: viz.queryConfig.exploreName,
+                                metricQuery,
+                                chartConfig: {
+                                    type: chartType,
+                                    config: undefined,
+                                },
+                                tableConfig: {
+                                    columnOrder: [],
+                                },
+                                pivotConfig: undefined,
+                                parameters: undefined,
+                                dashboardUuid: null as unknown as string, // set by createDashboardWithCharts
+                            };
+                            return chart;
+                        }),
+                    );
+
+                    // Collect valid charts and errors
+                    const validCharts: CreateSavedChart[] = [];
+                    const errors: string[] = [];
+
+                    vizResults.forEach((result, idx) => {
+                        if (result.status === 'fulfilled') {
+                            validCharts.push(result.value);
+                        } else {
+                            const msg =
+                                result.reason instanceof Error
+                                    ? result.reason.message
+                                    : String(result.reason);
+                            errors.push(
+                                `Visualization ${idx + 1}: ${msg}`,
+                            );
+                        }
+                    });
+
+                    if (validCharts.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: 'text' as const,
+                                    text: `Failed to create dashboard. All visualizations had errors:\n${errors.join('\n')}`,
+                                },
+                            ],
+                            isError: true,
+                        };
+                    }
+
+                    // Create the dashboard with all valid charts
+                    const dashboardData: CreateDashboardWithCharts = {
+                        name: args.title,
+                        description: args.description,
+                        spaceUuid: space.space_uuid,
+                        charts: validCharts,
+                    };
+
+                    const dashboardService =
+                        this.services.getDashboardService();
+                    const dashboard =
+                        await dashboardService.createDashboardWithCharts(
+                            user,
+                            projectUuid,
+                            dashboardData,
+                        );
+
+                    const dashboardUrl = `${this.lightdashConfig.siteUrl}/projects/${projectUuid}/dashboards/${dashboard.uuid}`;
+
+                    const result: Record<string, unknown> = {
+                        dashboardUuid: dashboard.uuid,
+                        dashboardUrl,
+                        name: dashboard.name,
+                        chartsCreated: validCharts.length,
+                        totalRequested: args.visualizations.length,
+                    };
+
+                    if (errors.length > 0) {
+                        result.errors = errors;
+                    }
+
+                    return this.textResult(JSON.stringify(result, null, 2));
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    return {
+                        content: [
+                            {
+                                type: 'text' as const,
+                                text: `Error generating dashboard: ${msg}`,
+                            },
+                        ],
+                        isError: true,
+                    };
+                }
             },
         );
     }
