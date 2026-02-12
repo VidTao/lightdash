@@ -161,3 +161,15 @@ The `embedding` table stores an `encoded_secret` (encrypted) per project. `encod
 - Signed with the project's embed secret, expiry configurable (default 8h from MCP tool)
 
 The frontend `/embed/:projectUuid#<jwt>` route decodes and verifies the JWT to render the embedded dashboard/chart.
+
+### JWT Authentication Middleware (`getAccountFromJwt`)
+
+When a browser visits an embed URL, the global `jwtAuthMiddleware` intercepts the request and calls `embedService.getAccountFromJwt(projectUuid, token)`. Our implementation:
+
+1. `getEmbedConfig()` — reads the `embedding` row joined with `projects` and `organizations` to build an `OssEmbed` object (project UUID, encoded secret, org info, dashboard/chart UUIDs)
+2. `decodeLightdashJwt()` — decrypts the secret and verifies the JWT signature
+3. `getEmbedUserAttributes()` — merges org-level default user attributes with JWT-provided overrides (for row-level security)
+4. `getContentFromJwt()` — resolves `EmbedContent` from the JWT (dashboard UUID, chart UUIDs, content type)
+5. `fromJwt()` — creates an `AnonymousAccount` with CASL abilities scoped to the embedded content
+
+The middleware (at `src/middlewares/jwtAuthMiddleware/`) is part of the core codebase and imports `EmbedService` from EE by type. It calls `req.services.getEmbedService()` which returns our `BratraxEmbedService` via the provider override — so `getAccountFromJwt` must exist on our service.

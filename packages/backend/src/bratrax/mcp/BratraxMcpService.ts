@@ -758,12 +758,21 @@ export class BratraxMcpService extends BaseService {
                     allContent,
                 );
 
-                const enriched = filtered.map((item) => ({
-                    ...item,
-                    url: 'uuid' in item
-                        ? `${this.lightdashConfig.siteUrl}/projects/${projectUuid}/${'dashboardUuid' in item ? 'dashboards' : 'saved'}/${(item as { uuid: string }).uuid}`
-                        : undefined,
-                }));
+                const dashboardUuids = new Set(
+                    dashboards.map((d) => d.uuid),
+                );
+                const enriched = filtered.map((item) => {
+                    const id = (item as { uuid: string }).uuid;
+                    const type = dashboardUuids.has(id)
+                        ? 'dashboards'
+                        : 'saved';
+                    return {
+                        ...item,
+                        url: id
+                            ? `${this.lightdashConfig.siteUrl}/projects/${projectUuid}/${type}/${id}`
+                            : undefined,
+                    };
+                });
 
                 return this.textResult(JSON.stringify({ content: enriched }, null, 2));
             },
