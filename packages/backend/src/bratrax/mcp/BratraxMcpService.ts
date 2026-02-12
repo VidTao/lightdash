@@ -1406,6 +1406,7 @@ export class BratraxMcpService extends BaseService {
                     projectUuid,
                     jwtData,
                     expiresIn,
+                    user.userUuid,
                 );
                 embedUrl = embedResult.url;
 
