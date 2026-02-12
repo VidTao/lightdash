@@ -1,13 +1,28 @@
 import {
+    type Account,
     AnonymousAccount,
+    type ApiExecuteAsyncDashboardChartQueryResults,
     CreateEmbedJwt,
+    type Dashboard,
+    type DashboardAvailableFilters,
+    type DashboardFilters,
+    type DateGranularity,
+    type DateZoom,
     EmbedContent,
     EmbedUrl,
+    type ExecuteAsyncDashboardChartRequestParams,
+    ForbiddenError,
     isChartContent,
+    isDashboardChartTileType,
     isDashboardSlugContent,
     isDashboardUuidContent,
+    type InteractivityOptions,
     NotFoundError,
     OssEmbed,
+    type ParametersValuesMap,
+    QueryExecutionContext,
+    type SavedChartsInfoForDashboardAvailableFilters,
+    type SortField,
     UserAccessControls,
     UserAttributeValueMap,
 } from '@lightdash/common';
@@ -15,16 +30,23 @@ import { randomBytes } from 'crypto';
 import { isArray } from 'lodash';
 import { Knex } from 'knex';
 import { fromJwt } from '../../auth/account';
-import { decodeLightdashJwt, encodeLightdashJwt } from '../../auth/lightdashJwt';
+import {
+    decodeLightdashJwt,
+    encodeLightdashJwt,
+} from '../../auth/lightdashJwt';
 import { LightdashConfig } from '../../config/parseConfig';
 import Logger from '../../logging/logger';
+import { DashboardModel } from '../../models/DashboardModel/DashboardModel';
 import { BaseService } from '../../services/BaseService';
+import { AsyncQueryService } from '../../services/AsyncQueryService/AsyncQueryService';
 import { EncryptionUtil } from '../../utils/EncryptionUtil/EncryptionUtil';
 import { wrapSentryTransaction } from '../../utils';
 
 type BratraxEmbedServiceDeps = {
     database: Knex;
     lightdashConfig: LightdashConfig;
+    dashboardModel: DashboardModel;
+    asyncQueryService: AsyncQueryService;
 };
 
 export class BratraxEmbedService extends BaseService {
@@ -34,11 +56,22 @@ export class BratraxEmbedService extends BaseService {
 
     private readonly encryptionUtil: EncryptionUtil;
 
-    constructor({ database, lightdashConfig }: BratraxEmbedServiceDeps) {
+    private readonly dashboardModel: DashboardModel;
+
+    private readonly asyncQueryService: AsyncQueryService;
+
+    constructor({
+        database,
+        lightdashConfig,
+        dashboardModel,
+        asyncQueryService,
+    }: BratraxEmbedServiceDeps) {
         super();
         this.database = database;
         this.lightdashConfig = lightdashConfig;
         this.encryptionUtil = new EncryptionUtil({ lightdashConfig });
+        this.dashboardModel = dashboardModel;
+        this.asyncQueryService = asyncQueryService;
     }
 
     /**
@@ -304,5 +337,208 @@ export class BratraxEmbedService extends BaseService {
 
         const url = new URL(urlPath, this.lightdashConfig.siteUrl);
         return { url: url.href };
+    }
+
+    // ─── Embed rendering methods ───────────────────────────────────────
+
+    /**
+     * Returns the dashboard with interactivity options extracted from the
+     * JWT. Called by the embedController when the browser loads the embed page.
+     */
+    async getDashboard(
+        projectUuid: string,
+        account: AnonymousAccount,
+    ): Promise<Dashboard & InteractivityOptions> {
+        const dashboardUuid = account.access.content.dashboardUuid;
+        if (!dashboardUuid) {
+            throw new NotFoundError(
+                'No dashboard UUID found in embed token',
+            );
+        }
+
+        const dashboard = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuid,
+        );
+
+        // Extract interactivity options from the JWT content
+        const jwtContent = account.authentication.data.content;
+        const interactivityOptions: InteractivityOptions = {
+            dashboardFiltersInteractivity:
+                jwtContent.dashboardFiltersInteractivity,
+            canExportCsv: jwtContent.canExportCsv,
+            canExportImages: jwtContent.canExportImages,
+            canExportPagePdf:
+                'canExportPagePdf' in jwtContent
+                    ? jwtContent.canExportPagePdf
+                    : undefined,
+            canDateZoom:
+                'canDateZoom' in jwtContent
+                    ? jwtContent.canDateZoom
+                    : undefined,
+            canExplore:
+                'canExplore' in jwtContent
+                    ? jwtContent.canExplore
+                    : undefined,
+            canViewUnderlyingData: jwtContent.canViewUnderlyingData,
+            parameterInteractivity:
+                'parameterInteractivity' in jwtContent
+                    ? jwtContent.parameterInteractivity
+                    : undefined,
+        };
+
+        // DashboardDAO is Omit<Dashboard, 'isPrivate' | 'access'> — fill
+        // those fields for the response type.
+        return {
+            ...dashboard,
+            isPrivate: null,
+            access: null,
+            ...interactivityOptions,
+        } as Dashboard & InteractivityOptions;
+    }
+
+    /**
+     * Executes an async query for a single dashboard tile.
+     * Resolves the chart UUID from the tile and delegates to AsyncQueryService.
+     */
+    async executeAsyncDashboardTileQuery({
+        account,
+        projectUuid,
+        tileUuid,
+        dashboardFilters,
+        dateZoom,
+        invalidateCache,
+        dashboardSorts,
+        parameters,
+        pivotResults,
+    }: {
+        account: AnonymousAccount;
+        projectUuid: string;
+        tileUuid: string;
+    } & Pick<
+        ExecuteAsyncDashboardChartRequestParams,
+        | 'dashboardFilters'
+        | 'dashboardSorts'
+        | 'pivotResults'
+        | 'invalidateCache'
+        | 'dateZoom'
+        | 'parameters'
+    >): Promise<ApiExecuteAsyncDashboardChartQueryResults> {
+        const dashboardUuid = account.access.content.dashboardUuid;
+        if (!dashboardUuid) {
+            throw new NotFoundError(
+                'No dashboard UUID found in embed token',
+            );
+        }
+
+        const dashboard = await this.dashboardModel.getByIdOrSlug(
+            dashboardUuid,
+        );
+
+        // Find the tile and extract the chart UUID
+        const tile = dashboard.tiles.find((t) => t.uuid === tileUuid);
+        if (!tile || !isDashboardChartTileType(tile)) {
+            throw new NotFoundError(
+                `Chart tile ${tileUuid} not found in dashboard`,
+            );
+        }
+
+        const chartUuid = tile.properties.savedChartUuid;
+        if (!chartUuid) {
+            throw new NotFoundError(
+                `No saved chart associated with tile ${tileUuid}`,
+            );
+        }
+
+        return this.asyncQueryService.executeAsyncDashboardChartQuery({
+            account: account as Account,
+            projectUuid,
+            tileUuid,
+            chartUuid,
+            dashboardUuid,
+            dashboardFilters: dashboardFilters ?? dashboard.filters,
+            dashboardSorts: dashboardSorts ?? [],
+            dateZoom,
+            context: QueryExecutionContext.DASHBOARD,
+            invalidateCache,
+            parameters,
+            pivotResults,
+        });
+    }
+
+    /**
+     * @deprecated Use executeAsyncDashboardTileQuery instead.
+     * Kept for backward compatibility — the embed frontend may still call
+     * the /chart-and-results endpoint.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async getChartAndResults(
+        _projectUuid: string,
+        _account: AnonymousAccount,
+        _tileUuid: string,
+        _dashboardFilters?: DashboardFilters,
+        _dateZoomGranularity?: DateGranularity,
+        _dashboardSorts?: SortField[],
+        _parameters?: ParametersValuesMap,
+    ): Promise<never> {
+        throw new ForbiddenError(
+            'Deprecated embed endpoint not supported. Use async tile queries instead.',
+        );
+    }
+
+    /**
+     * Returns available dashboard filters. Stubbed to return empty filters
+     * since we don't implement filter interactivity yet.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async getAvailableFiltersForSavedQueries(
+        _projectUuid: string,
+        _account: AnonymousAccount,
+        _body: SavedChartsInfoForDashboardAvailableFilters,
+    ): Promise<DashboardAvailableFilters> {
+        return {
+            savedQueryFilters: {},
+            allFilterableFields: [],
+        };
+    }
+
+    // ─── Stubs for advanced embed features ─────────────────────────────
+    // These are called by the embed controller but not needed for basic
+    // dashboard rendering. They throw descriptive errors if invoked.
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async calculateTotalFromSavedChart(..._args: unknown[]): Promise<never> {
+        throw new ForbiddenError(
+            'Calculate totals is not supported in embed mode',
+        );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async calculateSubtotalsFromSavedChart(
+        ..._args: unknown[]
+    ): Promise<never> {
+        throw new ForbiddenError(
+            'Calculate subtotals is not supported in embed mode',
+        );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async calculateTotalFromQuery(..._args: unknown[]): Promise<never> {
+        throw new ForbiddenError(
+            'Calculate totals is not supported in embed mode',
+        );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async calculateSubtotalsFromQuery(..._args: unknown[]): Promise<never> {
+        throw new ForbiddenError(
+            'Calculate subtotals is not supported in embed mode',
+        );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async searchFilterValues(..._args: unknown[]): Promise<never> {
+        throw new ForbiddenError(
+            'Filter search is not supported in embed mode',
+        );
     }
 }

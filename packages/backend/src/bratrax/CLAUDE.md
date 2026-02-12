@@ -29,7 +29,7 @@ bratrax/
   index.ts                        # getBratraxAppArguments() — provider factory
   CLAUDE.md                       # This file
   services/
-    BratraxEmbedService.ts        # JWT-based embed URL generation (replaces EE EmbedService)
+    BratraxEmbedService.ts        # Embed service: JWT auth, URL generation, dashboard rendering
   mcp/
     bratraxMcpRouter.ts           # Express router for POST /api/v1/mcp
     BratraxMcpService.ts          # Main service (~1500 lines), registers all MCP tools
@@ -173,3 +173,33 @@ When a browser visits an embed URL, the global `jwtAuthMiddleware` intercepts th
 5. `fromJwt()` — creates an `AnonymousAccount` with CASL abilities scoped to the embedded content
 
 The middleware (at `src/middlewares/jwtAuthMiddleware/`) is part of the core codebase and imports `EmbedService` from EE by type. It calls `req.services.getEmbedService()` which returns our `BratraxEmbedService` via the provider override — so `getAccountFromJwt` must exist on our service.
+
+### Embed Dashboard Rendering
+
+When the browser loads an embed URL, the EE `embedController` calls methods on our service. We implement the minimum needed for basic dashboard rendering:
+
+| Method | Status | Description |
+|--------|--------|-------------|
+| `getDashboard()` | Implemented | Returns dashboard + interactivity options from JWT |
+| `executeAsyncDashboardTileQuery()` | Implemented | Delegates to `AsyncQueryService` to run tile queries |
+| `getAvailableFiltersForSavedQueries()` | Stub (empty) | Returns empty filters — no filter interactivity |
+| `getChartAndResults()` | Stub (throws) | Deprecated sync path — throws `ForbiddenError` |
+| `calculateTotalFromSavedChart()` | Stub (throws) | Not supported in embed mode |
+| `calculateSubtotalsFromSavedChart()` | Stub (throws) | Not supported in embed mode |
+| `calculateTotalFromQuery()` | Stub (throws) | Not supported in embed mode |
+| `calculateSubtotalsFromQuery()` | Stub (throws) | Not supported in embed mode |
+| `searchFilterValues()` | Stub (throws) | Not supported in embed mode |
+
+**Dependencies:** `DashboardModel` (for `getByIdOrSlug()`), `AsyncQueryService` (for `executeAsyncDashboardChartQuery()`). Passed from `bratrax/index.ts` via the provider factory.
+
+**Flow for `getDashboard()`:**
+1. Extracts dashboard UUID from `account.access.content.dashboardUuid`
+2. Fetches dashboard via `DashboardModel.getByIdOrSlug()`
+3. Extracts interactivity options from the JWT content (canExportCsv, canExportImages, etc.)
+4. Returns merged `Dashboard & InteractivityOptions`
+
+**Flow for `executeAsyncDashboardTileQuery()`:**
+1. Gets dashboard UUID from account
+2. Fetches dashboard and finds tile by UUID
+3. Validates tile is a chart tile and has a `savedChartUuid`
+4. Delegates to `AsyncQueryService.executeAsyncDashboardChartQuery()` with `QueryExecutionContext.DASHBOARD`

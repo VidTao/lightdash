@@ -15,14 +15,18 @@ export async function getBratraxAppArguments() {
         serviceProviders: {
             embedService: ({
                 context,
+                repository,
                 models,
             }: {
                 context: { lightdashConfig: any };
+                repository: any;
                 models: any;
             }) =>
                 new BratraxEmbedService({
                     database: models.getDatabase(),
                     lightdashConfig: context.lightdashConfig,
+                    dashboardModel: models.getDashboardModel(),
+                    asyncQueryService: repository.getAsyncQueryService(),
                 }),
             mcpServiceMain: ({
                 context,
