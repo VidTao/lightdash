@@ -88,34 +88,31 @@ const returnHeaderIfUnauthenticated = (
     }
 };
 
-// Add a middleware to conditionally require auth
+// Only these MCP methods access user data and need authentication.
+// Everything else (initialize, notifications/*, tools/list, resources/list,
+// prompts/list, ping, etc.) is protocol-level and can proceed without auth.
+const METHODS_REQUIRING_AUTH = new Set([
+    'tools/call',
+    'resources/read',
+    'resources/subscribe',
+]);
+
 const conditionalAuth = (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction,
 ) => {
-    // Always allow GET requests (SSE handshake)
     if (req.method === 'GET') {
         return next();
     }
-    
-    // For POST requests, check if it's an initial connection or handshake
+
     if (req.method === 'POST') {
         const method = req.body?.method;
-        const allowedUnauthenticatedMethods = [
-            'initialize',
-            'tools/list',
-            'resources/list',
-            'prompts/list'
-        ];
-        
-        // Allow unauthenticated access for handshake methods OR if no method specified (initial connection)
-        if (!method || allowedUnauthenticatedMethods.includes(method)) {
+        if (!method || !METHODS_REQUIRING_AUTH.has(method)) {
             return next();
         }
     }
-    
-    // Require auth for everything else (actual tool calls)
+
     return returnHeaderIfUnauthenticated(req, res, next);
 };
 
@@ -134,17 +131,10 @@ mcpRouter.all(
             next();
         }
     },
-    // Block unauthenticated requests for tool calls; allow handshake methods through
+    // Block unauthenticated requests for tool calls; allow protocol messages through
     conditionalAuth,
     async (req, res) => {
         try {
-            console.log('MCP Request:', {
-                method: req.method,
-                hasUser: !!req.user,
-                hasAuth: !!req.headers.authorization,
-                userUuid: req.user?.userUuid
-            });
-
             const mcpService = getMcpService(req);
 
             // Check if MCP is enabled
@@ -159,8 +149,6 @@ mcpRouter.all(
                     throw new ForbiddenError('MCP is not enabled');
                 }
             }
-
-            const mcpServer = mcpService.getServer();
 
             if (req.method === 'GET') {
                 // Handle SSE transport
@@ -185,7 +173,10 @@ mcpRouter.all(
             }
 
             if (req.method === 'POST') {
-                // Handle Streamable HTTP transport
+                // Create a fresh McpServer per request — stateless Streamable
+                // HTTP requires this because the MCP SDK's Protocol class
+                // throws "Already connected" on a reused server instance.
+                const mcpServer = mcpService.createRequestServer();
                 const transport = new StreamableHTTPServerTransport({
                     enableJsonResponse: true,
                     sessionIdGenerator: undefined,
@@ -201,7 +192,7 @@ mcpRouter.all(
 
                 if (req.user && req.account?.isAuthenticated()) {
                     let extra: ExtraContext;
-                    
+
                     if (req.account.isPatUser()) {
                         const apiKeyAuth = req.account as ApiKeyAccount;
                         extra = {
@@ -228,13 +219,17 @@ mcpRouter.all(
                     };
                     authReq.auth = {
                         token: serviceAccountAuth.authentication.source,
-                        clientId: 'Service account', // hardcoded client and scopes for Service Account authentication
+                        clientId: 'Service account',
                         scopes: ['mcp:read', 'mcp:write'],
                         extra,
                     };
                 }
 
-                return await transport.handleRequest(authReq, res, req.body);
+                try {
+                    return await transport.handleRequest(authReq, res, req.body);
+                } finally {
+                    await mcpServer.close();
+                }
             }
 
             res.status(405).json({ error: 'Method not allowed' });

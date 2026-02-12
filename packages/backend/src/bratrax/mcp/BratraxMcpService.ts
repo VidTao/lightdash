@@ -214,6 +214,50 @@ export class BratraxMcpService extends BaseService {
 
     // ── public interface (consumed by mcpRouter) ───────────────────────
 
+    /**
+     * Creates a fresh McpServer for each HTTP request.
+     *
+     * Streamable HTTP in stateless mode (sessionIdGenerator: undefined)
+     * requires a new server+transport per request because the MCP SDK's
+     * Protocol class throws "Already connected" if you call connect()
+     * twice on the same instance.
+     *
+     * registerTools() is synchronous (just sets up callbacks), so the
+     * temporary swap of this.mcpServer is safe in Node's single-threaded
+     * event loop — no interleaving can occur.
+     */
+    public createRequestServer(): McpServer {
+        const server = Sentry.wrapMcpServerWithSentry(
+            new McpServer({
+                name: 'Bratrax MCP Server',
+                version: VERSION,
+                websiteUrl: this.lightdashConfig.siteUrl,
+                icons: [
+                    {
+                        src: `${this.lightdashConfig.siteUrl}/logo-icon.svg`,
+                        mimeType: 'image/svg+xml',
+                    },
+                    {
+                        src: `${this.lightdashConfig.siteUrl}/favicon-32x32.png`,
+                        mimeType: 'image/png',
+                        sizes: ['32x32'],
+                    },
+                    {
+                        src: `${this.lightdashConfig.siteUrl}/apple-touch-icon.png`,
+                        mimeType: 'image/png',
+                        sizes: ['152x152'],
+                    },
+                ],
+            }),
+        );
+        const savedServer = this.mcpServer;
+        this.mcpServer = server;
+        this.registerTools();
+        this.mcpServer = savedServer;
+        return server;
+    }
+
+    /** @deprecated Use createRequestServer() for stateless HTTP */
     public getServer(): McpServer {
         return this.mcpServer;
     }
