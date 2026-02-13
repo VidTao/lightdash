@@ -139,7 +139,11 @@ These schemas are defined in `packages/common/src/types/aiCopilot.ts`.
 
 ## BratraxEmbedService
 
-Generates signed JWT embed URLs without depending on any EE code. Works with PAT auth via the MCP `get_embed_url` tool (the EE EmbedService requires session auth).
+Full embed service with EE feature parity (~1450 lines). No EE code copies — all methods are original implementations following the same patterns. No license gating, no admin config UI (auto-provisions instead), no permission checks beyond the JWT boundary.
+
+**Dependencies:** `DashboardModel`, `AsyncQueryService`, `ProjectModel`, `SavedChartModel`, `LightdashAnalytics`. Passed from `bratrax/index.ts` via the provider factory.
+
+**Key architectural insight:** `AsyncQueryService extends ProjectService`, so the `asyncQueryService` dependency gives access to all ProjectService methods (`_compileQuery`, `getResultsFromCacheOrWarehouse`, `_getWarehouseClient`, `combineParameters`, `_getCalculateTotalQuery`, `_getFieldValuesMetricQuery`, `projectParametersModel`).
 
 ### Auto-provisioning
 
@@ -148,10 +152,12 @@ The service **auto-provisions** the embed config when it doesn't exist. On the f
 1. `ensureEmbedConfigured()` checks the `embedding` table for a row matching the project UUID
 2. If missing, generates a random 32-byte secret (`crypto.randomBytes`)
 3. Encrypts it with `EncryptionUtil` (AES-256-GCM, keyed on `lightdashSecret` from config)
-4. Inserts into the `embedding` table with `ON CONFLICT` merge (race-safe)
+4. Inserts into the `embedding` table with `allow_all_dashboards: true`, `allow_all_charts: true`, and `ON CONFLICT` merge (race-safe)
 5. Logs: `Auto-provisioned embed config for project <uuid>`
 
 No manual admin setup needed — the embed row is created transparently on first use.
+
+**Permission model:** The core `PermissionsService.checkEmbedPermissions()` checks `embed.allowAllDashboards` and `embed.dashboardUuids` on every tile query. Our `getEmbedConfig()` always returns `allowAllDashboards: true` and `allowAllCharts: true` regardless of the DB value, because the JWT is our permission boundary — if a dashboard UUID is in the JWT, the user is authorized. This avoids requiring admin UI to manage allowed dashboards/charts lists.
 
 ### How embed JWTs work
 
@@ -174,32 +180,35 @@ When a browser visits an embed URL, the global `jwtAuthMiddleware` intercepts th
 
 The middleware (at `src/middlewares/jwtAuthMiddleware/`) is part of the core codebase and imports `EmbedService` from EE by type. It calls `req.services.getEmbedService()` which returns our `BratraxEmbedService` via the provider override — so `getAccountFromJwt` must exist on our service.
 
-### Embed Dashboard Rendering
+### Methods (all fully implemented)
 
-When the browser loads an embed URL, the EE `embedController` calls methods on our service. We implement the minimum needed for basic dashboard rendering:
+| Method | Description |
+|--------|-------------|
+| `getDashboard()` | Returns dashboard + interactivity options from JWT. Tracks analytics. |
+| `executeAsyncDashboardTileQuery()` | Per-tile filter resolution, parameter combining, delegates to `AsyncQueryService` with `QueryExecutionContext.EMBED` |
+| `getChartAndResults()` | Deprecated sync query path — full implementation with `_runEmbedQuery` pipeline |
+| `getAvailableFiltersForSavedQueries()` | Filter resolution with explore caching. Returns empty if filter interactivity disabled. |
+| `calculateTotalFromSavedChart()` | Totals for saved chart in embed context via `_getCalculateTotalQuery` |
+| `calculateSubtotalsFromSavedChart()` | Subtotals via `SubtotalsCalculator` + parallel `_runEmbedQuery` calls |
+| `calculateTotalFromQuery()` | Totals for raw metric query (no dashboard context) |
+| `calculateSubtotalsFromQuery()` | Subtotals for raw metric query |
+| `searchFilterValues()` | Filter value autocomplete via `_getFieldValuesMetricQuery` + `_runEmbedQuery` |
 
-| Method | Status | Description |
-|--------|--------|-------------|
-| `getDashboard()` | Implemented | Returns dashboard + interactivity options from JWT |
-| `executeAsyncDashboardTileQuery()` | Implemented | Delegates to `AsyncQueryService` to run tile queries |
-| `getAvailableFiltersForSavedQueries()` | Stub (empty) | Returns empty filters — no filter interactivity |
-| `getChartAndResults()` | Stub (throws) | Deprecated sync path — throws `ForbiddenError` |
-| `calculateTotalFromSavedChart()` | Stub (throws) | Not supported in embed mode |
-| `calculateSubtotalsFromSavedChart()` | Stub (throws) | Not supported in embed mode |
-| `calculateTotalFromQuery()` | Stub (throws) | Not supported in embed mode |
-| `calculateSubtotalsFromQuery()` | Stub (throws) | Not supported in embed mode |
-| `searchFilterValues()` | Stub (throws) | Not supported in embed mode |
+### Core private helpers
 
-**Dependencies:** `DashboardModel` (for `getByIdOrSlug()`), `AsyncQueryService` (for `executeAsyncDashboardChartQuery()`). Passed from `bratrax/index.ts` via the provider factory.
+| Helper | Description |
+|--------|-------------|
+| `getAccessControls()` | Extract `userAttributes` + `intrinsicUserAttributes` from `AnonymousAccount` |
+| `_getWarehouseClient()` | Get warehouse client + SSH tunnel for a project/explore |
+| `getAvailableParameters()` | Get available parameter definitions for an explore |
+| `_runEmbedQuery()` | Core query executor: warehouse client → filter explore by user attrs → compile → execute → disconnect SSH |
+| `_getChartFromDashboardTiles()` | Find chart tile by UUID in dashboard, load saved chart |
+| `_getAppliedDashboardFilters()` | Per-tile filter scoping via `getDashboardFiltersForTileAndTables()` |
+| `_prepareSavedChartForCalculation()` | Shared setup for calculation methods — handles both chart and dashboard embeds |
+| `_calculateSubtotalsForEmbed()` | Parallel subtotal queries via `SubtotalsCalculator` dimension groups |
 
-**Flow for `getDashboard()`:**
-1. Extracts dashboard UUID from `account.access.content.dashboardUuid`
-2. Fetches dashboard via `DashboardModel.getByIdOrSlug()`
-3. Extracts interactivity options from the JWT content (canExportCsv, canExportImages, etc.)
-4. Returns merged `Dashboard & InteractivityOptions`
+### What we intentionally skip (vs EE)
 
-**Flow for `executeAsyncDashboardTileQuery()`:**
-1. Gets dashboard UUID from account
-2. Fetches dashboard and finds tile by UUID
-3. Validates tile is a chart tile and has a `savedChartUuid`
-4. Delegates to `AsyncQueryService.executeAsyncDashboardChartQuery()` with `QueryExecutionContext.DASHBOARD`
+- **Admin config** (`getConfig`, `createConfig`, `updateDashboards`, `updateConfig`) — we auto-provision via `ensureEmbedConfigured()`
+- **License gating** (`isFeatureEnabled`) — no Keygen integration
+- **Dashboard permission checks** (`checkDashboardPermissions`, `_permissionsGetChartAndResults`) — the signed JWT is our permission boundary

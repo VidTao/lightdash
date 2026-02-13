@@ -18,7 +18,7 @@ export async function getBratraxAppArguments() {
                 repository,
                 models,
             }: {
-                context: { lightdashConfig: any };
+                context: { lightdashConfig: any; lightdashAnalytics: any };
                 repository: any;
                 models: any;
             }) =>
@@ -27,6 +27,9 @@ export async function getBratraxAppArguments() {
                     lightdashConfig: context.lightdashConfig,
                     dashboardModel: models.getDashboardModel(),
                     asyncQueryService: repository.getAsyncQueryService(),
+                    projectModel: models.getProjectModel(),
+                    savedChartModel: models.getSavedChartModel(),
+                    analytics: context.lightdashAnalytics,
                 }),
             mcpServiceMain: ({
                 context,
