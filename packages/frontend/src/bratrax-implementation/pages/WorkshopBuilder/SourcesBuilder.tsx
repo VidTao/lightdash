@@ -2,6 +2,7 @@ import {
     Badge,
     Checkbox,
     Group,
+    Loader,
     ScrollArea,
     Stack,
     Text,
@@ -10,7 +11,10 @@ import {
 } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 import { useEffect, useMemo, useState, type FC } from 'react';
-import { CONNECTOR_CATALOG } from './connectorCatalog';
+import {
+    catalogEntriesToSourceConnectors,
+    useBratraxCatalogs,
+} from '../../hooks/useBratraxCatalogs';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
 import type { SourceConnector } from './types';
@@ -39,13 +43,15 @@ const SourcesBuilder: FC<Props> = ({
 }) => {
     const [search, setSearch] = useState('');
     const [selectedTap, setSelectedTap] = useState<string | null>(null);
+    const { data: catalogsData, isLoading: catalogLoading } =
+        useBratraxCatalogs();
 
-    // Initialize sources from catalog on first render
+    // Initialize sources from real catalog data on first render
     useEffect(() => {
-        if (sources.length === 0) {
-            setSources(CONNECTOR_CATALOG);
+        if (sources.length === 0 && catalogsData?.catalogs) {
+            setSources(catalogEntriesToSourceConnectors(catalogsData.catalogs));
         }
-    }, [sources.length, setSources]);
+    }, [sources.length, setSources, catalogsData]);
 
     const filteredSources = useMemo(() => {
         if (!search) return sources;
@@ -68,6 +74,17 @@ const SourcesBuilder: FC<Props> = ({
     }, [filteredSources]);
 
     const selectedSource = sources.find((s) => s.tap === selectedTap);
+
+    if (catalogLoading && sources.length === 0) {
+        return (
+            <Group position="center" py="xl">
+                <Loader size="sm" />
+                <Text size="sm" color="dimmed">
+                    Loading catalog data...
+                </Text>
+            </Group>
+        );
+    }
 
     return (
         <div className={styles.builderLayout}>
@@ -173,77 +190,91 @@ const SourcesBuilder: FC<Props> = ({
                         <Title order={5}>
                             {selectedSource.label} — Streams
                         </Title>
-                        {selectedSource.streams.map((stream) => (
-                            <div
-                                key={stream.name}
-                                className={`${styles.streamItem} ${
-                                    stream.selected
-                                        ? styles.streamItemSelected
-                                        : ''
-                                }`}
-                            >
-                                <Stack spacing={8}>
-                                    <Group>
-                                        <Checkbox
-                                            checked={stream.selected}
-                                            onChange={() =>
-                                                toggleStream(
-                                                    selectedSource.tap,
-                                                    stream.name,
-                                                )
-                                            }
-                                            label={
-                                                <Text size="sm" weight={600}>
-                                                    {stream.name}
-                                                </Text>
-                                            }
-                                        />
-                                        <Badge
-                                            size="xs"
-                                            color="gray"
-                                            variant="light"
-                                        >
-                                            {stream.fields.length} fields
-                                        </Badge>
-                                    </Group>
-                                    {stream.selected && (
-                                        <Stack spacing={2} pl={28}>
-                                            {stream.fields.map((field) => (
-                                                <div
-                                                    key={field.name}
-                                                    className={styles.fieldRow}
+                        <ScrollArea h="calc(100vh - 200px)">
+                            <Stack spacing={16}>
+                                {selectedSource.streams.map((stream) => (
+                                    <div
+                                        key={stream.name}
+                                        className={`${styles.streamItem} ${
+                                            stream.selected
+                                                ? styles.streamItemSelected
+                                                : ''
+                                        }`}
+                                    >
+                                        <Stack spacing={8}>
+                                            <Group>
+                                                <Checkbox
+                                                    checked={stream.selected}
+                                                    onChange={() =>
+                                                        toggleStream(
+                                                            selectedSource.tap,
+                                                            stream.name,
+                                                        )
+                                                    }
+                                                    label={
+                                                        <Text
+                                                            size="sm"
+                                                            weight={600}
+                                                        >
+                                                            {stream.name}
+                                                        </Text>
+                                                    }
+                                                />
+                                                <Badge
+                                                    size="xs"
+                                                    color="gray"
+                                                    variant="light"
                                                 >
-                                                    <Checkbox
-                                                        size="xs"
-                                                        checked={field.selected}
-                                                        onChange={() =>
-                                                            toggleField(
-                                                                selectedSource.tap,
-                                                                stream.name,
-                                                                field.name,
-                                                            )
-                                                        }
-                                                    />
-                                                    <Text
-                                                        size="xs"
-                                                        weight={500}
-                                                    >
-                                                        {field.name}
-                                                    </Text>
-                                                    <Badge
-                                                        size="xs"
-                                                        color="gray"
-                                                        variant="outline"
-                                                    >
-                                                        {field.type}
-                                                    </Badge>
-                                                </div>
-                                            ))}
+                                                    {stream.fields.length}{' '}
+                                                    fields
+                                                </Badge>
+                                            </Group>
+                                            {stream.selected && (
+                                                <Stack spacing={2} pl={28}>
+                                                    {stream.fields.map(
+                                                        (field) => (
+                                                            <div
+                                                                key={field.name}
+                                                                className={
+                                                                    styles.fieldRow
+                                                                }
+                                                            >
+                                                                <Checkbox
+                                                                    size="xs"
+                                                                    checked={
+                                                                        field.selected
+                                                                    }
+                                                                    onChange={() =>
+                                                                        toggleField(
+                                                                            selectedSource.tap,
+                                                                            stream.name,
+                                                                            field.name,
+                                                                        )
+                                                                    }
+                                                                />
+                                                                <Text
+                                                                    size="xs"
+                                                                    weight={500}
+                                                                >
+                                                                    {field.name}
+                                                                </Text>
+                                                                <Badge
+                                                                    size="xs"
+                                                                    color="gray"
+                                                                    variant="outline"
+                                                                >
+                                                                    {field.type}
+                                                                </Badge>
+                                                            </div>
+                                                        ),
+                                                    )}
+                                                </Stack>
+                                            )}
                                         </Stack>
-                                    )}
-                                </Stack>
-                            </div>
-                        ))}
+                                    </div>
+                                ))}
+                            </Stack>
+                        </ScrollArea>
                     </Stack>
                 ) : (
                     <Stack
