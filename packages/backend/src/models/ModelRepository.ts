@@ -175,6 +175,10 @@ abstract class ModelRepositoryBase {
 
     protected readonly utils: UtilRepository;
 
+    public getDatabase(): Knex {
+        return this.database;
+    }
+
     constructor({
         modelProviders,
         lightdashConfig,
