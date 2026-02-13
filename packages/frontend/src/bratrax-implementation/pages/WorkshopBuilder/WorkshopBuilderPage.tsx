@@ -1,0 +1,103 @@
+import { Box, Tabs } from '@mantine/core';
+import { IconDatabase, IconFileCode, IconSitemap } from '@tabler/icons-react';
+import { useCallback, useState, type FC } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import OntologyBuilder from './OntologyBuilder';
+import SourcesBuilder from './SourcesBuilder';
+import TrackingPlanBuilder from './TrackingPlanBuilder';
+import ValidationBar from './ValidationBar';
+// eslint-disable-next-line css-modules/no-unused-class
+import styles from './WorkshopBuilder.module.css';
+import YamlPreview from './YamlPreview';
+import type { BuilderTab } from './types';
+import { useBuilderState } from './useBuilderState';
+
+const WorkshopBuilderPage: FC = () => {
+    const [activeTab, setActiveTab] = useState<BuilderTab>('sources');
+    const builder = useBuilderState();
+
+    const handleTabChange = useCallback((value: string | null) => {
+        if (value) {
+            setActiveTab(value as BuilderTab);
+        }
+    }, []);
+
+    return (
+        <Box className={styles.container}>
+            <Tabs value={activeTab} onTabChange={handleTabChange}>
+                <Tabs.List>
+                    <Tabs.Tab value="sources" icon={<IconDatabase size={16} />}>
+                        Sources
+                    </Tabs.Tab>
+                    <Tabs.Tab value="ontology" icon={<IconSitemap size={16} />}>
+                        Ontology
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                        value="tracking-plan"
+                        icon={<IconFileCode size={16} />}
+                    >
+                        Tracking Plan
+                    </Tabs.Tab>
+                </Tabs.List>
+            </Tabs>
+
+            <PanelGroup direction="horizontal" style={{ flex: 1 }}>
+                <Panel id="builder-content" order={1}>
+                    <Box className={styles.tabContent}>
+                        {activeTab === 'sources' && (
+                            <SourcesBuilder
+                                sources={builder.state.sources}
+                                setSources={builder.setSources}
+                                toggleStream={builder.toggleStream}
+                                toggleField={builder.toggleField}
+                            />
+                        )}
+                        {activeTab === 'ontology' && (
+                            <OntologyBuilder
+                                objects={builder.state.objects}
+                                links={builder.state.links}
+                                addObject={builder.addObject}
+                                updateObject={builder.updateObject}
+                                removeObject={builder.removeObject}
+                                addProperty={builder.addProperty}
+                                removeProperty={builder.removeProperty}
+                                addLink={builder.addLink}
+                                removeLink={builder.removeLink}
+                            />
+                        )}
+                        {activeTab === 'tracking-plan' && (
+                            <TrackingPlanBuilder
+                                events={builder.state.events}
+                                objects={builder.state.objects}
+                                addEvent={builder.addEvent}
+                                updateEvent={builder.updateEvent}
+                                removeEvent={builder.removeEvent}
+                                addEventProperty={builder.addEventProperty}
+                                addEnrichment={builder.addEnrichment}
+                            />
+                        )}
+                    </Box>
+                </Panel>
+
+                <PanelResizeHandle className={styles.resizeHandle} />
+
+                <Panel
+                    id="yaml-preview"
+                    order={2}
+                    defaultSize={30}
+                    minSize={20}
+                    maxSize={50}
+                >
+                    <YamlPreview state={builder.state} activeTab={activeTab} />
+                </Panel>
+            </PanelGroup>
+
+            <ValidationBar
+                messages={builder.validationMessages}
+                activeTab={activeTab}
+            />
+        </Box>
+    );
+};
+
+export default WorkshopBuilderPage;

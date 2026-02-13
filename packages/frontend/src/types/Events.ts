@@ -54,6 +54,8 @@ export enum PageName {
     CATALOG = 'catalog',
     METRICS_CATALOG = 'metrics_catalog',
     FUNNEL_BUILDER = 'funnel_builder',
+    OBSERVATORY = 'observatory',
+    WORKSHOP_BUILDER = 'workshop_builder',
 }
 
 export enum CategoryName {
