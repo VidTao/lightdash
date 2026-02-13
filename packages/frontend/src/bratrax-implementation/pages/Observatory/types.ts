@@ -1,6 +1,12 @@
 import type { Edge, Node } from '@xyflow/react';
 
-export type NodeKind = 'source' | 'stream' | 'flatten' | 'dim' | 'lightdash';
+export type NodeKind =
+    | 'source'
+    | 'stream'
+    | 'flatten'
+    | 'activity_stream'
+    | 'dim'
+    | 'lightdash';
 
 export type OntologyNodeData = {
     label: string;
@@ -44,6 +50,11 @@ export const NODE_KIND_COLORS: Record<
         border: 'var(--mantine-color-yellow-4)',
         text: 'var(--mantine-color-yellow-8)',
     },
+    activity_stream: {
+        bg: 'var(--mantine-color-orange-0)',
+        border: 'var(--mantine-color-orange-4)',
+        text: 'var(--mantine-color-orange-7)',
+    },
     dim: {
         bg: 'var(--mantine-color-green-0)',
         border: 'var(--mantine-color-green-4)',
@@ -60,6 +71,7 @@ export const NODE_KIND_LABELS: Record<NodeKind, string> = {
     source: 'Source',
     stream: 'Stream',
     flatten: 'Flatten',
+    activity_stream: 'Activity Stream',
     dim: 'Dimension',
     lightdash: 'Dashboard',
 };

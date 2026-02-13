@@ -1,15 +1,22 @@
-import { Button, Group, Stack, Text, Title } from '@mantine/core';
+import { Button, Group, SegmentedControl, Stack, Text, Title } from '@mantine/core';
 import { IconCopy, IconDownload } from '@tabler/icons-react';
 import yaml from 'js-yaml';
-import { useCallback, useMemo, type FC } from 'react';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import {
+    generateCompilerOntology,
+    generateCompilerSources,
+    generateCompilerTrackingPlan,
+} from './compilerYamlTransformer';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
-import type { BuilderState, BuilderTab } from './types';
+import type { BuilderState, BuilderTab, YamlFormat } from './types';
 
 type Props = {
     state: BuilderState;
     activeTab: BuilderTab;
 };
+
+// ─── Builder-format generators (original) ───
 
 function generateSourcesYaml(state: BuilderState): string {
     const sources: Record<string, unknown> = {};
@@ -110,12 +117,23 @@ function generateTrackingPlanYaml(state: BuilderState): string {
     return yaml.dump({ events }, { lineWidth: 120, noRefs: true });
 }
 
-const TAB_YAML_GENERATORS: Record<BuilderTab, (state: BuilderState) => string> =
+// ─── Generator maps ───
+
+const BUILDER_GENERATORS: Record<BuilderTab, (state: BuilderState) => string> =
     {
         sources: generateSourcesYaml,
         ontology: generateOntologyYaml,
         'tracking-plan': generateTrackingPlanYaml,
     };
+
+const COMPILER_GENERATORS: Record<
+    BuilderTab,
+    (state: BuilderState) => string
+> = {
+    sources: (state) => generateCompilerSources(state, 'preview'),
+    ontology: (state) => generateCompilerOntology(state, 'preview'),
+    'tracking-plan': (state) => generateCompilerTrackingPlan(state, 'preview'),
+};
 
 const TAB_FILE_NAMES: Record<BuilderTab, string> = {
     sources: 'sources.yaml',
@@ -124,9 +142,14 @@ const TAB_FILE_NAMES: Record<BuilderTab, string> = {
 };
 
 const YamlPreview: FC<Props> = ({ state, activeTab }) => {
+    const [yamlFormat, setYamlFormat] = useState<YamlFormat>('builder');
+
+    const generators =
+        yamlFormat === 'compiler' ? COMPILER_GENERATORS : BUILDER_GENERATORS;
+
     const yamlContent = useMemo(
-        () => TAB_YAML_GENERATORS[activeTab](state),
-        [state, activeTab],
+        () => generators[activeTab](state),
+        [state, activeTab, generators],
     );
 
     const handleCopy = useCallback(() => {
@@ -167,6 +190,16 @@ const YamlPreview: FC<Props> = ({ state, activeTab }) => {
                         </Button>
                     </Group>
                 </Group>
+
+                <SegmentedControl
+                    size="xs"
+                    value={yamlFormat}
+                    onChange={(v) => setYamlFormat(v as YamlFormat)}
+                    data={[
+                        { label: 'Builder', value: 'builder' },
+                        { label: 'Compiler', value: 'compiler' },
+                    ]}
+                />
 
                 <div className={styles.yamlCode}>
                     {yamlContent || (

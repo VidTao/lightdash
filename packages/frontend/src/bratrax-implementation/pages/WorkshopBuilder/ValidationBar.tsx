@@ -34,12 +34,30 @@ const ValidationBar: FC<Props> = ({ messages, activeTab }) => {
         [messages, activeTab],
     );
 
-    const errorCount = tabMessages.filter((m) => m.severity === 'error').length;
-    const warningCount = tabMessages.filter(
+    // Also show compiler messages (they're on 'ontology' tab but cross-cutting)
+    const compilerMessages = useMemo(
+        () =>
+            messages.filter(
+                (m) =>
+                    m.message.startsWith('[Compiler]') &&
+                    m.tab !== activeTab,
+            ),
+        [messages, activeTab],
+    );
+
+    const allMessages = useMemo(
+        () => [...tabMessages, ...compilerMessages],
+        [tabMessages, compilerMessages],
+    );
+
+    const errorCount = allMessages.filter(
+        (m) => m.severity === 'error',
+    ).length;
+    const warningCount = allMessages.filter(
         (m) => m.severity === 'warning',
     ).length;
 
-    if (tabMessages.length === 0) {
+    if (allMessages.length === 0) {
         return (
             <div className={styles.validationBar}>
                 <IconCircleCheck
@@ -68,7 +86,7 @@ const ValidationBar: FC<Props> = ({ messages, activeTab }) => {
                 )}
             </Group>
             <Group spacing={8} style={{ flex: 1, overflow: 'hidden' }} noWrap>
-                {tabMessages.slice(0, 3).map((msg, i) => {
+                {allMessages.slice(0, 3).map((msg, i) => {
                     const config = SEVERITY_CONFIG[msg.severity];
                     const Icon = config.icon;
                     return (

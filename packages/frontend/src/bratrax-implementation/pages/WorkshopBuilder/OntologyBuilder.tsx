@@ -2,16 +2,19 @@ import {
     ActionIcon,
     Badge,
     Button,
+    Card,
     Group,
     NativeSelect,
     ScrollArea,
+    SimpleGrid,
     Stack,
     Text,
     TextInput,
     Title,
 } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconLink, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useCallback, useState, type FC } from 'react';
+import FieldRefPicker from './FieldRefPicker';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
 import type {
@@ -20,11 +23,13 @@ import type {
     ObjectProperty,
     OntologyObject,
     PropertyKind,
+    TrackingEvent,
 } from './types';
 
 type Props = {
     objects: OntologyObject[];
     links: ObjectLink[];
+    events: TrackingEvent[];
     addObject: (obj: OntologyObject) => void;
     updateObject: (id: string, updates: Partial<OntologyObject>) => void;
     removeObject: (id: string) => void;
@@ -45,12 +50,42 @@ const FIELD_TYPES: FieldType[] = [
 const PROPERTY_KINDS: PropertyKind[] = ['backing', 'derived', 'computed'];
 const CARDINALITIES = ['one-to-one', 'one-to-many', 'many-to-many'] as const;
 
+const OBJECT_PRESETS = [
+    {
+        name: 'Customer',
+        description: 'Person who buys from your store',
+        props: ['customer_id', 'email', 'first_name', 'last_name', 'created_at'],
+    },
+    {
+        name: 'Order',
+        description: 'A purchase transaction',
+        props: ['order_id', 'customer_id', 'total_price', 'created_at', 'status'],
+    },
+    {
+        name: 'Campaign',
+        description: 'An advertising campaign',
+        props: [
+            'campaign_id',
+            'campaign_name',
+            'status',
+            'spend',
+            'impressions',
+        ],
+    },
+    {
+        name: 'Product',
+        description: 'An item in your catalog',
+        props: ['product_id', 'title', 'vendor', 'product_type', 'price'],
+    },
+] as const;
+
 let nextId = 1;
 const genId = (prefix: string) => `${prefix}-${nextId++}`;
 
 const OntologyBuilder: FC<Props> = ({
     objects,
     links,
+    events,
     addObject,
     updateObject,
     removeObject,
@@ -68,6 +103,12 @@ const OntologyBuilder: FC<Props> = ({
     const [newPropKind, setNewPropKind] = useState<PropertyKind>('backing');
     const [newPropRef, setNewPropRef] = useState('');
 
+    // Field ref picker state — editingPropId is set when editing an existing property
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [editingPropId, setEditingPropId] = useState<string | null>(null);
+    const [editingPropKind, setEditingPropKind] =
+        useState<PropertyKind>('backing');
+
     // Link creation state
     const [newLinkTarget, setNewLinkTarget] = useState('');
     const [newLinkVerb, setNewLinkVerb] = useState('');
@@ -83,6 +124,22 @@ const OntologyBuilder: FC<Props> = ({
         setSelectedObjectId(id);
         setNewObjectName('');
     }, [newObjectName, addObject]);
+
+    const handleAddFromPreset = useCallback(
+        (preset: (typeof OBJECT_PRESETS)[number]) => {
+            const id = genId('obj');
+            const properties: ObjectProperty[] = preset.props.map((name) => ({
+                id: genId('prop'),
+                name,
+                type: 'STRING' as FieldType,
+                kind: 'backing' as PropertyKind,
+                ref: '',
+            }));
+            addObject({ id, name: preset.name, properties });
+            setSelectedObjectId(id);
+        },
+        [addObject],
+    );
 
     const handleAddProperty = useCallback(() => {
         if (!selectedObjectId || !newPropName.trim()) return;
@@ -103,6 +160,36 @@ const OntologyBuilder: FC<Props> = ({
         newPropRef,
         addProperty,
     ]);
+
+    const handlePickerSelect = useCallback(
+        (ref: string, fieldType: FieldType) => {
+            if (editingPropId && selectedObject) {
+                // Updating an existing property's ref
+                updateObject(selectedObject.id, {
+                    properties: selectedObject.properties.map((p) =>
+                        p.id === editingPropId
+                            ? { ...p, ref, type: fieldType }
+                            : p,
+                    ),
+                });
+                setEditingPropId(null);
+            } else {
+                // Setting ref for new property form
+                setNewPropRef(ref);
+                setNewPropType(fieldType);
+            }
+        },
+        [editingPropId, selectedObject, updateObject],
+    );
+
+    const openPickerForExisting = useCallback(
+        (prop: ObjectProperty) => {
+            setEditingPropId(prop.id);
+            setEditingPropKind(prop.kind);
+            setPickerOpen(true);
+        },
+        [],
+    );
 
     const handleAddLink = useCallback(() => {
         if (!selectedObjectId || !newLinkTarget || !newLinkVerb.trim()) return;
@@ -245,7 +332,7 @@ const OntologyBuilder: FC<Props> = ({
                                     <Text
                                         size="sm"
                                         weight={500}
-                                        style={{ flex: 1 }}
+                                        style={{ width: 140 }}
                                     >
                                         {prop.name}
                                     </Text>
@@ -269,10 +356,40 @@ const OntologyBuilder: FC<Props> = ({
                                     >
                                         {prop.kind}
                                     </Badge>
-                                    {prop.ref && (
-                                        <Text size="xs" color="dimmed">
+                                    {prop.ref ? (
+                                        <Text
+                                            size="xs"
+                                            color="blue"
+                                            style={{
+                                                flex: 1,
+                                                cursor: 'pointer',
+                                            }}
+                                            onClick={() =>
+                                                openPickerForExisting(prop)
+                                            }
+                                        >
                                             {prop.ref}
                                         </Text>
+                                    ) : (
+                                        <Button
+                                            size="xs"
+                                            variant="subtle"
+                                            color="gray"
+                                            compact
+                                            leftIcon={<IconLink size={10} />}
+                                            onClick={() =>
+                                                openPickerForExisting(prop)
+                                            }
+                                            style={{ flex: 1 }}
+                                            styles={{
+                                                label: {
+                                                    fontWeight: 400,
+                                                    fontSize: 11,
+                                                },
+                                            }}
+                                        >
+                                            Map to source...
+                                        </Button>
                                     )}
                                     <ActionIcon
                                         size="xs"
@@ -328,15 +445,37 @@ const OntologyBuilder: FC<Props> = ({
                                     data={PROPERTY_KINDS}
                                     style={{ width: 110 }}
                                 />
-                                <TextInput
-                                    placeholder="$ref or formula"
-                                    size="xs"
-                                    value={newPropRef}
-                                    onChange={(
-                                        e: React.ChangeEvent<HTMLInputElement>,
-                                    ) => setNewPropRef(e.currentTarget.value)}
-                                    style={{ flex: 1 }}
-                                />
+                                {newPropKind === 'computed' ? (
+                                    <TextInput
+                                        placeholder="SQL formula"
+                                        size="xs"
+                                        value={newPropRef}
+                                        onChange={(
+                                            e: React.ChangeEvent<HTMLInputElement>,
+                                        ) =>
+                                            setNewPropRef(
+                                                e.currentTarget.value,
+                                            )
+                                        }
+                                        style={{ flex: 1 }}
+                                    />
+                                ) : (
+                                    <Button
+                                        size="xs"
+                                        variant="outline"
+                                        leftIcon={<IconLink size={12} />}
+                                        onClick={() => setPickerOpen(true)}
+                                        style={{
+                                            flex: 1,
+                                            justifyContent: 'flex-start',
+                                        }}
+                                        styles={{
+                                            label: { fontWeight: 400 },
+                                        }}
+                                    >
+                                        {newPropRef || 'Pick source field...'}
+                                    </Button>
+                                )}
                                 <Button
                                     size="xs"
                                     variant="light"
@@ -463,17 +602,77 @@ const OntologyBuilder: FC<Props> = ({
                             )}
                         </Stack>
                     </Stack>
+                ) : objects.length === 0 ? (
+                    <Stack spacing={24} p="md">
+                        <div>
+                            <Title order={5}>Define your business objects</Title>
+                            <Text size="sm" color="dimmed" mt={4}>
+                                Start with a suggested preset or create a custom
+                                object using the panel on the left.
+                            </Text>
+                        </div>
+                        <SimpleGrid cols={2} spacing="md">
+                            {OBJECT_PRESETS.map((preset) => (
+                                <Card
+                                    key={preset.name}
+                                    shadow="xs"
+                                    padding="md"
+                                    radius="md"
+                                    withBorder
+                                    sx={{
+                                        cursor: 'pointer',
+                                        '&:hover': {
+                                            borderColor: 'var(--mantine-color-blue-4)',
+                                            backgroundColor:
+                                                'var(--mantine-color-blue-0)',
+                                        },
+                                    }}
+                                    onClick={() => handleAddFromPreset(preset)}
+                                >
+                                    <Text size="sm" weight={600}>
+                                        {preset.name}
+                                    </Text>
+                                    <Text size="xs" color="dimmed" mt={2}>
+                                        {preset.description}
+                                    </Text>
+                                    <Group spacing={4} mt={8}>
+                                        {preset.props.map((p) => (
+                                            <Badge
+                                                key={p}
+                                                size="xs"
+                                                variant="outline"
+                                                color="gray"
+                                            >
+                                                {p}
+                                            </Badge>
+                                        ))}
+                                    </Group>
+                                </Card>
+                            ))}
+                        </SimpleGrid>
+                    </Stack>
                 ) : (
                     <Stack
                         align="center"
                         sx={{ justifyContent: 'center', height: '100%' }}
                     >
                         <Text color="dimmed" size="lg">
-                            Select or create an object to edit its properties
+                            Select an object to edit its properties
                         </Text>
                     </Stack>
                 )}
             </div>
+
+            <FieldRefPicker
+                opened={pickerOpen}
+                onClose={() => {
+                    setPickerOpen(false);
+                    setEditingPropId(null);
+                }}
+                onSelect={handlePickerSelect}
+                kind={editingPropId ? editingPropKind : newPropKind}
+                events={events}
+            />
         </div>
     );
 };

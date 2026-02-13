@@ -3,6 +3,8 @@ import {
     Badge,
     Button,
     Checkbox,
+    Code,
+    CopyButton,
     Group,
     NativeSelect,
     ScrollArea,
@@ -11,8 +13,9 @@ import {
     TextInput,
     Title,
 } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
-import { useCallback, useState, type FC } from 'react';
+import { IconClipboard, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import { generateFullSnippet } from './snippetGenerator';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
 import type {
@@ -139,6 +142,11 @@ const TrackingPlanBuilder: FC<Props> = ({
     ]);
 
     const selectedEnrichObject = objects.find((o) => o.id === enrichObjId);
+
+    const snippet = useMemo(() => {
+        if (!selectedEvent) return '';
+        return generateFullSnippet(selectedEvent);
+    }, [selectedEvent]);
 
     return (
         <div className={styles.builderLayout}>
@@ -477,6 +485,35 @@ const TrackingPlanBuilder: FC<Props> = ({
                                         </Button>
                                     </Group>
                                 )}
+                        </Stack>
+
+                        {/* Tracking Code Snippet */}
+                        <Stack spacing={8}>
+                            <Group position="apart">
+                                <Title order={6}>Tracking Snippet</Title>
+                                <CopyButton value={snippet}>
+                                    {({ copied, copy }) => (
+                                        <Button
+                                            size="xs"
+                                            variant="subtle"
+                                            color={copied ? 'teal' : 'gray'}
+                                            leftIcon={
+                                                copied ? (
+                                                    <IconCheck size={14} />
+                                                ) : (
+                                                    <IconClipboard size={14} />
+                                                )
+                                            }
+                                            onClick={copy}
+                                        >
+                                            {copied ? 'Copied' : 'Copy'}
+                                        </Button>
+                                    )}
+                                </CopyButton>
+                            </Group>
+                            <Code block style={{ fontSize: 12 }}>
+                                {snippet}
+                            </Code>
                         </Stack>
                     </Stack>
                 ) : (

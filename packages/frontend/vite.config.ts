@@ -134,7 +134,7 @@ export default defineConfig({
         },
     },
     server: {
-        port: 3000,
+        port: FE_PORT,
         host: true,
         watch: {
             usePolling: true,
@@ -143,7 +143,7 @@ export default defineConfig({
         },
         hmr: {
             overlay: true,
-            clientPort: 3000,
+            clientPort: FE_PORT,
             host: '0.0.0.0',
         },
         allowedHosts: [

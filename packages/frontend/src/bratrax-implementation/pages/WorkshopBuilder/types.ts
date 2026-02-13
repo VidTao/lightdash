@@ -101,3 +101,14 @@ export type ValidationMessage = {
     tab: BuilderTab;
     message: string;
 };
+
+// ─── Compiler Integration ───
+
+export type CompilerYamlPayload = {
+    config: string;
+    ontology: string;
+    sources: string;
+    tracking_plan: string;
+};
+
+export type YamlFormat = 'builder' | 'compiler';
