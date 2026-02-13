@@ -5,6 +5,7 @@ import {
     AiResultType,
     AnyType,
     CatalogType,
+    CartesianSeriesType,
     ChartType,
     CommercialFeatureFlags,
     convertAiTableCalcsSchemaToTableCalcs,
@@ -517,6 +518,57 @@ export class BratraxMcpService extends BaseService {
             default:
                 return ChartType.CARTESIAN;
         }
+    }
+
+    /**
+     * Build a proper ChartConfig for a visualization.
+     * Cartesian charts need a layout + eChartsConfig with series to avoid
+     * "Invalid cartesian chart config - no eCharts config" errors.
+     */
+    // eslint-disable-next-line class-methods-use-this
+    private buildChartConfig(
+        chartType: ChartType,
+        defaultVizType: string | null | undefined,
+        dimensions: string[],
+        metrics: string[],
+    ): CreateSavedChart['chartConfig'] {
+        if (chartType !== ChartType.CARTESIAN) {
+            return { type: chartType, config: undefined };
+        }
+
+        const xField = dimensions[0];
+        const yField = metrics;
+        const flipAxes = defaultVizType === 'horizontal';
+
+        const seriesType: CartesianSeriesType =
+            defaultVizType === 'line'
+                ? CartesianSeriesType.LINE
+                : defaultVizType === 'scatter'
+                  ? CartesianSeriesType.SCATTER
+                  : CartesianSeriesType.BAR;
+
+        const series = metrics.map((metric, idx) => ({
+            type: seriesType,
+            encode: {
+                xRef: { field: xField },
+                yRef: { field: metric },
+            },
+            yAxisIndex: 0,
+        }));
+
+        return {
+            type: ChartType.CARTESIAN,
+            config: {
+                layout: {
+                    xField,
+                    yField,
+                    flipAxes: flipAxes || undefined,
+                },
+                eChartsConfig: {
+                    series,
+                },
+            },
+        };
     }
 
     // ── tool registration ──────────────────────────────────────────────
@@ -1233,10 +1285,12 @@ export class BratraxMcpService extends BaseService {
                                 description: viz.description || undefined,
                                 tableName: viz.queryConfig.exploreName,
                                 metricQuery,
-                                chartConfig: {
-                                    type: chartType,
-                                    config: undefined,
-                                },
+                                chartConfig: this.buildChartConfig(
+                                    chartType,
+                                    viz.chartConfig?.defaultVizType,
+                                    viz.queryConfig.dimensions,
+                                    viz.queryConfig.metrics,
+                                ),
                                 tableConfig: {
                                     columnOrder: [],
                                 },
