@@ -1,9 +1,26 @@
-import { Box, Tabs } from '@mantine/core';
-import { IconDatabase, IconFileCode, IconSitemap } from '@tabler/icons-react';
+import { Box, Button, Group, Tabs } from '@mantine/core';
+import {
+    IconCheck,
+    IconDatabase,
+    IconEye,
+    IconFileCode,
+    IconHammer,
+    IconSitemap,
+} from '@tabler/icons-react';
 import { useCallback, useState, type FC } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { useNavigate, useParams } from 'react-router';
+import {
+    useBratraxCompile,
+    useBratraxGraph,
+    useBratraxValidate,
+    type CompileResult,
+} from '../../hooks/useBratraxApi';
+import { toCompilerPayload } from './compilerYamlTransformer';
+import CompileResultsPanel from './CompileResultsPanel';
 import OntologyBuilder from './OntologyBuilder';
 import SourcesBuilder from './SourcesBuilder';
+import TemplateSelector from './TemplateSelector';
 import TrackingPlanBuilder from './TrackingPlanBuilder';
 import ValidationBar from './ValidationBar';
 // eslint-disable-next-line css-modules/no-unused-class
@@ -14,7 +31,17 @@ import { useBuilderState } from './useBuilderState';
 
 const WorkshopBuilderPage: FC = () => {
     const [activeTab, setActiveTab] = useState<BuilderTab>('sources');
+    const [compileResult, setCompileResult] = useState<CompileResult | null>(
+        null,
+    );
+    const [showCompilePanel, setShowCompilePanel] = useState(false);
     const builder = useBuilderState();
+    const navigate = useNavigate();
+    const { projectUuid } = useParams<{ projectUuid: string }>();
+
+    const validateMutation = useBratraxValidate();
+    const compileMutation = useBratraxCompile();
+    const graphMutation = useBratraxGraph();
 
     const handleTabChange = useCallback((value: string | null) => {
         if (value) {
@@ -22,24 +49,116 @@ const WorkshopBuilderPage: FC = () => {
         }
     }, []);
 
+    const handleValidate = useCallback(() => {
+        const payload = toCompilerPayload(builder.state, 'preview');
+        builder.setIsValidating(true);
+        validateMutation.mutate(payload, {
+            onSuccess: (result) => {
+                builder.setCompilerValidation(result);
+                builder.setIsValidating(false);
+            },
+            onError: () => {
+                builder.setIsValidating(false);
+            },
+        });
+    }, [builder, validateMutation]);
+
+    const handleCompile = useCallback(() => {
+        const payload = toCompilerPayload(builder.state, 'preview');
+        builder.setIsCompiling(true);
+        setShowCompilePanel(true);
+        compileMutation.mutate(payload, {
+            onSuccess: (result) => {
+                setCompileResult(result);
+                builder.setIsCompiling(false);
+            },
+            onError: () => {
+                builder.setIsCompiling(false);
+            },
+        });
+    }, [builder, compileMutation]);
+
+    const handleViewObservatory = useCallback(() => {
+        const payload = toCompilerPayload(builder.state, 'preview');
+        graphMutation.mutate(payload, {
+            onSuccess: (result) => {
+                // Store graph data and navigate to observatory
+                sessionStorage.setItem(
+                    'bratrax-graph',
+                    JSON.stringify(result),
+                );
+                navigate(`/projects/${projectUuid}/observatory?client=preview`);
+            },
+        });
+    }, [builder.state, graphMutation, navigate]);
+
+    const handleLoadTemplate = useCallback(
+        (files: Record<string, string>) => {
+            builder.loadFromTemplate(files);
+        },
+        [builder],
+    );
+
     return (
         <Box className={styles.container}>
-            <Tabs value={activeTab} onTabChange={handleTabChange}>
-                <Tabs.List>
-                    <Tabs.Tab value="sources" icon={<IconDatabase size={16} />}>
-                        Sources
-                    </Tabs.Tab>
-                    <Tabs.Tab value="ontology" icon={<IconSitemap size={16} />}>
-                        Ontology
-                    </Tabs.Tab>
-                    <Tabs.Tab
-                        value="tracking-plan"
-                        icon={<IconFileCode size={16} />}
+            <Group position="apart" px="md" py={6}>
+                <Tabs value={activeTab} onTabChange={handleTabChange}>
+                    <Tabs.List>
+                        <Tabs.Tab
+                            value="sources"
+                            icon={<IconDatabase size={16} />}
+                        >
+                            Sources
+                        </Tabs.Tab>
+                        <Tabs.Tab
+                            value="ontology"
+                            icon={<IconSitemap size={16} />}
+                        >
+                            Ontology
+                        </Tabs.Tab>
+                        <Tabs.Tab
+                            value="tracking-plan"
+                            icon={<IconFileCode size={16} />}
+                        >
+                            Tracking Plan
+                        </Tabs.Tab>
+                    </Tabs.List>
+                </Tabs>
+
+                <Group spacing={6}>
+                    <TemplateSelector onLoad={handleLoadTemplate} />
+                    <Button
+                        size="xs"
+                        variant="light"
+                        color="green"
+                        leftIcon={<IconCheck size={14} />}
+                        onClick={handleValidate}
+                        loading={builder.isValidating}
                     >
-                        Tracking Plan
-                    </Tabs.Tab>
-                </Tabs.List>
-            </Tabs>
+                        Validate
+                    </Button>
+                    <Button
+                        size="xs"
+                        variant="light"
+                        color="blue"
+                        leftIcon={<IconHammer size={14} />}
+                        onClick={handleCompile}
+                        loading={builder.isCompiling}
+                    >
+                        Compile
+                    </Button>
+                    <Button
+                        size="xs"
+                        variant="light"
+                        color="violet"
+                        leftIcon={<IconEye size={14} />}
+                        onClick={handleViewObservatory}
+                        loading={graphMutation.isPending}
+                    >
+                        Observatory
+                    </Button>
+                </Group>
+            </Group>
 
             <PanelGroup direction="horizontal" style={{ flex: 1 }}>
                 <Panel id="builder-content" order={1}>
@@ -56,6 +175,7 @@ const WorkshopBuilderPage: FC = () => {
                             <OntologyBuilder
                                 objects={builder.state.objects}
                                 links={builder.state.links}
+                                events={builder.state.events}
                                 addObject={builder.addObject}
                                 updateObject={builder.updateObject}
                                 removeObject={builder.removeObject}
@@ -88,7 +208,18 @@ const WorkshopBuilderPage: FC = () => {
                     minSize={20}
                     maxSize={50}
                 >
-                    <YamlPreview state={builder.state} activeTab={activeTab} />
+                    {showCompilePanel ? (
+                        <CompileResultsPanel
+                            result={compileResult}
+                            isCompiling={builder.isCompiling}
+                            onClose={() => setShowCompilePanel(false)}
+                        />
+                    ) : (
+                        <YamlPreview
+                            state={builder.state}
+                            activeTab={activeTab}
+                        />
+                    )}
                 </Panel>
             </PanelGroup>
 
