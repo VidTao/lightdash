@@ -32,16 +32,38 @@ bratrax/
     BratraxEmbedService.ts        # Embed service: JWT auth, URL generation, dashboard rendering
   mcp/
     bratraxMcpRouter.ts           # Express router for POST /api/v1/mcp
-    BratraxMcpService.ts          # Main service (~1500 lines), registers all MCP tools
+    BratraxMcpService.ts          # Orchestrator: class + helpers, delegates to tools/
+    toolContext.ts                 # McpToolContext interface shared by all tool files
     mcpSchemaCompat.ts            # Converts Zod schemas to JSON Schema for MCP SDK
     mcpAppHelpers.ts              # registerAppTool/registerAppResource wrappers
     types.ts                      # ExtraContext, McpProtocolContext, BratraxMcpToolName enum
+    tools/                        # One file per MCP tool (git-conflict-free)
+      index.ts                    # registerAllTools() barrel — single merge point
+      getVersion.ts               # get_lightdash_version
+      listExplores.ts             # list_explores
+      findExplores.ts             # find_explores
+      findFields.ts               # find_fields
+      findContent.ts              # find_content
+      listProjects.ts             # list_projects
+      setProject.ts               # set_project
+      getCurrentProject.ts        # get_current_project
+      runMetricQuery.ts           # run_metric_query
+      searchFieldValues.ts        # search_field_values
+      getEmbedUrl.ts              # get_embed_url
+      generateDashboard.ts        # generate_dashboard
     utils/
       exploreContext.ts           # ExploreContext — cached explore list per user+project
       pivotResults.ts             # DuckDB-based result pivoting
       customMetrics.ts            # Injects SQL for custom metric definitions
       serializeData.ts            # JSON/CSV output serializer
 ```
+
+### Adding a New MCP Tool
+
+1. Create `mcp/tools/myNewTool.ts` exporting `registerMyNewToolTool(ctx: McpToolContext): void`
+2. Add the tool name to `BratraxMcpToolName` enum in `types.ts`
+3. Import and call your register function in `tools/index.ts`
+4. That's it — no changes to `BratraxMcpService.ts` needed
 
 ## MCP Server Architecture
 
