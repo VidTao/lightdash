@@ -1,7 +1,7 @@
 import { getErrorMessage } from '@lightdash/common';
 import App from './App';
 import { lightdashConfig } from './config/lightdashConfig';
-import { getEnterpriseAppArguments } from './ee';
+import { getBratraxAppArguments } from './bratrax';
 import knexConfig from './knexfile';
 import Logger from './logging/logger';
 
@@ -25,7 +25,7 @@ process.on('uncaughtException', (err) => {
                     ? 'development'
                     : 'production',
             knexConfig,
-            ...(await getEnterpriseAppArguments()),
+            ...(await getBratraxAppArguments()),
         });
 
         const onExit = () => {

@@ -54,8 +54,8 @@ import { UnfurlService } from './UnfurlService/UnfurlService';
 import { UserAttributesService } from './UserAttributesService/UserAttributesService';
 import { UserService } from './UserService';
 import { ValidationService } from './ValidationService/ValidationService';
-import { McpServiceMain } from './McpService/McpServiceMain';
-import { McpService } from '../ee/services/McpService/McpService';
+import { BratraxMcpService } from '../bratrax/mcp/BratraxMcpService';
+import type { McpService } from '../ee/services/McpService/McpService';
 /**
  * Interface outlining all services available under the `ServiceRepository`. Add new services to
  * this list (in alphabetical order, please!) to have typescript help ensure you've updated the
@@ -119,7 +119,7 @@ interface ServiceManifest {
     serviceAccountService: unknown;
     instanceConfigurationService: unknown;
     libreChatIntegrationService: LibreChatIntegrationService;
-    mcpServiceMain: McpServiceMain;
+    mcpServiceMain: BratraxMcpService;
     mcpService: McpService;
     rolesService: RolesService;
     slackService: SlackService;
@@ -1018,11 +1018,11 @@ export class ServiceRepository
         return this.getService('supportService');
     }
 
-    public getMcpServiceMain(): McpServiceMain {
+    public getMcpServiceMain(): BratraxMcpService {
         return this.getService(
             'mcpServiceMain',
             () =>
-                new McpServiceMain({
+                new BratraxMcpService({
                     lightdashConfig: this.context.lightdashConfig,
                     analytics: this.context.lightdashAnalytics,
                     asyncQueryService: this.getAsyncQueryService(),

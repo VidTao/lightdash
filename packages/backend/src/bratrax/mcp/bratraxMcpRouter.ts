@@ -16,14 +16,14 @@ import {
     UserAttributeValueMap,
 } from '@lightdash/common';
 import {
-    allowApiKeyAuthentication, // ← Changed from allowOauthAuthentication
-} from '../controllers/authentication';
-import Logger from '../logging/logger';
-import type { BratraxMcpService } from '../bratrax/mcp/BratraxMcpService';
-import type { ExtraContext } from '../bratrax/mcp/types';
-import { userAttributeOverridesSchema } from '../services/UserAttributesService/UserAttributeUtils';
+    allowApiKeyAuthentication,
+} from '../../controllers/authentication';
+import Logger from '../../logging/logger';
+import type { BratraxMcpService } from './BratraxMcpService';
+import type { ExtraContext } from './types';
+import { userAttributeOverridesSchema } from '../../services/UserAttributesService/UserAttributeUtils';
 
-const mcpRouter: Router = express.Router({ mergeParams: true });
+const bratraxMcpRouter: Router = express.Router({ mergeParams: true });
 
 function getMcpService(req: express.Request): BratraxMcpService {
     try {
@@ -121,7 +121,7 @@ const conditionalAuth = (
 // - MCP protocol requirements don't align with REST/TSOA patterns
 // - We need full control over HTTP streaming and headers
 // - It follows the same pattern as other protocol-specific endpoints (OAuth)
-mcpRouter.all(
+bratraxMcpRouter.all(
     '/',
     // Attempt API key authentication if header present
     (req, res, next) => {
@@ -244,4 +244,4 @@ mcpRouter.all(
     }
 );
 
-export default mcpRouter;
+export default bratraxMcpRouter;
