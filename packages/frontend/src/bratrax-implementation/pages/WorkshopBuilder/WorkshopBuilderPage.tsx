@@ -90,7 +90,7 @@ const WorkshopBuilderPage: FC = () => {
                 navigate(`/projects/${projectUuid}/observatory?client=preview`);
             },
         });
-    }, [builder.state, graphMutation, navigate]);
+    }, [builder.state, graphMutation, navigate, projectUuid]);
 
     const handleLoadTemplate = useCallback(
         (files: Record<string, string>) => {
@@ -153,7 +153,7 @@ const WorkshopBuilderPage: FC = () => {
                         color="violet"
                         leftIcon={<IconEye size={14} />}
                         onClick={handleViewObservatory}
-                        loading={graphMutation.isPending}
+                        loading={graphMutation.isLoading}
                     >
                         Observatory
                     </Button>
