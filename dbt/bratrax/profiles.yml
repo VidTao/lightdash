@@ -1,10 +1,10 @@
 bratrax:
   outputs:
     dev:
-      dataset: production_tables
+      dataset: cod
       job_execution_timeout_seconds: 50
       job_retries: 1
-      keyfile: /usr/app/bigquery-credentials.json
+      keyfile: /Users/batibat/.config/gcloud/legacy_credentials/bratrax@bratrax-without-flattening.iam.gserviceaccount.com/adc.json
       location: US
       method: service-account
       priority: interactive
