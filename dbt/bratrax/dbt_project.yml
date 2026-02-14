@@ -5,7 +5,6 @@ profile: bratrax
 model-paths:
   - models/2
   - models/27
-  - models/30
 analysis-paths:
   - analyses
 test-paths:
