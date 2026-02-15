@@ -5,6 +5,8 @@ import {
     useBratraxCatalogs,
     type CatalogEntry,
 } from '../../hooks/useBratraxCatalogs';
+import { useBratraxSaveYaml } from '../../hooks/useBratraxClients';
+import { toCompilerPayload } from './compilerYamlTransformer';
 import type {
     BuilderState,
     EnrichmentMapping,
@@ -34,6 +36,21 @@ export function useBuilderState() {
         useState<ValidateResult | null>(null);
     const [isValidating, setIsValidating] = useState(false);
     const [isCompiling, setIsCompiling] = useState(false);
+    const [clientName, setClientName] = useState<string | null>(null);
+    const [isDirty, setIsDirty] = useState(false);
+    const [lastSaved, setLastSaved] = useState<Date | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const saveYamlMutation = useBratraxSaveYaml();
+
+    // Wrap setState to track dirty state
+    const setDirtyState = useCallback(
+        (updater: BuilderState | ((prev: BuilderState) => BuilderState)) => {
+            setState(updater);
+            setIsDirty(true);
+        },
+        [],
+    );
 
     // Catalog data for template loading and auto-sync
     const { data: catalogsData } = useBratraxCatalogs();
@@ -41,31 +58,37 @@ export function useBuilderState() {
 
     // ─── Sources ───
 
-    const setSources = useCallback((sources: SourceConnector[]) => {
-        setState((prev) => ({ ...prev, sources }));
-    }, []);
+    const setSources = useCallback(
+        (sources: SourceConnector[]) => {
+            setDirtyState((prev) => ({ ...prev, sources }));
+        },
+        [setDirtyState],
+    );
 
-    const toggleStream = useCallback((tapName: string, streamName: string) => {
-        setState((prev) => ({
-            ...prev,
-            sources: prev.sources.map((src) =>
-                src.tap === tapName
-                    ? {
-                          ...src,
-                          streams: src.streams.map((s) =>
-                              s.name === streamName
-                                  ? { ...s, selected: !s.selected }
-                                  : s,
-                          ),
-                      }
-                    : src,
-            ),
-        }));
-    }, []);
+    const toggleStream = useCallback(
+        (tapName: string, streamName: string) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                sources: prev.sources.map((src) =>
+                    src.tap === tapName
+                        ? {
+                              ...src,
+                              streams: src.streams.map((s) =>
+                                  s.name === streamName
+                                      ? { ...s, selected: !s.selected }
+                                      : s,
+                              ),
+                          }
+                        : src,
+                ),
+            }));
+        },
+        [setDirtyState],
+    );
 
     const toggleField = useCallback(
         (tapName: string, streamName: string, fieldName: string) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 sources: prev.sources.map((src) =>
                     src.tap === tapName
@@ -91,45 +114,51 @@ export function useBuilderState() {
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
     // ─── Objects ───
 
-    const addObject = useCallback((obj: OntologyObject) => {
-        setState((prev) => ({
-            ...prev,
-            objects: [...prev.objects, obj],
-        }));
-    }, []);
+    const addObject = useCallback(
+        (obj: OntologyObject) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                objects: [...prev.objects, obj],
+            }));
+        },
+        [setDirtyState],
+    );
 
     const updateObject = useCallback(
         (objectId: string, updates: Partial<OntologyObject>) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 objects: prev.objects.map((o) =>
                     o.id === objectId ? { ...o, ...updates } : o,
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
-    const removeObject = useCallback((objectId: string) => {
-        setState((prev) => ({
-            ...prev,
-            objects: prev.objects.filter((o) => o.id !== objectId),
-            links: prev.links.filter(
-                (l) =>
-                    l.sourceObjectId !== objectId &&
-                    l.targetObjectId !== objectId,
-            ),
-        }));
-    }, []);
+    const removeObject = useCallback(
+        (objectId: string) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                objects: prev.objects.filter((o) => o.id !== objectId),
+                links: prev.links.filter(
+                    (l) =>
+                        l.sourceObjectId !== objectId &&
+                        l.targetObjectId !== objectId,
+                ),
+            }));
+        },
+        [setDirtyState],
+    );
 
     const addProperty = useCallback(
         (objectId: string, prop: ObjectProperty) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 objects: prev.objects.map((o) =>
                     o.id === objectId
@@ -138,12 +167,12 @@ export function useBuilderState() {
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
     const removeProperty = useCallback(
         (objectId: string, propertyId: string) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 objects: prev.objects.map((o) =>
                     o.id === objectId
@@ -157,56 +186,68 @@ export function useBuilderState() {
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
     // ─── Links ───
 
-    const addLink = useCallback((link: ObjectLink) => {
-        setState((prev) => ({
-            ...prev,
-            links: [...prev.links, link],
-        }));
-    }, []);
+    const addLink = useCallback(
+        (link: ObjectLink) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                links: [...prev.links, link],
+            }));
+        },
+        [setDirtyState],
+    );
 
-    const removeLink = useCallback((linkId: string) => {
-        setState((prev) => ({
-            ...prev,
-            links: prev.links.filter((l) => l.id !== linkId),
-        }));
-    }, []);
+    const removeLink = useCallback(
+        (linkId: string) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                links: prev.links.filter((l) => l.id !== linkId),
+            }));
+        },
+        [setDirtyState],
+    );
 
     // ─── Events ───
 
-    const addEvent = useCallback((event: TrackingEvent) => {
-        setState((prev) => ({
-            ...prev,
-            events: [...prev.events, event],
-        }));
-    }, []);
+    const addEvent = useCallback(
+        (event: TrackingEvent) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                events: [...prev.events, event],
+            }));
+        },
+        [setDirtyState],
+    );
 
     const updateEvent = useCallback(
         (eventId: string, updates: Partial<TrackingEvent>) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 events: prev.events.map((e) =>
                     e.id === eventId ? { ...e, ...updates } : e,
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
-    const removeEvent = useCallback((eventId: string) => {
-        setState((prev) => ({
-            ...prev,
-            events: prev.events.filter((e) => e.id !== eventId),
-        }));
-    }, []);
+    const removeEvent = useCallback(
+        (eventId: string) => {
+            setDirtyState((prev) => ({
+                ...prev,
+                events: prev.events.filter((e) => e.id !== eventId),
+            }));
+        },
+        [setDirtyState],
+    );
 
     const addEventProperty = useCallback(
         (eventId: string, prop: EventProperty) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 events: prev.events.map((e) =>
                     e.id === eventId
@@ -215,12 +256,12 @@ export function useBuilderState() {
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
     const addEnrichment = useCallback(
         (eventId: string, enrichment: EnrichmentMapping) => {
-            setState((prev) => ({
+            setDirtyState((prev) => ({
                 ...prev,
                 events: prev.events.map((e) =>
                     e.id === eventId
@@ -229,7 +270,7 @@ export function useBuilderState() {
                 ),
             }));
         },
-        [],
+        [setDirtyState],
     );
 
     // ─── Template loading ───
@@ -523,6 +564,53 @@ export function useBuilderState() {
         [catalogs],
     );
 
+    // ─── Persistence ───
+
+    const saveClient = useCallback(async () => {
+        if (!clientName) return;
+        setIsSaving(true);
+        try {
+            const payload = toCompilerPayload(state, clientName);
+            await Promise.all([
+                saveYamlMutation.mutateAsync({
+                    clientName,
+                    fileKey: 'ontology',
+                    content: payload.ontology,
+                }),
+                saveYamlMutation.mutateAsync({
+                    clientName,
+                    fileKey: 'sources',
+                    content: payload.sources,
+                }),
+                saveYamlMutation.mutateAsync({
+                    clientName,
+                    fileKey: 'tracking_plan',
+                    content: payload.tracking_plan,
+                }),
+            ]);
+            setIsDirty(false);
+            setLastSaved(new Date());
+        } finally {
+            setIsSaving(false);
+        }
+    }, [clientName, state, saveYamlMutation]);
+
+    const loadClient = useCallback(
+        async (name: string) => {
+            const response = await fetch(`/api/v1/bratrax/clients/${name}`);
+            if (!response.ok) {
+                throw new Error(`Failed to load client: ${response.status}`);
+            }
+            const json = await response.json();
+            const files = json.results?.files ?? json.results ?? {};
+            loadFromTemplate(files);
+            setClientName(name);
+            setIsDirty(false);
+            setLastSaved(null);
+        },
+        [loadFromTemplate],
+    );
+
     // ─── Validation ───
 
     const validationMessages = useMemo<ValidationMessage[]>(() => {
@@ -614,5 +702,12 @@ export function useBuilderState() {
         isCompiling,
         setIsCompiling,
         loadFromTemplate,
+        clientName,
+        setClientName,
+        isDirty,
+        lastSaved,
+        isSaving,
+        saveClient,
+        loadClient,
     };
 }

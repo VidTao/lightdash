@@ -2,8 +2,8 @@ import { Box, Button, Group, Loader, Text } from '@mantine/core';
 import { IconHammer } from '@tabler/icons-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useCallback, useState, type FC } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useOntologyGraph } from '../../hooks/useOntologyGraph';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './Observatory.module.css';
@@ -89,11 +89,15 @@ const ObservatoryPage: FC = () => {
                     size="xs"
                     variant="light"
                     leftIcon={<IconHammer size={14} />}
-                    onClick={() =>
-                        navigate(
-                            `/projects/${projectUuid}/workshop-builder`,
-                        )
-                    }
+                    onClick={() => {
+                        const params =
+                            client && client !== 'preview'
+                                ? `?client=${client}`
+                                : '';
+                        void navigate(
+                            `/projects/${projectUuid}/workshop-builder${params}`,
+                        );
+                    }}
                 >
                     Workshop Builder
                 </Button>
