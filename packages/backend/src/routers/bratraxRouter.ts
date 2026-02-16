@@ -7,10 +7,14 @@ import {
     deployClient,
     getCatalogs,
     getGraph,
+    getStreamFields,
+    getTapStreams,
     getTemplate,
+    getWebhookDiscoveryStatus,
     listClients,
     listTemplates,
     readClient,
+    searchCatalogs,
     validateClient,
     validateYaml,
     writeClientYaml,
@@ -64,6 +68,48 @@ bratraxRouter.get('/catalogs', async (_req, res, next) => {
         next(error);
     }
 });
+
+bratraxRouter.get('/catalogs/search', async (req, res, next) => {
+    try {
+        const query = (req.query.q as string) || '';
+        const type = req.query.type as string | undefined;
+        const limit = req.query.limit ? Number(req.query.limit) : undefined;
+        const result = await searchCatalogs(query, type, limit);
+        res.json({ status: 'ok', results: result });
+    } catch (error) {
+        next(error);
+    }
+});
+
+bratraxRouter.get('/catalogs/:tap/streams', async (req, res, next) => {
+    try {
+        const result = await getTapStreams(req.params.tap);
+        res.json({ status: 'ok', results: result });
+    } catch (error) {
+        next(error);
+    }
+});
+
+bratraxRouter.get('/catalogs/:tap/streams/:stream', async (req, res, next) => {
+    try {
+        const result = await getStreamFields(req.params.tap, req.params.stream);
+        res.json({ status: 'ok', results: result });
+    } catch (error) {
+        next(error);
+    }
+});
+
+bratraxRouter.get(
+    '/webhooks/:source/discovery-status',
+    async (req, res, next) => {
+        try {
+            const result = await getWebhookDiscoveryStatus(req.params.source);
+            res.json({ status: 'ok', results: result });
+        } catch (error) {
+            next(error);
+        }
+    },
+);
 
 bratraxRouter.get('/templates', async (_req, res, next) => {
     try {
