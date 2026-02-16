@@ -8,7 +8,6 @@ import {
     Loader,
     Modal,
     Stack,
-    Stepper,
     Text,
     ThemeIcon,
     Title,
@@ -16,6 +15,9 @@ import {
 } from '@mantine/core';
 import {
     IconCheck,
+    IconCircleNumber1,
+    IconCircleNumber2,
+    IconCircleNumber3,
     IconClipboard,
     IconClipboardCheck,
     IconEye,
@@ -47,9 +49,7 @@ const CopyableCode = ({ value, label }: { value: string; label: string }) => (
             sx={{
                 flex: 1,
                 fontSize: 13,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                padding: '10px 12px',
             }}
         >
             {value}
@@ -71,6 +71,21 @@ const CopyableCode = ({ value, label }: { value: string; label: string }) => (
                 </Tooltip>
             )}
         </CopyButton>
+    </Group>
+);
+
+const StepLabel = ({
+    icon: Icon,
+    label,
+}: {
+    icon: typeof IconCircleNumber1;
+    label: string;
+}) => (
+    <Group spacing="xs" mb={6}>
+        <Icon size={20} color="gray" />
+        <Text size="sm" weight={600} color="gray.7">
+            {label}
+        </Text>
     </Group>
 );
 
@@ -104,6 +119,10 @@ const WebhookSetupModal = ({
     const webhookUrl =
         keys[0]?.webhookUrl ?? `https://api.bratrax.com/${source}/track`;
     const writeKey = keys[0]?.writeKey ?? '';
+    const maskedKey = writeKey
+        ? `${writeKey.slice(0, 6)}${'*'.repeat(Math.max(0, writeKey.length - 6))}`
+        : '';
+    const bearerValue = `Bearer ${showKey ? writeKey : maskedKey || '...'}`;
     const platformInstructions =
         instructions ?? PLATFORM_INSTRUCTIONS[source] ?? '';
 
@@ -114,52 +133,74 @@ const WebhookSetupModal = ({
             title={<Title order={4}>Set up {platformName} Webhook</Title>}
             size="lg"
         >
-            <Stack spacing="lg">
-                <Stepper active={discovered ? 3 : -1} orientation="vertical">
-                    <Stepper.Step
-                        label="Webhook URL"
-                        description="Copy this URL into your platform"
-                    >
-                        <CopyableCode value={webhookUrl} label="URL" />
-                    </Stepper.Step>
+            <Stack spacing="xl">
+                {/* Step 1: Webhook URL */}
+                <Box>
+                    <StepLabel icon={IconCircleNumber1} label="Webhook URL" />
+                    <Text size="xs" color="dimmed" mb="xs">
+                        Copy this URL and paste it into your platform&apos;s
+                        webhook settings.
+                    </Text>
+                    <CopyableCode value={webhookUrl} label="URL" />
+                </Box>
 
-                    <Stepper.Step
+                {/* Step 2: Auth header */}
+                <Box>
+                    <StepLabel
+                        icon={IconCircleNumber2}
                         label="Authorization Header"
-                        description="Add this as a Bearer token"
-                    >
-                        {keysLoading ? (
-                            <Loader size="sm" />
-                        ) : (
-                            <Group spacing="xs" noWrap>
-                                <CopyableCode
-                                    value={`Bearer ${writeKey}`}
-                                    label="token"
-                                />
-                                <ActionIcon
-                                    variant="subtle"
-                                    onClick={() => setShowKey((v) => !v)}
-                                >
-                                    {showKey ? (
-                                        <IconEyeOff size={16} />
-                                    ) : (
-                                        <IconEye size={16} />
-                                    )}
-                                </ActionIcon>
-                            </Group>
-                        )}
-                    </Stepper.Step>
-
-                    <Stepper.Step
-                        label="Send a test event"
-                        description={platformInstructions}
-                    >
-                        {platformInstructions && (
+                    />
+                    <Text size="xs" color="dimmed" mb="xs">
+                        Add this as the Authorization header value.
+                    </Text>
+                    {keysLoading ? (
+                        <Group spacing="xs">
+                            <Loader size="xs" />
                             <Text size="sm" color="dimmed">
-                                {platformInstructions}
+                                Loading write key...
                             </Text>
-                        )}
-                    </Stepper.Step>
-                </Stepper>
+                        </Group>
+                    ) : writeKey ? (
+                        <Group spacing="xs" noWrap>
+                            <CopyableCode
+                                value={`Bearer ${writeKey}`}
+                                label="token"
+                            />
+                            <ActionIcon
+                                variant="subtle"
+                                onClick={() => setShowKey((v) => !v)}
+                            >
+                                {showKey ? (
+                                    <IconEyeOff size={16} />
+                                ) : (
+                                    <IconEye size={16} />
+                                )}
+                            </ActionIcon>
+                        </Group>
+                    ) : (
+                        <Code block sx={{ fontSize: 13, padding: '10px 12px' }}>
+                            {bearerValue}
+                        </Code>
+                    )}
+                </Box>
+
+                {/* Step 3: Instructions */}
+                <Box>
+                    <StepLabel
+                        icon={IconCircleNumber3}
+                        label="Send a test event"
+                    />
+                    {platformInstructions ? (
+                        <Text size="xs" color="dimmed">
+                            {platformInstructions}
+                        </Text>
+                    ) : (
+                        <Text size="xs" color="dimmed">
+                            Send a POST request with a JSON body to the webhook
+                            URL above.
+                        </Text>
+                    )}
+                </Box>
 
                 {/* Live status indicator */}
                 <Box

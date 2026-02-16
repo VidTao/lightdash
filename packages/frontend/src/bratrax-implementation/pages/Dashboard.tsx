@@ -2,12 +2,16 @@ import {
     Box,
     Container,
     Divider,
+    Paper,
     SimpleGrid,
     Text,
+    ThemeIcon,
     Title,
 } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import useApp from '../../providers/App/useApp';
+import AddWebhookModal from '../cards/AddWebhookModal';
 import WebhookCard from '../cards/WebhookCard';
 import WebhookDetailsModal from '../cards/WebhookDetailsModal';
 import WebhookSetupModal from '../cards/WebhookSetupModal';
@@ -37,7 +41,9 @@ type WebhookSource = {
     description: string;
 };
 
-const WEBHOOK_SOURCES: WebhookSource[] = [
+const STORAGE_KEY = 'bratrax-webhook-sources';
+
+const DEFAULT_WEBHOOK_SOURCES: WebhookSource[] = [
     {
         source: 'leadbyte',
         platformName: 'LeadByte',
@@ -51,6 +57,20 @@ const WEBHOOK_SOURCES: WebhookSource[] = [
         description: 'Receive events from your Slack workspace',
     },
 ];
+
+function loadCustomSources(): WebhookSource[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw) as WebhookSource[];
+    } catch {
+        // ignore
+    }
+    return [];
+}
+
+function saveCustomSources(sources: WebhookSource[]) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sources));
+}
 
 const WebhookCardConnector = ({
     ws,
@@ -90,11 +110,31 @@ const Dashboard = () => {
     const { platformConnections, isLoading: platformLoading } =
         usePlatformConnections();
 
+    // Dynamic webhook sources (default + user-created)
+    const [customSources, setCustomSources] =
+        useState<WebhookSource[]>(loadCustomSources);
+    const WEBHOOK_SOURCES = [...DEFAULT_WEBHOOK_SOURCES, ...customSources];
+
     // Webhook modal state
     const [setupSource, setSetupSource] = useState<WebhookSource | null>(null);
     const [detailsSource, setDetailsSource] = useState<WebhookSource | null>(
         null,
     );
+    const [showAddModal, setShowAddModal] = useState(false);
+
+    const handleWebhookCreated = (source: string, platformName: string) => {
+        const newSource: WebhookSource = {
+            source,
+            platformName,
+            logoPath: 'webhook-generic.png',
+            description: `Receive events from ${platformName} via webhook`,
+        };
+        const updated = [...customSources, newSource];
+        setCustomSources(updated);
+        saveCustomSources(updated);
+        // Auto-open setup modal for the new source
+        setSetupSource(newSource);
+    };
 
     useEffect(() => {
         const handlePendingShopifyAuth = async () => {
@@ -339,6 +379,56 @@ const Dashboard = () => {
                             />
                         </Box>
                     ))}
+
+                    {/* Add Webhook Card */}
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <Paper
+                            onClick={() => setShowAddModal(true)}
+                            shadow="sm"
+                            p="xl"
+                            radius="md"
+                            sx={(theme) => ({
+                                width: 280,
+                                cursor: 'pointer',
+                                transition: 'all 200ms ease',
+                                border: `2px dashed ${theme.colors.gray[3]}`,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                minHeight: 200,
+                                '&:hover': {
+                                    transform: 'translateY(-4px)',
+                                    borderColor: theme.colors.blue[4],
+                                    backgroundColor: theme.fn.rgba(
+                                        theme.colors.blue[0],
+                                        0.3,
+                                    ),
+                                },
+                            })}
+                        >
+                            <ThemeIcon
+                                size="xl"
+                                radius="xl"
+                                variant="light"
+                                color="blue"
+                                mb="md"
+                            >
+                                <IconPlus size={24} />
+                            </ThemeIcon>
+                            <Text weight={600} size="md" color="gray.7">
+                                Add Webhook
+                            </Text>
+                            <Text
+                                size="sm"
+                                color="dimmed"
+                                align="center"
+                                mt={4}
+                            >
+                                Connect a new webhook source
+                            </Text>
+                        </Paper>
+                    </Box>
                 </SimpleGrid>
             </Container>
 
@@ -361,6 +451,14 @@ const Dashboard = () => {
                     platformName={detailsSource.platformName}
                 />
             )}
+
+            {/* Add Webhook Modal */}
+            <AddWebhookModal
+                opened={showAddModal}
+                onClose={() => setShowAddModal(false)}
+                onCreated={handleWebhookCreated}
+                existingSources={WEBHOOK_SOURCES.map((ws) => ws.source)}
+            />
         </Box>
     );
 };
