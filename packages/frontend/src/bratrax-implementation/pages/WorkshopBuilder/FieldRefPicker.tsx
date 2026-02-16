@@ -44,18 +44,6 @@ const BQ_TYPE_MAP: Record<string, FieldType> = {
     JSON: 'JSON',
 };
 
-const TAP_TO_SOURCE: Record<string, string> = {
-    'tap-shopify': 'shopify',
-    'tap-facebook': 'facebook_ads',
-    'tap-googleads': 'google_ads',
-    'tap-klaviyo': 'klaviyo',
-    'tap-amazon-sp': 'amazon_sp',
-    'tap-amazonads': 'amazonads',
-    'tap-applovin': 'applovin',
-    'tap-gohighlevel': 'gohighlevel',
-    'tap-leadbyte': 'leadbyte',
-};
-
 const CATEGORY_COLORS: Record<string, string> = {
     ads: 'orange',
     commerce: 'teal',
@@ -86,6 +74,7 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
     events = [],
 }) => {
     const { data: catalogsData, isLoading } = useBratraxCatalogs();
+    const isOffline = catalogsData?.isOffline ?? false;
     const [selectedTap, setSelectedTap] = useState<CatalogEntry | null>(null);
     const [selectedStream, setSelectedStream] = useState<CatalogStream | null>(
         null,
@@ -108,7 +97,7 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
         (field: CatalogField) => {
             if (!selectedTap || !selectedStream) return;
             const sourceName =
-                TAP_TO_SOURCE[selectedTap.tap] ?? selectedTap.tap;
+                selectedTap.source_name ?? selectedTap.tap.replace('tap-', '');
             const ref = `$sources.${sourceName}.${selectedStream.name}.${field.name}`;
             const fieldType: FieldType = BQ_TYPE_MAP[field.type] ?? 'STRING';
             onSelect(ref, fieldType);
@@ -237,7 +226,9 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
                 </Group>
             ) : catalogs.length === 0 ? (
                 <Text size="sm" color="dimmed" ta="center" py="xl">
-                    No catalog data available. Is the Bratrax API running?
+                    {isOffline
+                        ? 'Bratrax API is offline. Start it with: cd ontology && python api.py'
+                        : 'No catalog data available.'}
                 </Text>
             ) : (
                 <div style={{ display: 'flex', height: 400, gap: 0 }}>

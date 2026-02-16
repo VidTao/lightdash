@@ -1,0 +1,35 @@
+volumes:
+    minio_data:
+    lightdash_pg_data:
+
+services:
+    db:
+        image: pgvector/pgvector:pg16
+        restart: always
+        environment:
+            POSTGRES_PASSWORD: password
+        ports:
+            - '5433:5432'
+        volumes:
+            - lightdash_pg_data:/var/lib/postgresql/data
+
+    minio:
+        image: coollabsio/minio:latest
+        ports:
+            - '9002:9000'
+            - '9003:9001'
+        environment:
+            - MINIO_ROOT_USER=minioadmin
+            - MINIO_ROOT_PASSWORD=minioadmin
+            - MINIO_DEFAULT_BUCKETS=default
+            - MINIO_BROWSER=off
+        volumes:
+            - minio_data:/minio/data
+            - ./init-minio.sh:/init-minio.sh
+        entrypoint: '/init-minio.sh'
+
+    headless-browser:
+        image: ghcr.io/browserless/chromium:v2.38.2
+        restart: always
+        ports:
+            - '3010:3000'

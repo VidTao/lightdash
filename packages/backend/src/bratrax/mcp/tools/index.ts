@@ -8,6 +8,10 @@
  */
 
 import type { McpToolContext } from '../toolContext';
+import { registerCatalogGetFieldsTool } from './catalogGetFields';
+import { registerCatalogGetStreamsTool } from './catalogGetStreams';
+import { registerCatalogListTapsTool } from './catalogListTaps';
+import { registerCatalogSearchFieldsTool } from './catalogSearchFields';
 import { registerGetVersionTool } from './getVersion';
 import { registerListExploresTool } from './listExplores';
 import { registerFindExploresTool } from './findExplores';
@@ -20,6 +24,15 @@ import { registerRunMetricQueryTool } from './runMetricQuery';
 import { registerSearchFieldValuesTool } from './searchFieldValues';
 import { registerGetEmbedUrlTool } from './getEmbedUrl';
 import { registerGenerateDashboardTool } from './generateDashboard';
+import { registerWorkshopListClientsTool } from './workshopListClients';
+import { registerWorkshopCreateClientTool } from './workshopCreateClient';
+import { registerWorkshopReadClientTool } from './workshopReadClient';
+import { registerWorkshopWriteYamlTool } from './workshopWriteYaml';
+import { registerWorkshopValidateTool } from './workshopValidate';
+import { registerWorkshopCompileTool } from './workshopCompile';
+import { registerWorkshopGetCatalogsTool } from './workshopGetCatalogs';
+import { registerWorkshopListTemplatesTool } from './workshopListTemplates';
+import { registerWorkshopDeployTool } from './workshopDeploy';
 
 export function registerAllTools(ctx: McpToolContext): void {
     registerGetVersionTool(ctx);
@@ -34,4 +47,21 @@ export function registerAllTools(ctx: McpToolContext): void {
     registerSearchFieldValuesTool(ctx);
     registerGetEmbedUrlTool(ctx);
     registerGenerateDashboardTool(ctx);
+
+    // Catalog tools (granular)
+    registerCatalogListTapsTool(ctx);
+    registerCatalogGetStreamsTool(ctx);
+    registerCatalogGetFieldsTool(ctx);
+    registerCatalogSearchFieldsTool(ctx);
+
+    // Workshop tools
+    registerWorkshopListClientsTool(ctx);
+    registerWorkshopCreateClientTool(ctx);
+    registerWorkshopReadClientTool(ctx);
+    registerWorkshopWriteYamlTool(ctx);
+    registerWorkshopValidateTool(ctx);
+    registerWorkshopCompileTool(ctx);
+    registerWorkshopGetCatalogsTool(ctx);
+    registerWorkshopListTemplatesTool(ctx);
+    registerWorkshopDeployTool(ctx);
 }

@@ -9,23 +9,22 @@ import { useEffect } from 'react';
 import type { CatalogEntry } from '../../hooks/useBratraxCatalogs';
 import type { BuilderState, FieldType, SourceConnector } from './types';
 
-const SOURCE_TO_TAP: Record<string, string> = {
-    shopify: 'tap-shopify',
-    facebook_ads: 'tap-facebook',
-    google_ads: 'tap-googleads',
-    klaviyo: 'tap-klaviyo',
-    amazon_sp: 'tap-amazon-sp',
-    amazonads: 'tap-amazonads',
-    applovin: 'tap-applovin',
-    gohighlevel: 'tap-gohighlevel',
-    leadbyte: 'tap-leadbyte',
-};
-
-const CATEGORY_MAP: Record<string, SourceConnector['category']> = {
-    ads: 'ads',
-    commerce: 'commerce',
-    crm: 'crm',
-};
+/**
+ * Build source_name → tap reverse lookup from catalog entries.
+ * No more hardcoded mapping — uses the enriched catalog data.
+ */
+function buildSourceToTap(
+    catalogs: CatalogEntry[],
+): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const c of catalogs) {
+        const sourceName =
+            (c as { source_name?: string }).source_name ??
+            c.tap.replace('tap-', '');
+        map[sourceName] = c.tap;
+    }
+    return map;
+}
 
 type ParsedRef = {
     sourceName: string;
@@ -60,6 +59,8 @@ export function useAutoSourceSync(
     useEffect(() => {
         if (!catalogs || catalogs.length === 0) return;
 
+        const sourceToTap = buildSourceToTap(catalogs);
+
         // Collect all $sources refs from ontology properties
         const refsUsed = new Map<string, Set<string>>();
         for (const obj of state.objects) {
@@ -81,7 +82,7 @@ export function useAutoSourceSync(
 
         for (const [key, fieldNames] of refsUsed) {
             const [sourceName, streamName] = key.split('.');
-            const tapName = SOURCE_TO_TAP[sourceName];
+            const tapName = sourceToTap[sourceName];
             if (!tapName) continue;
 
             // Check if source already exists
@@ -135,9 +136,7 @@ export function useAutoSourceSync(
                         tap: tapName,
                         label: catalog.label,
                         category:
-                            (CATEGORY_MAP[
-                                catalog.category
-                            ] as SourceConnector['category']) ?? 'other',
+                            (catalog.category as SourceConnector['category']) ?? 'other',
                         available: true,
                         streams,
                     },

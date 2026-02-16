@@ -21,56 +21,7 @@ export type CompilerYamlPayload = {
     tracking_plan: string;
 };
 
-// ─── Tap → logical source name mapping ───
-
-const TAP_TO_SOURCE: Record<string, string> = {
-    'tap-shopify': 'shopify',
-    'tap-facebook': 'facebook_ads',
-    'tap-google-ads': 'google_ads',
-    'tap-googleads': 'google_ads',
-    'tap-tiktok-ads': 'tiktok_ads',
-    'tap-klaviyo': 'klaviyo',
-    'tap-postgres': 'postgres',
-    'tap-pinterest-ads': 'pinterest_ads',
-    'tap-ga4': 'google_analytics',
-    'tap-amazon-sp': 'amazon_sp',
-    'tap-amazonads': 'amazonads',
-    'tap-applovin': 'applovin',
-    'tap-gohighlevel': 'gohighlevel',
-    'tap-leadbyte': 'leadbyte',
-};
-
-const SOURCE_TO_RAW_TABLE: Record<string, string> = {
-    shopify: 'raw_commerce_crm',
-    facebook_ads: 'raw_ads',
-    google_ads: 'raw_ads',
-    tiktok_ads: 'raw_ads',
-    pinterest_ads: 'raw_ads',
-    klaviyo: 'raw_commerce_crm',
-    postgres: 'raw_commerce_crm',
-    google_analytics: 'raw_clients_events',
-    amazon_sp: 'raw_commerce_crm',
-    amazonads: 'raw_ads',
-    applovin: 'raw_ads',
-    gohighlevel: 'raw_commerce_crm',
-    leadbyte: 'raw_commerce_crm',
-};
-
-const SOURCE_TO_TYPE: Record<string, string> = {
-    shopify: 'meltano',
-    facebook_ads: 'meltano',
-    google_ads: 'meltano',
-    tiktok_ads: 'meltano',
-    pinterest_ads: 'meltano',
-    klaviyo: 'meltano',
-    postgres: 'meltano',
-    google_analytics: 'meltano',
-    amazon_sp: 'meltano',
-    amazonads: 'meltano',
-    applovin: 'meltano',
-    gohighlevel: 'meltano',
-    leadbyte: 'meltano',
-};
+// ─── Source name resolution (uses enriched catalog data from SourceConnector) ───
 
 // ─── BQ type mapping (Builder uses BQ types, compiler uses them directly) ───
 
@@ -85,8 +36,8 @@ const FIELD_TYPE_TO_COMPILER: Record<string, string> = {
     JSON: 'json',
 };
 
-function logicalSourceName(tap: string): string {
-    return TAP_TO_SOURCE[tap] ?? tap.replace('tap-', '');
+function logicalSourceName(src: SourceConnector): string {
+    return src.source_name ?? src.tap.replace('tap-', '');
 }
 
 // ─── Ref parsing ───
@@ -135,12 +86,12 @@ export function generateCompilerConfig(clientName: string): string {
 // ─── Sources YAML ───
 
 function buildSourceEntry(src: SourceConnector) {
-    const name = logicalSourceName(src.tap);
+    const name = logicalSourceName(src);
     const selectedStreams = src.streams.filter((s) => s.selected);
     if (selectedStreams.length === 0) return null;
 
-    const sourceType = SOURCE_TO_TYPE[name] ?? 'meltano';
-    const rawTable = SOURCE_TO_RAW_TABLE[name] ?? 'raw_data';
+    const sourceType = src.source_type ?? 'meltano';
+    const rawTable = src.raw_table ?? 'raw_data';
 
     const streams: Record<string, unknown> = {};
     for (const stream of selectedStreams) {

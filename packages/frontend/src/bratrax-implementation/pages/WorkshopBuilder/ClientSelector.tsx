@@ -31,7 +31,7 @@ const ClientSelector: FC<Props> = ({ currentClient, onSelectClient }) => {
     const handleCreate = useCallback(() => {
         if (!newName.trim()) return;
         createMutation.mutate(
-            { name: newName.trim().toLowerCase().replace(/\s+/g, '-') },
+            { name: newName.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^[^a-z]/, 'c') },
             {
                 onSuccess: (result) => {
                     onSelectClient(result.name);

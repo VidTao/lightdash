@@ -28,6 +28,9 @@ export type SourceConnector = {
     category: 'ads' | 'commerce' | 'crm' | 'analytics' | 'database' | 'other';
     available: boolean;
     streams: SourceStream[];
+    source_name?: string;
+    raw_table?: string;
+    source_type?: 'meltano' | 'webhook' | 'pubsub';
 };
 
 // ─── Ontology Builder ───

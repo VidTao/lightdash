@@ -193,6 +193,40 @@ PGHOST=localhost PGPORT=5432 PGUSER=postgres PGPASSWORD=password PGDATABASE=post
   "$(pwd)/venv/bin/dbt" run --project-dir examples/full-jaffle-shop-demo/dbt --profiles-dir examples/full-jaffle-shop-demo/profiles
 ```
 
+### Deploy Bratrax dbt Project (BigQuery COD)
+
+Deploy the Bratrax ontology-compiled dbt project to Lightdash, connecting to the BigQuery COD dataset.
+
+**Prerequisites:**
+- dbt-core + dbt-bigquery installed (`pip install dbt-core dbt-bigquery`)
+- Local gcloud keyfile at `~/gcloud-key.json` (or update `profiles.yml` path)
+- Docker dev environment running with database seeded
+
+**Install Lightdash CLI:**
+```bash
+npm install -g @lightdash/cli@0.2435.0
+```
+
+**Login to local Lightdash:**
+```bash
+lightdash login http://localhost:8080
+```
+> **Note:** Use port **8080** (backend API), not 3000 (frontend). The CLI talks to the API directly.
+
+**Deploy the project:**
+```bash
+cd dbt/bratrax
+PATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path(\"scripts\"))'):$PATH" \
+  lightdash deploy --create --ignore-errors
+```
+
+The `PATH` prefix ensures the CLI can find the `dbt` binary. The `--ignore-errors` flag skips models that have no dimensions (e.g. `drasko2`).
+
+**Important notes:**
+- `dbt_project.yml` scopes `model-paths` to `models/2`, `models/27`, `models/30` to avoid duplicate model name conflicts across client folders
+- `profiles.yml` uses a local keyfile path (`~/gcloud-key.json`), not a Docker-mounted path
+- Project UUID after initial deploy: `1085655e-e655-4c16-95bb-76411b4ac986`
+
 ## Reset Steps (When `reset` Argument Provided)
 
 If the user passes `reset` as an argument, force a full database reset regardless of current state:

@@ -48,6 +48,7 @@ import {
 import { wrapSentryTransaction } from '../../utils';
 import { VERSION } from '../../version';
 import { McpSchemaCompatLayer } from './mcpSchemaCompat';
+import { registerAllPrompts } from './prompts/workshops';
 import { registerAllTools } from './tools';
 import type { McpToolContext } from './toolContext';
 import {
@@ -532,5 +533,6 @@ export class BratraxMcpService extends BaseService {
             buildChartConfig: this.buildChartConfig.bind(this),
         };
         registerAllTools(ctx);
+        registerAllPrompts(this.mcpServer);
     }
 }
