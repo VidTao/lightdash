@@ -63,6 +63,10 @@ export enum BratraxMcpToolName {
     WORKSHOP_GET_CATALOGS = 'workshop_get_catalogs',
     WORKSHOP_LIST_TEMPLATES = 'workshop_list_templates',
     WORKSHOP_DEPLOY = 'workshop_deploy',
+
+    // Webhook discovery tools
+    WEBHOOK_DISCOVERY_STATUS = 'webhook_discovery_status',
+    WEBHOOK_INTROSPECT = 'webhook_introspect',
 }
 
 /**

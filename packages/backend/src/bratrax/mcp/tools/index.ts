@@ -12,27 +12,29 @@ import { registerCatalogGetFieldsTool } from './catalogGetFields';
 import { registerCatalogGetStreamsTool } from './catalogGetStreams';
 import { registerCatalogListTapsTool } from './catalogListTaps';
 import { registerCatalogSearchFieldsTool } from './catalogSearchFields';
-import { registerGetVersionTool } from './getVersion';
-import { registerListExploresTool } from './listExplores';
+import { registerFindContentTool } from './findContent';
 import { registerFindExploresTool } from './findExplores';
 import { registerFindFieldsTool } from './findFields';
-import { registerFindContentTool } from './findContent';
-import { registerListProjectsTool } from './listProjects';
-import { registerSetProjectTool } from './setProject';
+import { registerGenerateDashboardTool } from './generateDashboard';
 import { registerGetCurrentProjectTool } from './getCurrentProject';
+import { registerGetEmbedUrlTool } from './getEmbedUrl';
+import { registerGetVersionTool } from './getVersion';
+import { registerListExploresTool } from './listExplores';
+import { registerListProjectsTool } from './listProjects';
 import { registerRunMetricQueryTool } from './runMetricQuery';
 import { registerSearchFieldValuesTool } from './searchFieldValues';
-import { registerGetEmbedUrlTool } from './getEmbedUrl';
-import { registerGenerateDashboardTool } from './generateDashboard';
-import { registerWorkshopListClientsTool } from './workshopListClients';
-import { registerWorkshopCreateClientTool } from './workshopCreateClient';
-import { registerWorkshopReadClientTool } from './workshopReadClient';
-import { registerWorkshopWriteYamlTool } from './workshopWriteYaml';
-import { registerWorkshopValidateTool } from './workshopValidate';
+import { registerSetProjectTool } from './setProject';
+import { registerWebhookDiscoveryStatusTool } from './webhookDiscoveryStatus';
+import { registerWebhookIntrospectTool } from './webhookIntrospect';
 import { registerWorkshopCompileTool } from './workshopCompile';
-import { registerWorkshopGetCatalogsTool } from './workshopGetCatalogs';
-import { registerWorkshopListTemplatesTool } from './workshopListTemplates';
+import { registerWorkshopCreateClientTool } from './workshopCreateClient';
 import { registerWorkshopDeployTool } from './workshopDeploy';
+import { registerWorkshopGetCatalogsTool } from './workshopGetCatalogs';
+import { registerWorkshopListClientsTool } from './workshopListClients';
+import { registerWorkshopListTemplatesTool } from './workshopListTemplates';
+import { registerWorkshopReadClientTool } from './workshopReadClient';
+import { registerWorkshopValidateTool } from './workshopValidate';
+import { registerWorkshopWriteYamlTool } from './workshopWriteYaml';
 
 export function registerAllTools(ctx: McpToolContext): void {
     registerGetVersionTool(ctx);
@@ -64,4 +66,8 @@ export function registerAllTools(ctx: McpToolContext): void {
     registerWorkshopGetCatalogsTool(ctx);
     registerWorkshopListTemplatesTool(ctx);
     registerWorkshopDeployTool(ctx);
+
+    // Webhook discovery tools
+    registerWebhookDiscoveryStatusTool(ctx);
+    registerWebhookIntrospectTool(ctx);
 }

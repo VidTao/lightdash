@@ -33,6 +33,10 @@ const BOTTLENECKED_WORKSHOP_PROMPT = `You are running a Bratrax Ontology Worksho
 - \`catalog_get_fields\` — Get field schema for a specific stream (name, type, behavior, exclusions, source_type, raw_table)
 - \`catalog_search_fields\` — Search for a field name across all data sources (includes source_type per result)
 
+### Webhook Discovery (for sources not yet in the catalog)
+- \`webhook_discovery_status\` — Check if a webhook source has been discovered (returns discovered/not, stream + field counts)
+- \`webhook_introspect\` — Send a sample webhook payload to trigger schema discovery (introspects, merges, persists)
+
 ### Workshop (DB-backed)
 - \`workshop_list_clients\` — List existing clients
 - \`workshop_create_client\` — Create client from template or blank
@@ -82,26 +86,38 @@ For EACH business tool from Step 0:
 2. Call \`catalog_get_streams\` for that source → note available stream count
 3. Note the \`source_type\` ("meltano" or "webhook") for each source
 
-If a tool has no matching tap AND no webhook discovery, flag it immediately:
-- Explain that this source may need webhook setup: the user configures their platform to POST events to the Bratrax webhook endpoint
-- Once a test event is received, the schema is auto-discovered and becomes available in catalog tools
-- The user must complete webhook setup in the Bratrax UI before proceeding
-
 If a webhook source IS discovered (visible in \`catalog_list_taps\` with \`source_type: "webhook"\`), treat it exactly like a Meltano tap for the rest of the workshop — the same \`catalog_get_streams\`, \`catalog_get_fields\`, \`catalog_search_fields\` tools work for both.
 
 **You MUST call catalog tools — do NOT guess source keys.**
 
+### Webhook Discovery Sub-Flow
+
+If a business tool has NO matching tap AND no webhook source in \`catalog_list_taps\`, trigger inline discovery:
+
+1. **Confirm status:** Call \`webhook_discovery_status\` with the expected source name (e.g. "leadbyte", "slack-app", "stripe") to confirm the source is truly undiscovered.
+2. **Request sample payload:** Ask the user for a sample JSON payload — the body their platform would POST. Offer reference examples for common platforms:
+   - **LeadByte:** \`{"lead_id": "12345", "campaign": "summer_2024", "first_name": "Jane", ...}\`
+   - **Slack App:** \`{"event": {"type": "message", "channel": "C123", "user": "U456", "text": "hello"}, ...}\`
+   - **Stripe:** \`{"id": "evt_1234", "type": "payment_intent.succeeded", "data": {"object": {"amount": 2000, ...}}, ...}\`
+3. **Introspect:** Call \`webhook_introspect\` with the user's payload (source, stream name, and JSON body).
+4. **Verify:** Call \`webhook_discovery_status\` again to confirm \`discovered: true\`.
+5. **Confirm in catalog:** Call \`catalog_list_taps\` to verify the source now appears with \`source_type: "webhook"\`.
+6. **Multiple event types:** If the platform sends different event shapes (e.g. "leads" and "payments"), repeat the introspection for each stream with a representative payload.
+
+If the user has no sample payload available, mark that source as **BLOCKED** in the Gate 1 table — do NOT block the entire workshop. The user can provide the payload later and re-run discovery.
+
 ### GATE 1
 Present a Source Map table (sources only, no stream selection):
 
-| Business Tool | Source Key | Source Type | Available Streams |
-|---------------|------------|-------------|-------------------|
+| Business Tool | Source Key | Source Type | Available Streams | Discovery Method |
+|---------------|------------|-------------|-------------------|------------------|
 
 Example:
-| Facebook Ads  | tap-facebook     | meltano | 11 streams |
-| LeadByte      | webhook-leadbyte | webhook | 2 streams  |
+| Facebook Ads  | tap-facebook     | meltano | 11 streams | Pre-existing catalog         |
+| LeadByte      | webhook-leadbyte | webhook | 2 streams  | Introspected in this session |
+| Stripe        | —                | —       | —          | BLOCKED (no payload yet)     |
 
-Every business tool must be mapped to a source. User must confirm before proceeding.
+Every business tool must be mapped to a source (or explicitly BLOCKED). User must confirm before proceeding.
 DO NOT proceed to Step 2 until the user confirms the source mapping.
 Stream and field selection is DEFERRED to Step 4.
 
