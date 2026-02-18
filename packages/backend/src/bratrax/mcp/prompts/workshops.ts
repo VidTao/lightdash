@@ -265,39 +265,235 @@ DO NOT proceed to Step 6 until validation passes with zero errors.
 ---
 
 ## STEP 6: Event Storm + Tracking Plan
-**Goal:** Define events and write tracking_plan.yaml.
+**Goal:** Run a DDD-style Event Storm to discover ALL events (frontend + backend), then write a comprehensive tracking_plan.yaml with categories, enrichment, attribution, identity stitching, and data quality tests.
 
-1. Ask about events along the user journey:
-   - What user actions capture data? (page views, purchases, form submissions)
-   - What backend events occur? (order fulfilled, payment processed, lead delivered)
-   - What external events matter? (ad impressions, email opens)
-2. Categorize: ecommerce, engagement, acquisition, lifecycle
-3. Define event properties + source bindings
-4. Map events to \`$events.X\` derived properties in ontology.yaml — every \`$events\` ref in ontology MUST have a matching event here
-5. Write \`tracking_plan.yaml\`:
-   \`\`\`yaml
-   categories:
-     <category>:
-       display_name: "Human Name"
-   events:
-     <event_name>:
-       category: <category>
-       description: "What triggers this event"
-       properties:
-         <prop>:
-           type: STRING
-           description: "..."
-       source:
-         raw_table: bratrax.raw_data.<table>
-         event_column: event_name
-         event_value: <event_name>
-   \`\`\`
-6. Call \`workshop_validate\` — full validation across all 4 YAML files
+All events — browser, webhook, and API pull — flow through the same pipeline into a unified **activity_stream** with a fixed 8-column schema:
+\`activity_id\` (STRING), \`ts\` (TIMESTAMP), \`activity\` (STRING), \`customer\` (STRING), \`anonymous_id\` (STRING), \`features\` (JSON), \`revenue_impact\` (FLOAT64), \`source\` (STRING).
 
-### GATE 6
-Full validation passes (0 errors, all 4 YAML files consistent).
-If ontology.yaml references \`$events.X\` but event X is missing from tracking_plan, the gate FAILS.
-DO NOT proceed to Step 7 until full validation passes.
+Each source's \`field_mapping\` in sources.yaml maps its raw fields into these 8 columns. The tracking plan defines WHAT flows in; the sources define HOW.
+
+---
+
+### Phase 6A: Pre-Flight Audit
+
+Before storming, read existing state:
+
+1. Call \`workshop_read_client\` to load all 4 YAML files.
+2. Scan ontology.yaml for every \`$events.X\` reference — these are **demanded events** the tracking plan MUST define. List them.
+3. List all source keys from sources.yaml with their types (meltano / webhook / pubsub).
+4. Check whether a \`browser_events\` source exists in sources.yaml.
+5. Present a Pre-Flight Summary table:
+
+| Demanded Events ($events refs) | Source Keys Available | browser_events exists? |
+|----------------------------------|----------------------|------------------------|
+
+Resolve any ambiguities before proceeding.
+
+---
+
+### Phase 6B: Domain Event Discovery (DDD Event Storming)
+
+Walk the user journey timeline LEFT → RIGHT, from first discovery to final conversion. The shape depends on the business model from Step 0:
+
+- **Lead gen:** impression → click → landing page → form fill → lead delivery → qualification → conversion
+- **D2C / e-commerce:** discovery → browse → add-to-cart → checkout → payment → fulfillment → retention
+- **SaaS:** awareness → signup → onboarding → activation → engagement → churn / renewal
+
+For EACH milestone on the timeline, ask about **two event lanes:**
+
+1. **User lane (frontend):** "What does the user do here?" → these become browser events collected via analytics.js \`track()\` / \`page()\` calls. Source: \`$sources.browser_events\`.
+2. **System lane (backend):** "What does your system or a third-party platform do in response?" → these become webhook or API-pull events. Source: \`$sources.<webhook_or_tap>.<stream>\`.
+
+For each proposed event, classify by **collection method:**
+- \`browser\` — analytics.js track/page → \`$sources.browser_events\`
+- \`webhook\` — POSTed by external platform → \`$sources.<webhook-name>.<stream>\`
+- \`api_pull\` — pulled by Meltano tap → \`$sources.<tap>.<stream>\`
+
+**YOU propose event names** from the business flow. The user validates and corrects — same pattern as Step 3 entity elicitation. Do NOT ask the user to list events; walk the journey and suggest them.
+
+---
+
+### Phase 6C: Event Properties & Categorization
+
+**1. Define categories** with colors (propose defaults, user can customize):
+- \`navigation\` (blue) — page views, scroll, click
+- \`conversion\` (green) — form submit, purchase, signup
+- \`acquisition\` (purple) — ad click, referral, UTM-attributed entry
+- \`lifecycle\` (orange) — onboarding step, churn signal, renewal
+- \`system\` (gray) — webhook receipt, lead delivery, fulfillment update
+
+Custom categories per vertical are encouraged.
+
+**2. For each event, define:**
+- \`category\` — one of the categories above
+- \`description\` — human-readable trigger description
+- \`trigger\` — what causes the event (user action, system callback, cron, etc.)
+- \`source\` — which source produces it (MUST exist in sources.yaml); use \`$sources.<key>\` ref syntax
+- \`properties\` — each with:
+  - \`type\`: string | integer | decimal | boolean | array | object
+  - \`required\`: true | false
+  - \`description\`: what this property captures
+  - Optional: \`default\` value
+
+**3. Standard browser event properties** (include on ALL browser events):
+\`page_path\`, \`referrer\`, \`utm_source\`, \`utm_medium\`, \`utm_campaign\`, \`session_id\`, \`anonymous_id\`
+
+---
+
+### Phase 6D: Enrichment, Attribution & Identity
+
+**1. Enrichment (\`enriches\`):** Which ontology objects does each event update?
+- Every \`$objects.X\` ref MUST match an object in ontology.yaml.
+- Example: \`form_submitted\` enriches \`$objects.lead\` (creates/updates the lead record).
+- Example: \`order_completed\` enriches \`$objects.order\`, \`$objects.customer\`.
+
+**2. Attribution (\`attribution\`):** Identify touchpoint events for marketing attribution.
+- \`is_touchpoint: true\` — marks the event as an attribution touchpoint
+- \`channel_field\` — property that identifies the marketing channel (e.g. \`utm_source\`)
+- \`campaign_field\` — property that identifies the campaign (e.g. \`utm_campaign\`)
+- Typical touchpoints: \`page_viewed\` (first-touch), \`ad_clicked\`, \`referral_landed\`
+
+**3. Revenue impact (\`revenue_impact\`):** For conversion events, map to the property containing monetary value.
+- Example: \`lead_sold\` → \`revenue_impact: properties.sale_price\`
+- Example: \`order_completed\` → \`revenue_impact: properties.order_total\`
+- This value flows into the activity_stream \`revenue_impact\` column.
+
+**4. Identity stitching (\`identity.stitching\`):** Define how anonymous users become known.
+- \`primary_id\` — the known user identifier (e.g. \`email\`, \`customer_id\`)
+- \`anonymous_id\` — the cookie/session-based identifier (e.g. \`anonymous_id\`, \`session_id\`)
+- \`trigger_events\` — events where user identifies themselves (e.g. \`form_submitted\`, \`signup_completed\`, \`login\`)
+- \`lookback\` — how far back to stitch anonymous activity (default: \`30d\`)
+
+---
+
+### Phase 6E: Data Quality Tests
+
+Auto-propose tests based on properties — do NOT burden the user with test-type selection:
+- \`not_null\` for every property with \`required: true\`
+- \`positive\` for monetary fields (revenue, price, amount, cost)
+- Global rule: \`activity_id\` uniqueness across the activity stream
+
+Present the auto-proposed tests for confirmation; user can add/remove.
+
+---
+
+### Phase 6F: Gate 6 — Summary, Write, Validate
+
+**1. Present Event Summary Table** (user MUST confirm):
+
+| Event | Category | Collection | Source | # Props | Enriches | Attribution | Revenue |
+|-------|----------|------------|--------|---------|----------|-------------|---------|
+
+**2. Present Cross-Reference Audit:**
+
+| $events.X ref in ontology | Matching event in tracking plan? | Status |
+|----------------------------|----------------------------------|--------|
+
+Every demanded \`$events.X\` from Phase 6A MUST have a matching event. If not, add the missing event or update the ontology.
+
+**3. Ensure sources.yaml has the \`activity_stream\` schema** (top-level, required for compilation):
+
+\`\`\`yaml
+activity_stream:
+  database: bigquery
+  table: activity_stream
+  schema:
+    activity_id: { type: STRING }
+    ts: { type: TIMESTAMP }
+    activity: { type: STRING }
+    customer: { type: STRING }
+    anonymous_id: { type: STRING }
+    features: { type: JSON }
+    revenue_impact: { type: FLOAT64 }
+    source: { type: STRING }
+\`\`\`
+
+If \`activity_stream\` is missing from sources.yaml, add it via \`workshop_write_yaml\`.
+
+**4. If browser events exist but no \`browser_events\` source in sources.yaml**, add it:
+
+\`\`\`yaml
+browser_events:
+  type: pubsub
+  description: "Browser events from tracking pixel (analytics.js)"
+  transport:
+    project: \${GCP_PROJECT}
+    topic: topic-\${CLIENT_ID}-events-raw
+    subscription: \${CLIENT_ID}-events-sub
+  produces_events:
+    - $events.<list_all_browser_events_here>
+  field_mapping:
+    activity_id: "event_id"
+    ts: "timestamp"
+    activity: "event_name"
+    customer: "user_id"
+    anonymous_id: "anonymous_id"
+    features: "properties"
+    revenue_impact: "properties.revenue"
+    source: "'browser'"
+\`\`\`
+
+**5. For webhook/tap sources that produce events**, add \`produces_events\` and \`field_mapping\` entries so their events also land in the activity_stream with the same 8-column schema. Update sources.yaml via \`workshop_write_yaml\`.
+
+**6. Write \`tracking_plan.yaml\`** with the full schema:
+
+\`\`\`yaml
+version: "1.0"
+namespace: "\${CLIENT_ID}"
+
+categories:
+  <category>:
+    label: "Human Name"
+    color: <color>
+
+events:
+  <event_name>:
+    category: <category>
+    description: "What triggers this event"
+    trigger: "user action | system callback | cron"
+    source: $sources.<source_key>
+    properties:
+      <prop>:
+        type: string|integer|decimal|boolean|array|object
+        required: true|false
+        description: "..."
+    enriches:
+      - $objects.<entity>
+    attribution:
+      is_touchpoint: true
+      channel_field: <property_name>
+      campaign_field: <property_name>
+    revenue_impact: properties.<monetary_field>
+    tests:
+      - type: not_null
+        fields: [<required_fields>]
+      - type: positive
+        fields: [<monetary_fields>]
+
+validation:
+  global_rules:
+    - activity_id_unique: true
+
+identity:
+  stitching:
+    primary_id: <known_user_field>
+    anonymous_id: <cookie_field>
+    trigger_events:
+      - <event_where_user_identifies>
+    lookback: "30d"
+\`\`\`
+
+**7. Call \`workshop_validate\`** — MUST return 0 errors.
+
+**8. GATE 6 passes when ALL of these are true:**
+- \`workshop_validate\` returns 0 errors
+- All \`$events.X\` refs in ontology.yaml have matching tracking plan events
+- All \`$objects.X\` refs in tracking_plan.yaml have matching ontology objects
+- sources.yaml includes \`activity_stream\` schema definition
+- Every source that produces events has a \`field_mapping\` to the activity_stream
+- User confirmed the summary tables
+
+DO NOT proceed to Step 7 until Gate 6 passes.
 
 ---
 
@@ -370,8 +566,18 @@ You are running an Ontology Workshop (not a full workshop). Complete Steps 0 thr
 
 const EVENT_STORM_SUFFIX = `
 
-## SCOPE: Event Storm Only (Steps 6)
-You are running an Event Storm for a client that already has config.yaml, sources.yaml, and ontology.yaml. Start by reading the client's existing YAML files with workshop_read_client. Then execute Step 6 only. After Step 6 validation passes, the event storm is DONE. Do NOT proceed to Step 7 unless the user explicitly asks.`;
+## SCOPE: Event Storm Only (Step 6)
+You are running an Event Storm for a client that already has config.yaml, sources.yaml, and ontology.yaml.
+
+**Pre-flight:**
+1. Call \`workshop_read_client\` to load all existing YAML files.
+2. Scan ontology.yaml for \`$events.X\` references — list them as demanded events.
+3. List all source keys from sources.yaml with their types (meltano / webhook / pubsub).
+4. Check whether \`browser_events\` source exists. Flag if missing.
+5. Present pre-flight summary, then proceed to Step 6.
+
+Execute Step 6 only (phases 6A-6F). After Gate 6 validation passes, the event storm is DONE.
+Do NOT proceed to Step 7 unless the user explicitly asks.`;
 
 // ── Registration ─────────────────────────────────────────────────────
 
