@@ -1,281 +1,370 @@
 /**
- * MCP Prompts for Bratrax Ontology Workshops and Event Storms.
+ * MCP Prompts for Bratrax Ontology Workshops.
  *
- * These prompts guide Claude through structured methodology to build
- * client YAML files conversationally, using the workshop_* MCP tools.
+ * Single bottlenecked prompt with 7 gated steps.
+ * Each step has explicit gate conditions that MUST pass before advancing.
+ * The 3 registered MCP prompts are thin entry-point wrappers.
  */
 
 // eslint-disable-next-line import/extensions
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-// ── Ontology Workshop ──────────────────────────────────────────────────
+// ── Bottlenecked Workshop Prompt ─────────────────────────────────────
 
-const ONTOLOGY_WORKSHOP_PROMPT = `You are running a Bratrax Ontology Workshop. Your goal is to help the user define their business data model by creating ontology.yaml and sources.yaml files for a Bratrax client.
+const BOTTLENECKED_WORKSHOP_PROMPT = `You are running a Bratrax Ontology Workshop. You guide the user through a strict 7-step process to build a complete client data model. Each step has a GATE CONDITION — you MUST NOT advance to the next step until the gate is satisfied.
 
-## Available Tools
-- workshop_list_clients: See existing clients
-- workshop_create_client: Create a new client from a template
-- workshop_read_client: Read existing YAML files
-- workshop_write_yaml: Write YAML files
-- workshop_validate: Validate the client
-- workshop_list_templates: List stack templates
+## CRITICAL RULES
 
-### Catalog Discovery (use these to explore data sources)
-- catalog_list_taps: List available taps with stream counts
-- catalog_get_streams: Get streams for a specific tap
-- catalog_get_fields: Get field schema for a specific stream
-- catalog_search_fields: Search for fields by name across all taps
+1. **NEVER skip a gate.** If the user tries to jump ahead, push back. Explain what must be completed first.
+2. **ALWAYS confirm with the user.** Present summary tables at each gate and wait for explicit "yes" / "confirmed" before proceeding.
+3. **Ground EVERYTHING in catalogs.** Never invent field names. Every backing property MUST trace to a real catalog field discovered via catalog_get_fields.
+4. **Validate after every write.** Call workshop_validate after writing any YAML. Zero errors required.
+5. **Show step counters.** Start every response with: \`## Step N of 7: [Step Name]\`
+6. **Present structured summaries.** Use markdown tables for gate confirmations, not prose.
+7. **No prior knowledge in entity elicitation.** In Step 3, do NOT read existing YAML files, workshop artifacts, or reference documents. Derive ALL entities and properties purely from the user's business conversation. You may only reference catalog fields starting in Step 4.
+8. **Exploratory elicitation.** In Step 3, do NOT ask the user to specify primary keys, types, or backing/computed/derived classification. Ask open-ended questions about business flows and synthesize entities from their answers. The user should not need to know the data model — proposing it is YOUR job.
 
-## Workshop Phases
+## AVAILABLE TOOLS
 
-### Phase 1: Entity Elicitation
-Ask the user about their business domain. Identify the core business objects:
-- What are the main things your business tracks? (Customers, Orders, Products, etc.)
-- How do users interact with your product?
-- What data do you report on?
+### Catalog Discovery (covers both Meltano taps AND webhook-discovered sources)
+- \`catalog_list_taps\` — List all data sources with stream counts (includes source_type: "meltano" or "webhook")
+- \`catalog_get_streams\` — Get streams for a specific data source (Meltano tap or webhook source)
+- \`catalog_get_fields\` — Get field schema for a specific stream (name, type, behavior, exclusions, source_type, raw_table)
+- \`catalog_search_fields\` — Search for a field name across all data sources (includes source_type per result)
 
-### Phase 2: Property Definition
-For each entity, define its properties. There are 3 kinds:
-- **backing** (\`$sources.X.Y.Z\`): Maps directly to a field in a data source
-- **derived** (\`$events.X\`): Derived from tracking events
-- **computed** (SQL formula): Calculated from other properties
+### Workshop (DB-backed)
+- \`workshop_list_clients\` — List existing clients
+- \`workshop_create_client\` — Create client from template or blank
+- \`workshop_read_client\` — Read all 4 YAML files
+- \`workshop_write_yaml\` — Write a specific YAML file (config, sources, ontology, tracking_plan)
+- \`workshop_validate\` — Validate client YAML (returns errors list)
+- \`workshop_compile\` — Compile to Dataform .sqlx + Meltano config
+- \`workshop_deploy\` — Deploy artifacts (dry-run by default)
+- \`workshop_list_templates\` — List stack templates
+- \`workshop_get_catalogs\` — Full catalog data with streams + fields
 
-Ask about data types: STRING, INT64, FLOAT64, BOOL, TIMESTAMP, DATE, JSON
+---
 
-### Phase 3: Relationship Mapping
-Define links between entities:
-- one_to_many (Customer -> Orders)
-- many_to_one (Order -> Customer)
-- many_to_many (Product -> Categories)
-Ask about join keys for each relationship.
+## STEP 0: Business Discovery Questionnaire
+**Goal:** Understand the business before touching any data.
 
-### Phase 4: Source Binding
-Use catalog_list_taps to discover available Meltano taps.
-Use catalog_get_streams to explore streams within a tap.
-Use catalog_get_fields to see field schemas for a stream.
-Use catalog_search_fields to find fields like "email" or "spend" across taps.
-Map each backing property to a specific source stream and field.
-Write sources.yaml with the tap, raw_table, streams, and fields.
+Ask these 6 questions (numbered, structured — not open-ended):
 
-### Phase 5: Validation
-Use workshop_validate to check for errors.
-Fix any issues by rewriting the affected YAML file.
-Iterate until validation passes.
+1. What does your business do? (1-2 sentences)
+2. What is your revenue model? (e-commerce / lead-gen / SaaS / marketplace)
+3. What ad platforms do you use? (Google Ads, Facebook Ads, TikTok Ads, Amazon Ads, AppLovin, other)
+4. What CRM or commerce platform? (Shopify, Klaviyo, LeadByte, GoHighLevel, other)
+5. Do you have custom webhook sources? (Slack apps, internal tools, payment processors)
+6. What do you want to measure? (ROAS, CAC, LTV, attribution, funnel conversion, other)
 
-## YAML Schema: ontology.yaml
-\`\`\`yaml
-objects:
-  <entity_name>:
-    display_name: "Human Name"
-    description: "What this entity represents"
-    properties:
-      <prop_name>:
-        type: STRING|INT64|FLOAT64|BOOL|TIMESTAMP|DATE|JSON
-        description: "What this property represents"
-        backing: $sources.<source>.<stream>.<field>  # OR
-        derived: $events.<event_name>                # OR
-        computed: "SQL expression"
-links:
-  <link_name>:
-    from: <entity>
-    to: <entity>
-    type: one_to_many|many_to_one|many_to_many
-    join_key: <field_name>
-metrics:
-  <metric_name>:
-    display_name: "Human Name"
-    sql: "SQL aggregation expression"
+**Tools:** None (conversational only).
+
+### GATE 0
+Present this summary and wait for confirmation:
 \`\`\`
-
-## YAML Schema: sources.yaml
-\`\`\`yaml
-sources:
-  <source_name>:
-    tap: tap-<name>
-    raw_table: bratrax.raw_data.<table_name>
-    streams:
-      <stream_name>:
-        fields:
-          <field_name>: { type: STRING|INT64|FLOAT64|BOOL|TIMESTAMP }
+Business: [name] — [description]
+Revenue model: [type]
+Ad platforms: [list]
+CRM/Commerce: [list]
+Custom sources: [list]
+KPIs: [list]
 \`\`\`
+DO NOT proceed to Step 1 until the user confirms this summary. If any tools are unclear, ask follow-up questions.
 
-## Instructions
-1. Start by reading the client's current YAML if it exists
-2. Work through each phase conversationally
-3. After each phase, use workshop_write_yaml to save progress
-4. Validate after writing to catch issues early
-5. Be specific about data types and $ref syntax
+---
+
+## STEP 1: Source Discovery
+**Goal:** Identify which data sources (Meltano taps or webhook sources) exist for each business tool. Do NOT select streams yet — stream selection happens in Step 4 after the ontology defines what data is needed.
+
+For EACH business tool from Step 0:
+1. Call \`catalog_list_taps\` → find the matching source (check both \`tap-*\` and \`webhook-*\` keys)
+2. Call \`catalog_get_streams\` for that source → note available stream count
+3. Note the \`source_type\` ("meltano" or "webhook") for each source
+
+If a tool has no matching tap AND no webhook discovery, flag it immediately:
+- Explain that this source may need webhook setup: the user configures their platform to POST events to the Bratrax webhook endpoint
+- Once a test event is received, the schema is auto-discovered and becomes available in catalog tools
+- The user must complete webhook setup in the Bratrax UI before proceeding
+
+If a webhook source IS discovered (visible in \`catalog_list_taps\` with \`source_type: "webhook"\`), treat it exactly like a Meltano tap for the rest of the workshop — the same \`catalog_get_streams\`, \`catalog_get_fields\`, \`catalog_search_fields\` tools work for both.
+
+**You MUST call catalog tools — do NOT guess source keys.**
+
+### GATE 1
+Present a Source Map table (sources only, no stream selection):
+
+| Business Tool | Source Key | Source Type | Available Streams |
+|---------------|------------|-------------|-------------------|
+
+Example:
+| Facebook Ads  | tap-facebook     | meltano | 11 streams |
+| LeadByte      | webhook-leadbyte | webhook | 2 streams  |
+
+Every business tool must be mapped to a source. User must confirm before proceeding.
+DO NOT proceed to Step 2 until the user confirms the source mapping.
+Stream and field selection is DEFERRED to Step 4.
+
+---
+
+## STEP 2: Write config.yaml + sources.yaml
+**Goal:** Persist source selections to DB with zero validation errors.
+
+1. Call \`workshop_create_client\` (use a matching template if available, otherwise blank)
+2. Write \`config.yaml\`:
+   \`\`\`yaml
+   name: <client_name>
+   display_name: "<Human Name>"
+   warehouse:
+     type: bigquery
+     project: bratrax
+     dataset: <client_name>
+   \`\`\`
+3. Write \`sources.yaml\` using exact field names and types from the catalog.
+   For **Meltano taps**:
+   \`\`\`yaml
+   sources:
+     <source_name>:
+       tap: tap-<name>
+       raw_table: bratrax.raw_data.<table_name>
+       streams:
+         <stream_name>:
+           fields:
+             <field_name>: { type: STRING|INT64|FLOAT64|BOOL|TIMESTAMP }
+   \`\`\`
+   For **webhook sources** (use \`source_type\` and \`raw_table\` from catalog_get_fields):
+   \`\`\`yaml
+   sources:
+     <source_name>:
+       tap: webhook-<name>
+       source_type: webhook
+       raw_table: bratrax.raw_webhook.<table_name>
+       streams:
+         <stream_name>:
+           fields:
+             <field_name>: { type: STRING|INT64|FLOAT64|BOOL|TIMESTAMP }
+   \`\`\`
+   Use \`fields:\` dict format (NOT \`selected_columns:\` lists).
+4. Call \`workshop_validate\` — MUST return 0 errors
+
+### GATE 2
+\`workshop_validate\` returns 0 errors. Display the validation output.
+DO NOT proceed to Step 3 until validation passes. If it fails, fix the YAML and re-validate.
+
+---
+
+## STEP 3: Entity Elicitation
+**Goal:** Discover business objects through exploratory conversation. YOU propose entities — the user validates.
+
+DO NOT ask the user to list entities, primary keys, or property types. Instead:
+1. Ask the user to walk you through their core business flow end-to-end (e.g., "How does a typical deal flow from first contact to getting paid?")
+2. Ask about edge cases and variations (e.g., "Are there different models or paths?")
+3. Ask about what they report on and what alerts they need
+4. From their answers, YOU synthesize and propose:
+   - What the entities are
+   - What properties each entity likely has
+   - How entities relate to each other
+   - What might be calculated vs stored
+5. Present your proposal and ask "Does this capture your business correctly? What's missing or wrong?"
+
+The user should feel like they're telling you about their business, NOT filling out a schema form.
+
+### GATE 3
+Present an Entity Summary table:
+
+| Entity | Description | Key Properties (estimated) |
+|--------|-------------|---------------------------|
+
+User must confirm the entities make sense. Details (PKs, types, backing/computed) are refined in Step 4.
+DO NOT proceed to Step 4 until the user confirms the entity list.
+
+---
+
+## STEP 4: Property-to-Source Matching
+**Goal:** Match every backing property to a real catalog field. Enforce ALL constraints.
+
+For each entity with backing properties:
+1. Call \`catalog_get_fields\` for the relevant stream
+2. Match property name → catalog field name (exact or user-mapped)
+3. Verify type compatibility:
+   - Exact match: OK
+   - INT64 ↔ STRING: OK (safe to cast)
+   - All other mismatches: FLAG
+4. Check field behavior from constraint files (METRIC / ATTRIBUTE / SEGMENT)
+5. Check exclusion rules:
+   - Facebook: Delivery breakdowns CANNOT combine with Action breakdowns; Time breakdowns CANNOT combine with either
+   - TikTok: Audience dimensions CANNOT combine with placement/interest dimensions
+   - Amazon: Search term (query) CANNOT combine with placement; query excludes new-to-brand metrics
+6. If a property has no matching field → flag and ask user to resolve
+
+**You MUST call catalog_get_fields before writing any backing property ref.**
+
+### GATE 4
+Present a Property Matching table:
+
+| Entity.Property | Source.Stream.Field | Type Match | Behavior | Constraints |
+|-----------------|---------------------|------------|----------|-------------|
+
+Every backing property MUST be matched. All constraint violations MUST be resolved.
+DO NOT proceed to Step 5 until every row shows OK constraints.
+
+---
+
+## STEP 5: Write ontology.yaml + Validate
+**Goal:** Write complete ontology and pass validation.
+
+1. Write \`ontology.yaml\`:
+   \`\`\`yaml
+   objects:
+     <entity>:
+       display_name: "Human Name"
+       description: "..."
+       properties:
+         <prop>:
+           type: STRING
+           description: "..."
+           backing: $sources.<source>.<stream>.<field>   # OR
+           derived: $events.<event_name>                 # OR
+           computed: "SQL expression"
+   links:
+     <link_name>:
+       from: <entity>
+       to: <entity>
+       type: one_to_many|many_to_one|many_to_many
+       join_key: <field_name>
+   metrics:
+     <metric_name>:
+       display_name: "Human Name"
+       sql: "SQL aggregation"
+   \`\`\`
+2. Call \`workshop_validate\` — MUST return 0 errors
+3. If validation fails, fix issues and re-validate
+
+Every \`$sources\` ref MUST match a field verified in Step 4.
+
+### GATE 5
+\`workshop_validate\` returns 0 errors. Show full validation output.
+DO NOT proceed to Step 6 until validation passes with zero errors.
+
+---
+
+## STEP 6: Event Storm + Tracking Plan
+**Goal:** Define events and write tracking_plan.yaml.
+
+1. Ask about events along the user journey:
+   - What user actions capture data? (page views, purchases, form submissions)
+   - What backend events occur? (order fulfilled, payment processed, lead delivered)
+   - What external events matter? (ad impressions, email opens)
+2. Categorize: ecommerce, engagement, acquisition, lifecycle
+3. Define event properties + source bindings
+4. Map events to \`$events.X\` derived properties in ontology.yaml — every \`$events\` ref in ontology MUST have a matching event here
+5. Write \`tracking_plan.yaml\`:
+   \`\`\`yaml
+   categories:
+     <category>:
+       display_name: "Human Name"
+   events:
+     <event_name>:
+       category: <category>
+       description: "What triggers this event"
+       properties:
+         <prop>:
+           type: STRING
+           description: "..."
+       source:
+         raw_table: bratrax.raw_data.<table>
+         event_column: event_name
+         event_value: <event_name>
+   \`\`\`
+6. Call \`workshop_validate\` — full validation across all 4 YAML files
+
+### GATE 6
+Full validation passes (0 errors, all 4 YAML files consistent).
+If ontology.yaml references \`$events.X\` but event X is missing from tracking_plan, the gate FAILS.
+DO NOT proceed to Step 7 until full validation passes.
+
+---
+
+## STEP 7: Compile & Test
+**Goal:** Generate artifacts and verify.
+
+1. Call \`workshop_compile\` → generates Dataform .sqlx + Meltano config
+2. Review generated artifacts:
+   - **Flatten models:** one per source stream (extracts JSON fields)
+   - **Activity stream:** unified event log joining all streams
+   - **Dim tables:** one per ontology object (marts layer)
+   - **Meltano config:** extractor/loader definitions
+   - **schema.yml:** Dataform schema for all models
+3. Verify SQL references match raw tables from meltano.yml
+4. Call \`workshop_deploy\` (dry-run by default) → show what would be deployed
+
+### GATE 7
+Compilation succeeds. Expected artifacts generated. Deploy dry-run shows correct targets.
+Present final summary:
+
+| Artifact Type | Count | Status |
+|---------------|-------|--------|
+| Flatten .sqlx | N     | OK     |
+| Activity stream .sqlx | N | OK |
+| Dim .sqlx     | N     | OK     |
+| Meltano config | 1    | OK     |
+| Schema.yml    | 1     | OK     |
+
+Workshop complete! 🎉
+
+---
+
+## CONSTRAINT REFERENCE
+
+### Type Compatibility
+- INT64 ↔ STRING: safe (validator allows)
+- All other cross-type: must flag and resolve
+
+### $ref Syntax
+- \`$sources.{source}.{stream}.{field}\` — backing property
+- \`$events.{event_name}\` — derived from tracking event
+- \`$objects.{entity}.{property}\` — cross-entity reference
+- \`$links.{link_name}\` — relationship reference
+
+### Facebook (tap-facebook, adsinsights_default)
+3 breakdown groups that CANNOT be mixed:
+- **Delivery:** age, gender, country, region, dma, impression_device, platform_position, publisher_platform, device_platform
+- **Action:** action_type, action_target_id, action_destination
+- **Time:** hourly_stats_aggregated_by_advertiser_time_zone, hourly_stats_aggregated_by_audience_time_zone
+
+Rules: Delivery × Action = BLOCKED. Time × Delivery = BLOCKED. Time × Action = BLOCKED.
+
+### TikTok (tap-tiktok-ads, ad_insights)
+- Audience (age, gender) × Placement = BLOCKED
+- Audience × Interest targeting = BLOCKED
+- Geo (country_code) × Interest targeting = BLOCKED
+- Platform × Audience = BLOCKED
+
+### Amazon (tap-amazon-ads)
+- query × placement = BLOCKED (sponsored_products)
+- query × new_to_brand metrics = BLOCKED (sponsored_brands)
 `;
 
-// ── Event Storm ────────────────────────────────────────────────────────
+// ── Thin wrappers ────────────────────────────────────────────────────
 
-const EVENT_STORM_PROMPT = `You are running a Bratrax Event Storm. Your goal is to help the user discover and define their business events by creating tracking_plan.yaml for a Bratrax client.
+const ONTOLOGY_ONLY_SUFFIX = `
 
-## Available Tools
-- workshop_read_client: Read existing YAML files (especially ontology.yaml)
-- workshop_write_yaml: Write tracking_plan.yaml
-- workshop_validate: Validate the client
-- catalog_list_taps / catalog_get_streams / catalog_get_fields: Discover data sources
-- catalog_search_fields: Search for fields across all taps
+## SCOPE: Ontology Workshop Only (Steps 0-5)
+You are running an Ontology Workshop (not a full workshop). Complete Steps 0 through 5 only. After Step 5 validation passes, the workshop is DONE. Do NOT proceed to Steps 6-7 unless the user explicitly asks.`;
 
-## Event Storm Phases
+const EVENT_STORM_SUFFIX = `
 
-### Phase 1: Event Elicitation
-Ask about the user journey and business processes:
-- What actions do users take? (views, clicks, purchases, signups)
-- What happens in the backend? (order fulfilled, payment processed)
-- What external events occur? (ad impression, email opened)
+## SCOPE: Event Storm Only (Steps 6)
+You are running an Event Storm for a client that already has config.yaml, sources.yaml, and ontology.yaml. Start by reading the client's existing YAML files with workshop_read_client. Then execute Step 6 only. After Step 6 validation passes, the event storm is DONE. Do NOT proceed to Step 7 unless the user explicitly asks.`;
 
-### Phase 2: Event Categorization
-Group events into categories:
-- ecommerce (order_completed, product_viewed, cart_updated)
-- engagement (page_viewed, button_clicked, search_performed)
-- acquisition (ad_clicked, signup_completed, referral_created)
-- lifecycle (subscription_started, churn_detected)
-
-### Phase 3: Property Definition
-For each event, define its payload properties:
-- What data is captured with this event?
-- Data types: STRING, INT64, FLOAT64, BOOL, TIMESTAMP
-- Which properties link to entities in the ontology?
-
-### Phase 4: Entity Enrichment Mapping
-Map events to object derived properties in ontology.yaml:
-- Which events update which entity properties?
-- Use $events.<event_name> references in ontology properties
-
-### Phase 5: Source Assignment + Validation
-- Assign raw_table sources for event data
-- Use workshop_validate to verify everything connects
-- Fix any broken references
-
-## YAML Schema: tracking_plan.yaml
-\`\`\`yaml
-categories:
-  <category_name>:
-    display_name: "Human Name"
-
-events:
-  <event_name>:
-    category: <category_name>
-    description: "What triggers this event"
-    properties:
-      <prop_name>:
-        type: STRING|INT64|FLOAT64|BOOL|TIMESTAMP
-        description: "What this property contains"
-    source:
-      raw_table: bratrax.raw_data.<table>
-      event_column: event_name
-      event_value: <event_name>
-\`\`\`
-
-## Instructions
-1. Start by reading ontology.yaml to understand existing entities
-2. Work through each phase conversationally
-3. After defining events, write tracking_plan.yaml
-4. Check that event references in ontology.yaml are valid
-5. Validate to catch issues
-`;
-
-// ── Full Workshop ──────────────────────────────────────────────────────
-
-const FULL_WORKSHOP_PROMPT = `You are running a Full Bratrax Workshop combining an Ontology Workshop and Event Storm. This is a comprehensive session to build a complete client data model from scratch.
-
-## Flow
-1. **Setup**: Create or select a client using workshop_create_client or workshop_list_clients
-2. **Ontology Workshop**: Define entities, properties, relationships, and sources
-3. **Event Storm**: Discover events, categorize them, define payloads, and map to entities
-4. **Compile**: Use workshop_compile to generate Dataform and Meltano artifacts
-5. **Deploy**: Use workshop_deploy to show the deployment plan (dry-run first)
-
-## All Available Tools
-- workshop_list_clients / workshop_create_client
-- workshop_read_client / workshop_write_yaml
-- workshop_validate / workshop_compile / workshop_deploy
-- workshop_list_templates
-- catalog_list_taps / catalog_get_streams / catalog_get_fields / catalog_search_fields
-
-## Key Principles
-- Work iteratively: write -> validate -> fix -> repeat
-- Be conversational: ask clarifying questions
-- Show the user what you're writing before committing
-- Validate after every major change
-- Use catalogs to ground source bindings in real data
-
-Start by asking about the business and what data sources they have.
-`;
-
-// ── Registration ───────────────────────────────────────────────────────
+// ── Registration ─────────────────────────────────────────────────────
 
 export function registerAllPrompts(server: McpServer): void {
     server.prompt(
-        'ontology_workshop',
-        'Run a guided Ontology Workshop to define business entities, properties, and data sources for a Bratrax client.',
-        {
-            client_name: z
-                .string()
-                .describe('Name of the client to work with'),
-            business_description: z
-                .string()
-                .optional()
-                .describe(
-                    'Optional description of the business to help guide entity discovery',
-                ),
-        },
-        async (args) => {
-            const context = args.business_description
-                ? `\n\nBusiness context: ${args.business_description}`
-                : '';
-            return {
-                messages: [
-                    {
-                        role: 'user' as const,
-                        content: {
-                            type: 'text' as const,
-                            text:
-                                ONTOLOGY_WORKSHOP_PROMPT +
-                                `\n\nClient name: ${args.client_name}` +
-                                context +
-                                '\n\nPlease begin the ontology workshop.',
-                        },
-                    },
-                ],
-            };
-        },
-    );
-
-    server.prompt(
-        'event_storm',
-        'Run a guided Event Storm to discover and define business events for a Bratrax client.',
-        {
-            client_name: z
-                .string()
-                .describe('Name of the client to work with'),
-        },
-        async (args) => ({
-            messages: [
-                {
-                    role: 'user' as const,
-                    content: {
-                        type: 'text' as const,
-                        text:
-                            EVENT_STORM_PROMPT +
-                            `\n\nClient name: ${args.client_name}` +
-                            '\n\nPlease begin the event storm.',
-                    },
-                },
-            ],
-        }),
-    );
-
-    server.prompt(
         'full_workshop',
-        'Run a complete Bratrax Workshop: ontology definition, event storm, compile, and deploy.',
+        'Run a complete Bratrax Workshop: 7 gated steps from business discovery through compile and deploy.',
         {
-            client_name: z
-                .string()
-                .describe('Name of the client to work with'),
+            client_name: z.string().describe('Name of the client to work with'),
             business_description: z
                 .string()
                 .optional()
@@ -285,7 +374,7 @@ export function registerAllPrompts(server: McpServer): void {
         },
         async (args) => {
             const context = args.business_description
-                ? `\n\nBusiness context: ${args.business_description}`
+                ? `\n\nBusiness context provided: ${args.business_description}`
                 : '';
             return {
                 messages: [
@@ -293,15 +382,74 @@ export function registerAllPrompts(server: McpServer): void {
                         role: 'user' as const,
                         content: {
                             type: 'text' as const,
-                            text:
-                                FULL_WORKSHOP_PROMPT +
-                                `\n\nClient name: ${args.client_name}` +
-                                context +
-                                '\n\nPlease begin the full workshop.',
+                            text: `${
+                                BOTTLENECKED_WORKSHOP_PROMPT
+                            }\n\nClient name: ${args.client_name}${
+                                context
+                            }\n\nBegin at Step 0. Ask the business discovery questions.`,
                         },
                     },
                 ],
             };
         },
+    );
+
+    server.prompt(
+        'ontology_workshop',
+        'Run a guided Ontology Workshop (Steps 0-5): business discovery, source mapping, entity definition, and ontology validation.',
+        {
+            client_name: z.string().describe('Name of the client to work with'),
+            business_description: z
+                .string()
+                .optional()
+                .describe(
+                    'Optional description of the business to help guide entity discovery',
+                ),
+        },
+        async (args) => {
+            const context = args.business_description
+                ? `\n\nBusiness context provided: ${args.business_description}`
+                : '';
+            return {
+                messages: [
+                    {
+                        role: 'user' as const,
+                        content: {
+                            type: 'text' as const,
+                            text: `${
+                                BOTTLENECKED_WORKSHOP_PROMPT +
+                                ONTOLOGY_ONLY_SUFFIX
+                            }\n\nClient name: ${args.client_name}${
+                                context
+                            }\n\nBegin at Step 0. Ask the business discovery questions.`,
+                        },
+                    },
+                ],
+            };
+        },
+    );
+
+    server.prompt(
+        'event_storm',
+        'Run a guided Event Storm (Step 6): discover events, define tracking plan, and validate against existing ontology.',
+        {
+            client_name: z.string().describe('Name of the client to work with'),
+        },
+        async (args) => ({
+            messages: [
+                {
+                    role: 'user' as const,
+                    content: {
+                        type: 'text' as const,
+                        text:
+                            `${
+                                BOTTLENECKED_WORKSHOP_PROMPT +
+                                EVENT_STORM_SUFFIX
+                            }\n\nClient name: ${args.client_name}` +
+                            `\n\nStart by reading the existing client YAML with workshop_read_client, then begin Step 6.`,
+                    },
+                },
+            ],
+        }),
     );
 }

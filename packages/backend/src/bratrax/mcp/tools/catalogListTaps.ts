@@ -1,4 +1,8 @@
-import { getCatalogs } from '../../../helpers/bratrax-api';
+import { getBratraxDiscoveryModel } from '../../../helpers/bratrax-api';
+import {
+    parseSingerCatalog,
+    safeParseCatalogJson,
+} from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
@@ -7,7 +11,8 @@ export function registerCatalogListTapsTool(ctx: McpToolContext): void {
         BratraxMcpToolName.CATALOG_LIST_TAPS,
         {
             description:
-                'List all available Meltano Singer data source taps with stream counts and categories. ' +
+                'List all available data sources (Meltano Singer taps and webhook-discovered sources) with stream counts and categories. ' +
+                'Each entry includes a source_type ("meltano" or "webhook") so you can distinguish how data is ingested. ' +
                 'Use this to discover what data sources are available before drilling into streams or fields.',
             inputSchema: {},
         },
@@ -17,26 +22,43 @@ export function registerCatalogListTapsTool(ctx: McpToolContext): void {
             ctx.canAccessMcp(pctx);
 
             try {
-                const data = await getCatalogs();
-                const taps = (data.catalogs ?? []).map(
-                    (c: {
-                        tap: string;
-                        label: string;
-                        category: string;
-                        source_name: string;
-                        streams: unknown[];
-                    }) => ({
-                        tap: c.tap,
-                        label: c.label,
-                        category: c.category,
-                        source_name: c.source_name,
-                        stream_count: c.streams.length,
-                    }),
-                );
+                const projectUuid = await ctx.resolveProjectUuid(pctx);
+                const discoveryModel = getBratraxDiscoveryModel(ctx.services);
+                const rows =
+                    await discoveryModel.getCatalogsForProject(projectUuid);
+
+                const taps: Array<{
+                    tap: string;
+                    label: string;
+                    category: string;
+                    source_name: string;
+                    source_type: string;
+                    stream_count: number;
+                }> = [];
+
+                for (const row of rows) {
+                    const catalogJson = safeParseCatalogJson(row.catalog_json);
+                    if (catalogJson) {
+                        const entry = parseSingerCatalog(
+                            row.source_key,
+                            catalogJson,
+                        );
+                        if (entry) {
+                            taps.push({
+                                tap: entry.tap,
+                                label: entry.label,
+                                category: entry.category,
+                                source_name: entry.source_name,
+                                source_type: entry.source_type,
+                                stream_count: entry.streams.length,
+                            });
+                        }
+                    }
+                }
+
                 return ctx.textResult(JSON.stringify(taps, null, 2));
             } catch (e: unknown) {
-                const msg =
-                    e instanceof Error ? e.message : 'Unknown error';
+                const msg = e instanceof Error ? e.message : 'Unknown error';
                 return {
                     content: [
                         {
