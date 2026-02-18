@@ -86,23 +86,23 @@ Client sends: POST /api/v1/mcp
 2. allowApiKeyAuthentication() runs passport HeaderAPIKeyStrategy
 3. Strategy calls userService.loginWithPersonalAccessToken(token)
 4. On success: req.user = SessionUser, req.account = ApiKeyAccount
-5. conditionalAuth checks if this MCP method needs auth:
-   - tools/call, resources/read, resources/subscribe → require auth (401 if missing)
-   - initialize, tools/list, resources/list, prompts/list → allowed without auth
+5. ALL requests proceed to the handler (no HTTP 401 rejection)
 6. Router attaches ExtraContext to AuthInfo.extra on the transport request
-7. Tool handlers extract user/account from ctx.authInfo.extra
+7. Tool handlers call resolveAuthContext() which returns a JSON-RPC error
+   if auth is missing (not an HTTP 401)
 ```
 
 Service account auth (Bearer tokens) follows the same flow via the EE `authenticateServiceAccount` middleware.
 
-### Conditional Auth (blocklist)
+### Auth Design: No HTTP 401 for MCP
 
-The `METHODS_REQUIRING_AUTH` blocklist in bratraxMcpRouter controls which MCP protocol methods require authentication. Only `tools/call`, `resources/read`, and `resources/subscribe` are gated — everything else (protocol messages like `initialize`, `notifications/initialized`, `tools/list`, `ping`, etc.) passes through without auth.
+Auth is NOT enforced at the Express middleware level. The `allowApiKeyAuthentication` middleware populates `req.user`/`req.account` when a valid ApiKey header is present, but unauthenticated requests pass through to the MCP handler.
 
-This blocklist approach is used instead of a whitelist because:
-- LibreChat's global startup connection sends `initialize` and `tools/list` without any API key (the key is only resolved per-user)
-- New MCP protocol methods won't accidentally get blocked — only data-access methods are gated
-- A whitelist previously broke on `notifications/initialized` which wasn't listed
+Tool handlers that need auth call `resolveAuthContext()` in `BratraxMcpService.ts`, which throws an error surfaced as a **JSON-RPC error response** (not HTTP 401). This is critical because:
+
+- Claude Code's MCP HTTP transport interprets any HTTP 401 + `WWW-Authenticate` as an OAuth re-authorization challenge, causing "requires re-authorization" errors
+- LibreChat's global startup sends `initialize` and `tools/list` without an API key
+- JSON-RPC errors are handled gracefully by all MCP clients (error text shown to user)
 
 ### MCP Tools (12 total)
 
