@@ -23,12 +23,11 @@ WITH buyer_base AS (
 
 client_mapping AS (
     SELECT DISTINCT
-        sp.client_id,
         sp.buyer_id,
         STRING_AGG(DISTINCT sp.payment_type, ', ') as relationship_types
     FROM `bratrax-without-flattening`.`cod`.`slack_payments` sp
     WHERE sp.client_id IS NOT NULL
-    GROUP BY sp.client_id, sp.buyer_id
+    GROUP BY sp.buyer_id
 ),
 
 campaign_status AS (
@@ -50,7 +49,7 @@ campaign_status AS (
 )
 
 SELECT 
-    COALESCE(cm.client_id, bb.bid) as client_id,
+    '95d31546-a5e4-47a8-bc89-741538113978' as client_id,
     bb.buyer_id,
     bb.bid,
     bb.company_name,
