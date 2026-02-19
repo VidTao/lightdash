@@ -5,14 +5,14 @@
   )
 }}
   
--- Aggregate leads to campaign/date level FIRST (no buyer dimensions)
 WITH campaign_leads_agg AS (
   SELECT 
     lead_date as date,
     client_id,
     attributed_campaign_id as campaign_id,
     COUNT(lead_id) as leads_total,
-    COUNT(CASE WHEN in_sold_unsold = TRUE THEN 1 END) as leads_sold,
+    COUNT(CASE WHEN in_sold_unsold = TRUE AND revenue > 0 THEN 1 END) as leads_sold,
+    COUNT(CASE WHEN in_sold_unsold = TRUE AND revenue = 0 THEN 1 END) as leads_retainer_absorbed,
     COUNT(CASE WHEN in_valid_invalid = TRUE AND in_sold_unsold = FALSE THEN 1 END) as leads_invalid,
     SUM(revenue) as lead_revenue,
     -- Preserve buyer info as arrays for reference without causing multiplication
@@ -49,6 +49,7 @@ SELECT
   -- Lead metrics
   COALESCE(cla.leads_total, 0) as leads_total,
   COALESCE(cla.leads_sold, 0) as leads_sold,
+  COALESCE(cla.leads_retainer_absorbed, 0) as leads_retainer_absorbed,
   COALESCE(cla.leads_invalid, 0) as leads_invalid,
   COALESCE(cla.lead_revenue, 0) as lead_revenue
 

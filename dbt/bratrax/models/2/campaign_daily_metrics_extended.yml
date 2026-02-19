@@ -25,6 +25,10 @@ models:
         meta:
           dimension:
             type: number
+      - name: leads_retainer_absorbed
+        meta:
+          dimension:
+            type: number
       - name: campaign_id
         meta:
           dimension:
