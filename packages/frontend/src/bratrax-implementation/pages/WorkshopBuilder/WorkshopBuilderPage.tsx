@@ -1,4 +1,4 @@
-import { Box, Button, Group, Tabs, Text, Tooltip } from '@mantine/core';
+import { Box, Button, Group, Loader, Tabs, Text, Tooltip } from '@mantine/core';
 import {
     IconCheck,
     IconDatabase,
@@ -6,24 +6,29 @@ import {
     IconEye,
     IconFileCode,
     IconHammer,
+    IconRadar,
     IconSitemap,
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useState, type FC } from 'react';
+import { useCallback, useState, type FC } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import {
-    useBratraxCompile,
     useBratraxGraph,
-    useBratraxValidate,
     type CompileResult,
 } from '../../hooks/useBratraxApi';
 import {
-    useBratraxCompileClient,
-    useBratraxValidateClient,
+    useBratraxProjectConfig,
+    useBratraxValidateOntology,
+    useBratraxCompileOntology,
 } from '../../hooks/useBratraxClients';
-import ClientSelector from './ClientSelector';
+import {
+    useBratraxOntologyDrift,
+    type DriftCheckResult,
+} from '../../hooks/useBratraxDrift';
 import CompileResultsPanel from './CompileResultsPanel';
+import DriftPanel from './DriftPanel';
 import OntologyBuilder from './OntologyBuilder';
+import OntologySetup from './OntologySetup';
 import SourcesBuilder from './SourcesBuilder';
 import TemplateSelector from './TemplateSelector';
 import TrackingPlanBuilder from './TrackingPlanBuilder';
@@ -41,28 +46,29 @@ const WorkshopBuilderPage: FC = () => {
         null,
     );
     const [showCompilePanel, setShowCompilePanel] = useState(false);
-    const builder = useBuilderState();
+    const [showDriftPanel, setShowDriftPanel] = useState(false);
+    const [driftResult, setDriftResult] = useState<DriftCheckResult | null>(
+        null,
+    );
     const navigate = useNavigate();
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const [searchParams] = useSearchParams();
+    const builder = useBuilderState(projectUuid);
 
-    const validateMutation = useBratraxValidate();
-    const compileMutation = useBratraxCompile();
+    const {
+        data: projectConfig,
+        isLoading: isLoadingConfig,
+        refetch: refetchConfig,
+    } = useBratraxProjectConfig(projectUuid);
+    const isBound = projectConfig?.bound ?? false;
+
     const graphMutation = useBratraxGraph();
-    const validateClientMutation = useBratraxValidateClient();
-    const compileClientMutation = useBratraxCompileClient();
+    const validateOntologyMutation = useBratraxValidateOntology(projectUuid);
+    const compileOntologyMutation = useBratraxCompileOntology(projectUuid);
+    const driftMutation = useBratraxOntologyDrift(projectUuid);
 
-    // Auto-load client from ?client= query param
-    useEffect(() => {
-        const clientParam = searchParams.get('client');
-        if (
-            clientParam &&
-            clientParam !== 'preview' &&
-            clientParam !== builder.clientName
-        ) {
-            void builder.loadClient(clientParam);
-        }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const handleSetupComplete = useCallback(() => {
+        void refetchConfig();
+    }, [refetchConfig]);
 
     const handleTabChange = useCallback((value: string | null) => {
         if (value) {
@@ -72,59 +78,38 @@ const WorkshopBuilderPage: FC = () => {
 
     const handleValidate = useCallback(async () => {
         builder.setIsValidating(true);
-        if (builder.clientName) {
-            // Save first, then validate via server-side client endpoint
-            await builder.saveClient();
-            validateClientMutation.mutate(builder.clientName, {
-                onSuccess: (result) => {
-                    builder.setCompilerValidation(result as any);
-                    builder.setIsValidating(false);
-                },
-                onError: () => {
-                    builder.setIsValidating(false);
-                },
-            });
-        } else {
-            const payload = toCompilerPayload(builder.state, 'preview');
-            validateMutation.mutate(payload, {
-                onSuccess: (result) => {
-                    builder.setCompilerValidation(result);
-                    builder.setIsValidating(false);
-                },
-                onError: () => {
-                    builder.setIsValidating(false);
-                },
-            });
-        }
-    }, [builder, validateMutation, validateClientMutation]);
+        await builder.saveClient();
+        validateOntologyMutation.mutate(undefined, {
+            onSuccess: (result) => {
+                builder.setCompilerValidation(result as any);
+                builder.setIsValidating(false);
+            },
+            onError: () => {
+                builder.setIsValidating(false);
+            },
+        });
+    }, [builder, validateOntologyMutation]);
+
+    const hasValidationErrors = builder.validationMessages.some(
+        (m) => m.severity === 'error',
+    );
 
     const handleCompile = useCallback(async () => {
+        if (hasValidationErrors) return;
         builder.setIsCompiling(true);
         setShowCompilePanel(true);
-        if (builder.clientName) {
-            await builder.saveClient();
-            compileClientMutation.mutate(builder.clientName, {
-                onSuccess: (result) => {
-                    setCompileResult(result as CompileResult);
-                    builder.setIsCompiling(false);
-                },
-                onError: () => {
-                    builder.setIsCompiling(false);
-                },
-            });
-        } else {
-            const payload = toCompilerPayload(builder.state, 'preview');
-            compileMutation.mutate(payload, {
-                onSuccess: (result) => {
-                    setCompileResult(result);
-                    builder.setIsCompiling(false);
-                },
-                onError: () => {
-                    builder.setIsCompiling(false);
-                },
-            });
-        }
-    }, [builder, compileMutation, compileClientMutation]);
+        setShowDriftPanel(false);
+        await builder.saveClient();
+        compileOntologyMutation.mutate(undefined, {
+            onSuccess: (result) => {
+                setCompileResult(result as CompileResult);
+                builder.setIsCompiling(false);
+            },
+            onError: () => {
+                builder.setIsCompiling(false);
+            },
+        });
+    }, [builder, compileOntologyMutation, hasValidationErrors]);
 
     const handleViewObservatory = useCallback(() => {
         const payload = toCompilerPayload(
@@ -134,9 +119,8 @@ const WorkshopBuilderPage: FC = () => {
         graphMutation.mutate(payload, {
             onSuccess: (result) => {
                 sessionStorage.setItem('bratrax-graph', JSON.stringify(result));
-                const clientParam = builder.clientName ?? 'preview';
                 void navigate(
-                    `/projects/${projectUuid}/observatory?client=${clientParam}`,
+                    `/projects/${projectUuid}/observatory`,
                 );
             },
         });
@@ -148,6 +132,18 @@ const WorkshopBuilderPage: FC = () => {
         projectUuid,
     ]);
 
+    const handleDriftCheck = useCallback(async () => {
+        if (!isBound) return;
+        setShowDriftPanel(true);
+        setShowCompilePanel(false);
+        await builder.saveClient();
+        driftMutation.mutate(undefined, {
+            onSuccess: (result) => {
+                setDriftResult(result);
+            },
+        });
+    }, [builder, driftMutation, isBound]);
+
     const handleLoadTemplate = useCallback(
         (files: Record<string, string>) => {
             builder.loadFromTemplate(files);
@@ -155,16 +151,37 @@ const WorkshopBuilderPage: FC = () => {
         [builder],
     );
 
-    const handleSelectClient = useCallback(
-        (name: string) => {
-            void builder.loadClient(name);
-        },
-        [builder],
-    );
-
     const handleSave = useCallback(() => {
         void builder.saveClient();
     }, [builder]);
+
+    // Show loading while checking project config
+    if (isLoadingConfig) {
+        return (
+            <Box
+                className={styles.container}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                }}
+            >
+                <Loader size="lg" />
+            </Box>
+        );
+    }
+
+    // Show setup wizard if no ontology is bound
+    if (!isBound && projectUuid) {
+        return (
+            <Box className={styles.container}>
+                <OntologySetup
+                    projectUuid={projectUuid}
+                    onSetupComplete={handleSetupComplete}
+                />
+            </Box>
+        );
+    }
 
     return (
         <Box className={styles.container}>
@@ -193,10 +210,6 @@ const WorkshopBuilderPage: FC = () => {
                 </Tabs>
 
                 <Group spacing={6}>
-                    <ClientSelector
-                        currentClient={builder.clientName}
-                        onSelectClient={handleSelectClient}
-                    />
                     {builder.isDirty && (
                         <Text size="xs" color="orange">
                             (unsaved)
@@ -204,11 +217,9 @@ const WorkshopBuilderPage: FC = () => {
                     )}
                     <Tooltip
                         label={
-                            !builder.clientName
-                                ? 'Select or create a client first'
-                                : !builder.isDirty
-                                  ? 'No changes to save'
-                                  : 'Save to disk'
+                            !builder.isDirty
+                                ? 'No changes to save'
+                                : 'Save to disk'
                         }
                     >
                         <Button
@@ -218,7 +229,7 @@ const WorkshopBuilderPage: FC = () => {
                             leftIcon={<IconDeviceFloppy size={14} />}
                             onClick={handleSave}
                             loading={builder.isSaving}
-                            disabled={!builder.isDirty || !builder.clientName}
+                            disabled={!builder.isDirty}
                         >
                             Save
                         </Button>
@@ -234,16 +245,37 @@ const WorkshopBuilderPage: FC = () => {
                     >
                         Validate
                     </Button>
-                    <Button
-                        size="xs"
-                        variant="light"
-                        color="blue"
-                        leftIcon={<IconHammer size={14} />}
-                        onClick={handleCompile}
-                        loading={builder.isCompiling}
+                    <Tooltip
+                        label={
+                            hasValidationErrors
+                                ? 'Fix validation errors before compiling'
+                                : 'Compile ontology to Dataform + Meltano artifacts'
+                        }
                     >
-                        Compile
-                    </Button>
+                        <Button
+                            size="xs"
+                            variant="light"
+                            color="blue"
+                            leftIcon={<IconHammer size={14} />}
+                            onClick={handleCompile}
+                            loading={builder.isCompiling}
+                            disabled={hasValidationErrors}
+                        >
+                            Compile
+                        </Button>
+                    </Tooltip>
+                    <Tooltip label="Run drift analysis against catalog">
+                        <Button
+                            size="xs"
+                            variant="light"
+                            color="orange"
+                            leftIcon={<IconRadar size={14} />}
+                            onClick={handleDriftCheck}
+                            loading={driftMutation.isLoading}
+                        >
+                            Drift Check
+                        </Button>
+                    </Tooltip>
                     <Button
                         size="xs"
                         variant="light"
@@ -305,7 +337,13 @@ const WorkshopBuilderPage: FC = () => {
                     minSize={20}
                     maxSize={50}
                 >
-                    {showCompilePanel ? (
+                    {showDriftPanel ? (
+                        <DriftPanel
+                            result={driftResult}
+                            isLoading={driftMutation.isLoading}
+                            onClose={() => setShowDriftPanel(false)}
+                        />
+                    ) : showCompilePanel ? (
                         <CompileResultsPanel
                             result={compileResult}
                             isCompiling={builder.isCompiling}

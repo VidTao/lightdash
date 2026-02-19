@@ -2,6 +2,8 @@ import { Knex } from 'knex';
 import { LightdashConfig } from '../config/parseConfig';
 import { type UtilRepository } from '../utils/UtilRepository';
 import { AnalyticsModel } from './AnalyticsModel';
+import { BratraxDiscoveryModel } from './BratraxDiscoveryModel';
+import { BratraxOntologyModel } from './BratraxOntologyModel';
 import { CatalogModel } from './CatalogModel/CatalogModel';
 import { ChangesetModel } from './ChangesetModel';
 import { CommentModel } from './CommentModel/CommentModel';
@@ -59,6 +61,8 @@ import { WarehouseAvailableTablesModel } from './WarehouseAvailableTablesModel/W
 
 export type ModelManifest = {
     analyticsModel: AnalyticsModel;
+    bratraxDiscoveryModel: BratraxDiscoveryModel;
+    bratraxOntologyModel: BratraxOntologyModel;
     commentModel: CommentModel;
     dashboardModel: DashboardModel;
     downloadFileModel: DownloadFileModel;
@@ -646,6 +650,20 @@ export class ModelRepository
         return this.getModel(
             'projectParametersModel',
             () => new ProjectParametersModel({ database: this.database }),
+        );
+    }
+
+    public getBratraxDiscoveryModel(): BratraxDiscoveryModel {
+        return this.getModel(
+            'bratraxDiscoveryModel',
+            () => new BratraxDiscoveryModel({ database: this.database }),
+        );
+    }
+
+    public getBratraxOntologyModel(): BratraxOntologyModel {
+        return this.getModel(
+            'bratraxOntologyModel',
+            () => new BratraxOntologyModel({ database: this.database }),
         );
     }
 

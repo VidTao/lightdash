@@ -23,6 +23,7 @@ import type {
     ObjectProperty,
     OntologyObject,
     PropertyKind,
+    SourceMapping,
     TrackingEvent,
 } from './types';
 
@@ -47,7 +48,7 @@ const FIELD_TYPES: FieldType[] = [
     'TIMESTAMP',
     'DATE',
 ];
-const PROPERTY_KINDS: PropertyKind[] = ['backing', 'derived', 'computed'];
+const PROPERTY_KINDS: PropertyKind[] = ['backing', 'derived', 'computed', 'system'];
 const CARDINALITIES = ['one-to-one', 'one-to-many', 'many-to-many'] as const;
 
 const OBJECT_PRESETS = [
@@ -108,6 +109,8 @@ const OntologyBuilder: FC<Props> = ({
     const [editingPropId, setEditingPropId] = useState<string | null>(null);
     const [editingPropKind, setEditingPropKind] =
         useState<PropertyKind>('backing');
+    // When true, picker adds an additional mapping instead of replacing primary ref
+    const [addingAdditionalMapping, setAddingAdditionalMapping] = useState(false);
 
     // Link creation state
     const [newLinkTarget, setNewLinkTarget] = useState('');
@@ -164,31 +167,98 @@ const OntologyBuilder: FC<Props> = ({
     const handlePickerSelect = useCallback(
         (ref: string, fieldType: FieldType) => {
             if (editingPropId && selectedObject) {
-                // Updating an existing property's ref
-                updateObject(selectedObject.id, {
-                    properties: selectedObject.properties.map((p) =>
-                        p.id === editingPropId
-                            ? { ...p, ref, type: fieldType }
-                            : p,
-                    ),
-                });
+                if (addingAdditionalMapping) {
+                    // Adding an additional source mapping
+                    updateObject(selectedObject.id, {
+                        properties: selectedObject.properties.map((p) => {
+                            if (p.id !== editingPropId) return p;
+                            const newMapping: SourceMapping = { ref };
+                            const existing = p.additionalMappings ?? [];
+                            return {
+                                ...p,
+                                additionalMappings: [...existing, newMapping],
+                            };
+                        }),
+                    });
+                } else {
+                    // Updating an existing property's primary ref
+                    updateObject(selectedObject.id, {
+                        properties: selectedObject.properties.map((p) =>
+                            p.id === editingPropId
+                                ? { ...p, ref, type: fieldType }
+                                : p,
+                        ),
+                    });
+                }
                 setEditingPropId(null);
+                setAddingAdditionalMapping(false);
             } else {
                 // Setting ref for new property form
                 setNewPropRef(ref);
                 setNewPropType(fieldType);
             }
         },
-        [editingPropId, selectedObject, updateObject],
+        [editingPropId, selectedObject, updateObject, addingAdditionalMapping],
     );
 
     const openPickerForExisting = useCallback(
         (prop: ObjectProperty) => {
             setEditingPropId(prop.id);
             setEditingPropKind(prop.kind);
+            setAddingAdditionalMapping(false);
             setPickerOpen(true);
         },
         [],
+    );
+
+    const openPickerForAdditional = useCallback((prop: ObjectProperty) => {
+        setEditingPropId(prop.id);
+        setEditingPropKind('backing');
+        setAddingAdditionalMapping(true);
+        setPickerOpen(true);
+    }, []);
+
+    const removeAdditionalMapping = useCallback(
+        (propId: string, mappingIdx: number) => {
+            if (!selectedObject) return;
+            updateObject(selectedObject.id, {
+                properties: selectedObject.properties.map((p) => {
+                    if (p.id !== propId || !p.additionalMappings) return p;
+                    return {
+                        ...p,
+                        additionalMappings: p.additionalMappings.filter(
+                            (_, i) => i !== mappingIdx,
+                        ),
+                    };
+                }),
+            });
+        },
+        [selectedObject, updateObject],
+    );
+
+    const updateMappingTransform = useCallback(
+        (propId: string, mappingIdx: number, transform: string) => {
+            if (!selectedObject) return;
+            updateObject(selectedObject.id, {
+                properties: selectedObject.properties.map((p) => {
+                    if (p.id !== propId || !p.additionalMappings) return p;
+                    return {
+                        ...p,
+                        additionalMappings: p.additionalMappings.map((m, i) =>
+                            i === mappingIdx
+                                ? {
+                                      ...m,
+                                      ...(transform
+                                          ? { transform }
+                                          : { transform: undefined }),
+                                  }
+                                : m,
+                        ),
+                    };
+                }),
+            });
+        },
+        [selectedObject, updateObject],
     );
 
     const handleAddLink = useCallback(() => {
@@ -328,83 +398,203 @@ const OntologyBuilder: FC<Props> = ({
                         <Stack spacing={8}>
                             <Title order={6}>Properties</Title>
                             {selectedObject.properties.map((prop) => (
-                                <div key={prop.id} className={styles.fieldRow}>
-                                    <Text
-                                        size="sm"
-                                        weight={500}
-                                        style={{ width: 140 }}
-                                    >
-                                        {prop.name}
-                                    </Text>
-                                    <Badge
-                                        size="xs"
-                                        color="gray"
-                                        variant="outline"
-                                    >
-                                        {prop.type}
-                                    </Badge>
-                                    <Badge
-                                        size="xs"
-                                        color={
-                                            prop.kind === 'backing'
-                                                ? 'blue'
-                                                : prop.kind === 'derived'
-                                                  ? 'teal'
-                                                  : 'orange'
-                                        }
-                                        variant="light"
-                                    >
-                                        {prop.kind}
-                                    </Badge>
-                                    {prop.ref ? (
+                                <Stack key={prop.id} spacing={2}>
+                                    <div className={styles.fieldRow}>
                                         <Text
-                                            size="xs"
-                                            color="blue"
-                                            style={{
-                                                flex: 1,
-                                                cursor: 'pointer',
-                                            }}
-                                            onClick={() =>
-                                                openPickerForExisting(prop)
-                                            }
+                                            size="sm"
+                                            weight={500}
+                                            style={{ width: 140 }}
                                         >
-                                            {prop.ref}
+                                            {prop.name}
                                         </Text>
-                                    ) : (
-                                        <Button
+                                        <Badge
                                             size="xs"
-                                            variant="subtle"
                                             color="gray"
-                                            compact
-                                            leftIcon={<IconLink size={10} />}
-                                            onClick={() =>
-                                                openPickerForExisting(prop)
-                                            }
-                                            style={{ flex: 1 }}
-                                            styles={{
-                                                label: {
-                                                    fontWeight: 400,
-                                                    fontSize: 11,
-                                                },
-                                            }}
+                                            variant="outline"
                                         >
-                                            Map to source...
-                                        </Button>
+                                            {prop.type}
+                                        </Badge>
+                                        <Badge
+                                            size="xs"
+                                            color={
+                                                prop.kind === 'backing'
+                                                    ? 'blue'
+                                                    : prop.kind === 'derived'
+                                                      ? 'teal'
+                                                      : prop.kind === 'system'
+                                                        ? 'gray'
+                                                        : 'orange'
+                                            }
+                                            variant="light"
+                                        >
+                                            {prop.kind}
+                                        </Badge>
+                                        {prop.kind === 'system' ? (
+                                            <Text
+                                                size="xs"
+                                                color="dimmed"
+                                                style={{ flex: 1 }}
+                                            >
+                                                System field — present in all sources
+                                            </Text>
+                                        ) : prop.ref ? (
+                                            <Text
+                                                size="xs"
+                                                color="blue"
+                                                style={{
+                                                    flex: 1,
+                                                    cursor: 'pointer',
+                                                }}
+                                                onClick={() =>
+                                                    openPickerForExisting(prop)
+                                                }
+                                            >
+                                                {prop.ref}
+                                            </Text>
+                                        ) : (
+                                            <Button
+                                                size="xs"
+                                                variant="subtle"
+                                                color="gray"
+                                                compact
+                                                leftIcon={
+                                                    <IconLink size={10} />
+                                                }
+                                                onClick={() =>
+                                                    openPickerForExisting(prop)
+                                                }
+                                                style={{ flex: 1 }}
+                                                styles={{
+                                                    label: {
+                                                        fontWeight: 400,
+                                                        fontSize: 11,
+                                                    },
+                                                }}
+                                            >
+                                                Map to source...
+                                            </Button>
+                                        )}
+                                        <ActionIcon
+                                            size="xs"
+                                            color="red"
+                                            variant="subtle"
+                                            onClick={() =>
+                                                removeProperty(
+                                                    selectedObject.id,
+                                                    prop.id,
+                                                )
+                                            }
+                                        >
+                                            <IconTrash size={12} />
+                                        </ActionIcon>
+                                    </div>
+                                    {/* Additional source mappings */}
+                                    {prop.kind === 'backing' &&
+                                        prop.additionalMappings?.map(
+                                            (mapping, idx) => (
+                                                <Group
+                                                    key={`${prop.id}-m-${idx}`}
+                                                    spacing={4}
+                                                    pl={152}
+                                                >
+                                                    <Text
+                                                        size="xs"
+                                                        color="dimmed"
+                                                    >
+                                                        +
+                                                    </Text>
+                                                    <Text
+                                                        size="xs"
+                                                        color="blue"
+                                                        style={{
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        {mapping.ref}
+                                                    </Text>
+                                                    {mapping.transform && (
+                                                        <TextInput
+                                                            size="xs"
+                                                            value={
+                                                                mapping.transform
+                                                            }
+                                                            onChange={(
+                                                                e: React.ChangeEvent<HTMLInputElement>,
+                                                            ) =>
+                                                                updateMappingTransform(
+                                                                    prop.id,
+                                                                    idx,
+                                                                    e
+                                                                        .currentTarget
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            placeholder="transform"
+                                                            style={{
+                                                                width: 180,
+                                                            }}
+                                                        />
+                                                    )}
+                                                    {!mapping.transform && (
+                                                        <Button
+                                                            size="xs"
+                                                            variant="subtle"
+                                                            compact
+                                                            color="gray"
+                                                            onClick={() =>
+                                                                updateMappingTransform(
+                                                                    prop.id,
+                                                                    idx,
+                                                                    '{value}',
+                                                                )
+                                                            }
+                                                        >
+                                                            + transform
+                                                        </Button>
+                                                    )}
+                                                    <ActionIcon
+                                                        size="xs"
+                                                        color="red"
+                                                        variant="subtle"
+                                                        onClick={() =>
+                                                            removeAdditionalMapping(
+                                                                prop.id,
+                                                                idx,
+                                                            )
+                                                        }
+                                                    >
+                                                        <IconTrash size={10} />
+                                                    </ActionIcon>
+                                                </Group>
+                                            ),
+                                        )}
+                                    {prop.kind === 'backing' && prop.ref && (
+                                        <Group spacing={4} pl={152}>
+                                            <Button
+                                                size="xs"
+                                                variant="subtle"
+                                                compact
+                                                color="gray"
+                                                leftIcon={
+                                                    <IconPlus size={10} />
+                                                }
+                                                onClick={() =>
+                                                    openPickerForAdditional(
+                                                        prop,
+                                                    )
+                                                }
+                                                styles={{
+                                                    label: {
+                                                        fontWeight: 400,
+                                                        fontSize: 10,
+                                                    },
+                                                }}
+                                            >
+                                                Add source
+                                            </Button>
+                                        </Group>
                                     )}
-                                    <ActionIcon
-                                        size="xs"
-                                        color="red"
-                                        variant="subtle"
-                                        onClick={() =>
-                                            removeProperty(
-                                                selectedObject.id,
-                                                prop.id,
-                                            )
-                                        }
-                                    >
-                                        <IconTrash size={12} />
-                                    </ActionIcon>
-                                </div>
+                                </Stack>
                             ))}
 
                             {/* Add property form */}
@@ -459,6 +649,14 @@ const OntologyBuilder: FC<Props> = ({
                                         }
                                         style={{ flex: 1 }}
                                     />
+                                ) : newPropKind === 'system' ? (
+                                    <Text
+                                        size="xs"
+                                        color="dimmed"
+                                        style={{ flex: 1 }}
+                                    >
+                                        Auto-injected by envelope
+                                    </Text>
                                 ) : (
                                     <Button
                                         size="xs"
@@ -668,6 +866,7 @@ const OntologyBuilder: FC<Props> = ({
                 onClose={() => {
                     setPickerOpen(false);
                     setEditingPropId(null);
+                    setAddingAdditionalMapping(false);
                 }}
                 onSelect={handlePickerSelect}
                 kind={editingPropId ? editingPropKind : newPropKind}

@@ -1,6 +1,6 @@
 /**
- * React Query hooks for Bratrax client CRUD operations.
- * Communicates via the Lightdash backend proxy at /api/v1/bratrax/clients/*.
+ * React Query hooks for Bratrax ontology operations.
+ * All data lives in the bratrax_ontology table, keyed by project_uuid.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -53,66 +53,84 @@ async function putJson<T>(url: string, body: unknown): Promise<T> {
 
 // ─── Types ───
 
-export type ClientInfo = {
-    name: string;
-    has_config: boolean;
-    has_ontology: boolean;
-    has_sources: boolean;
-    has_tracking_plan: boolean;
+export type BratraxProjectConfig = {
+    bound: boolean;
 };
 
-// ─── Hooks ───
+// ─── Project Config ───
 
-export function useBratraxClients() {
+export function useBratraxProjectConfig(projectUuid: string | undefined) {
     return useQuery({
-        queryKey: ['bratrax-clients'],
+        queryKey: ['bratrax-project-config', projectUuid],
         queryFn: () =>
-            getJson<{ clients: ClientInfo[] }>(`${BRATRAX_API_BASE}/clients`),
+            getJson<BratraxProjectConfig>(
+                `${BRATRAX_API_BASE}/project-config/${projectUuid}`,
+            ),
+        enabled: !!projectUuid,
     });
 }
 
-export function useBratraxCreateClient() {
+// ─── Init (setup wizard) ───
+
+export function useBratraxInitOntology(projectUuid: string | undefined) {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: (input: { name: string; stack?: string }) =>
-            postJson<{ name: string }>(`${BRATRAX_API_BASE}/clients`, input),
+        mutationFn: (files: Record<string, string>) =>
+            postJson<{ initialized: boolean }>(
+                `${BRATRAX_API_BASE}/ontology/${projectUuid}/init`,
+                { files },
+            ),
         onSuccess: () => {
             void queryClient.invalidateQueries({
-                queryKey: ['bratrax-clients'],
+                queryKey: ['bratrax-project-config', projectUuid],
+            });
+            void queryClient.invalidateQueries({
+                queryKey: ['bratrax-ontology', projectUuid],
             });
         },
     });
 }
 
-export function useBratraxSaveYaml() {
+// ─── Ontology CRUD ───
+
+export function useBratraxOntology(projectUuid: string | undefined) {
+    return useQuery({
+        queryKey: ['bratrax-ontology', projectUuid],
+        queryFn: () =>
+            getJson<{ files: Record<string, string> }>(
+                `${BRATRAX_API_BASE}/ontology/${projectUuid}`,
+            ),
+        enabled: !!projectUuid,
+    });
+}
+
+export function useBratraxSaveOntologyYaml(projectUuid: string | undefined) {
     return useMutation({
-        mutationFn: (input: {
-            clientName: string;
-            fileKey: string;
-            content: string;
-        }) =>
-            putJson<{ status: string }>(
-                `${BRATRAX_API_BASE}/clients/${input.clientName}/${input.fileKey}`,
+        mutationFn: (input: { fileKey: string; content: string }) =>
+            putJson<{ saved: boolean }>(
+                `${BRATRAX_API_BASE}/ontology/${projectUuid}/${input.fileKey}`,
                 { content: input.content },
             ),
     });
 }
 
-export function useBratraxValidateClient() {
+// ─── Validate / Compile ───
+
+export function useBratraxValidateOntology(projectUuid: string | undefined) {
     return useMutation({
-        mutationFn: (name: string) =>
+        mutationFn: () =>
             postJson<unknown>(
-                `${BRATRAX_API_BASE}/clients/${name}/validate`,
+                `${BRATRAX_API_BASE}/ontology/${projectUuid}/validate`,
                 {},
             ),
     });
 }
 
-export function useBratraxCompileClient() {
+export function useBratraxCompileOntology(projectUuid: string | undefined) {
     return useMutation({
-        mutationFn: (name: string) =>
+        mutationFn: () =>
             postJson<unknown>(
-                `${BRATRAX_API_BASE}/clients/${name}/compile`,
+                `${BRATRAX_API_BASE}/ontology/${projectUuid}/compile`,
                 {},
             ),
     });

@@ -13,10 +13,74 @@ import type {
 
 const BRATRAX_API_BASE = '/api/v1/bratrax';
 
+const VALID_FIELD_TYPES = new Set<string>([
+    'STRING',
+    'INT64',
+    'FLOAT64',
+    'BOOLEAN',
+    'TIMESTAMP',
+    'DATE',
+    'BYTES',
+    'JSON',
+]);
+
+const SINGER_TYPE_MAP: Record<string, FieldType> = {
+    string: 'STRING',
+    integer: 'INT64',
+    number: 'FLOAT64',
+    boolean: 'BOOLEAN',
+    object: 'JSON',
+    array: 'JSON',
+};
+
+/**
+ * Normalize Singer catalog field types that may arrive as arrays, objects,
+ * or lowercase strings into a valid FieldType.
+ *
+ * Examples:
+ *   "STRING"                    → "STRING"
+ *   "string"                    → "STRING"
+ *   ["null", "string"]          → "STRING"
+ *   { type: "string" }          → "STRING"
+ *   { anyOf: [{type:"string"}]} → "STRING"
+ */
+export function normalizeSingerType(raw: unknown): FieldType {
+    if (typeof raw === 'string') {
+        if (VALID_FIELD_TYPES.has(raw)) return raw as FieldType;
+        if (SINGER_TYPE_MAP[raw]) return SINGER_TYPE_MAP[raw];
+        const upper = raw.toUpperCase();
+        if (VALID_FIELD_TYPES.has(upper)) return upper as FieldType;
+        return 'STRING';
+    }
+
+    if (Array.isArray(raw)) {
+        const nonNull = raw.filter(
+            (t) => typeof t === 'string' && t !== 'null',
+        );
+        if (nonNull.length > 0) return normalizeSingerType(nonNull[0]);
+        return 'STRING';
+    }
+
+    if (raw !== null && typeof raw === 'object') {
+        const obj = raw as Record<string, unknown>;
+        if (obj.type) return normalizeSingerType(obj.type);
+        if (Array.isArray(obj.anyOf) && obj.anyOf.length > 0) {
+            return normalizeSingerType(obj.anyOf[0]);
+        }
+        return 'JSON';
+    }
+
+    return 'STRING';
+}
+
 export type CatalogField = {
     name: string;
     type: string;
     nullable: boolean;
+    behavior?: 'METRIC' | 'SEGMENT' | 'ATTRIBUTE' | 'PRIMARY KEY';
+    field_exclusions?: string[];
+    polymorphic?: boolean;
+    schema_less_array?: boolean;
 };
 
 export type CatalogStream = {
@@ -58,8 +122,14 @@ export function catalogEntriesToSourceConnectors(
             selected: false,
             fields: s.fields.map((f) => ({
                 name: f.name,
-                type: (f.type as FieldType) || 'STRING',
+                type: normalizeSingerType(f.type),
                 selected: true,
+                ...(f.behavior ? { behavior: f.behavior } : {}),
+                ...(f.field_exclusions?.length
+                    ? { field_exclusions: f.field_exclusions }
+                    : {}),
+                ...(f.polymorphic ? { polymorphic: true } : {}),
+                ...(f.schema_less_array ? { schema_less_array: true } : {}),
             })),
         })),
         source_name: c.source_name,
@@ -68,12 +138,15 @@ export function catalogEntriesToSourceConnectors(
     }));
 }
 
-export function useBratraxCatalogs() {
+export function useBratraxCatalogs(projectUuid?: string) {
     return useQuery({
-        queryKey: ['bratrax-catalogs'],
+        queryKey: ['bratrax-catalogs', projectUuid],
         queryFn: async (): Promise<CatalogsResponse> => {
             try {
-                const response = await fetch(`${BRATRAX_API_BASE}/catalogs`);
+                const url = projectUuid
+                    ? `${BRATRAX_API_BASE}/ontology/${projectUuid}/catalogs`
+                    : `${BRATRAX_API_BASE}/catalogs`;
+                const response = await fetch(url);
                 if (!response.ok) {
                     return { catalogs: [], isOffline: true };
                 }

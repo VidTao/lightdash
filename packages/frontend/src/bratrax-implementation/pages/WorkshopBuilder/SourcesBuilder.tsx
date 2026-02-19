@@ -8,13 +8,23 @@ import {
     Text,
     TextInput,
     Title,
+    Tooltip,
 } from '@mantine/core';
-import { IconSearch } from '@tabler/icons-react';
+import {
+    IconAlertCircle,
+    IconAlertTriangle,
+    IconSearch,
+} from '@tabler/icons-react';
 import { useEffect, useMemo, useState, type FC } from 'react';
 import {
     catalogEntriesToSourceConnectors,
     useBratraxCatalogs,
 } from '../../hooks/useBratraxCatalogs';
+import {
+    computeExclusionConflicts,
+    computeFieldWarnings,
+    type FieldWarning,
+} from './fieldWarnings';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
 import type { SourceConnector } from './types';
@@ -74,6 +84,28 @@ const SourcesBuilder: FC<Props> = ({
     }, [filteredSources]);
 
     const selectedSource = sources.find((s) => s.tap === selectedTap);
+
+    // Compute field warnings/errors for selected source's streams
+    const fieldWarningsMap = useMemo(() => {
+        const map = new Map<string, FieldWarning[]>();
+        if (!selectedSource) return map;
+
+        for (const stream of selectedSource.streams) {
+            if (!stream.selected) continue;
+            const selectedFields = stream.fields.filter((f) => f.selected);
+            const warnings = computeFieldWarnings(selectedFields);
+            const conflicts = computeExclusionConflicts(selectedFields);
+            const all = [...warnings, ...conflicts];
+            if (all.length > 0) {
+                for (const w of all) {
+                    const key = `${stream.name}:${w.fieldName}`;
+                    const existing = map.get(key) ?? [];
+                    map.set(key, [...existing, w]);
+                }
+            }
+        }
+        return map;
+    }, [selectedSource]);
 
     if (catalogLoading && sources.length === 0) {
         return (
@@ -232,41 +264,132 @@ const SourcesBuilder: FC<Props> = ({
                                             {stream.selected && (
                                                 <Stack spacing={2} pl={28}>
                                                     {stream.fields.map(
-                                                        (field) => (
-                                                            <div
-                                                                key={field.name}
-                                                                className={
-                                                                    styles.fieldRow
-                                                                }
-                                                            >
-                                                                <Checkbox
-                                                                    size="xs"
-                                                                    checked={
-                                                                        field.selected
+                                                        (field) => {
+                                                            const warnings =
+                                                                fieldWarningsMap.get(
+                                                                    `${stream.name}:${field.name}`,
+                                                                ) ?? [];
+                                                            const hasError =
+                                                                warnings.some(
+                                                                    (w) =>
+                                                                        w.severity ===
+                                                                        'error',
+                                                                );
+                                                            const hasWarning =
+                                                                warnings.some(
+                                                                    (w) =>
+                                                                        w.severity ===
+                                                                        'warning',
+                                                                );
+                                                            return (
+                                                                <div
+                                                                    key={
+                                                                        field.name
                                                                     }
-                                                                    onChange={() =>
-                                                                        toggleField(
-                                                                            selectedSource.tap,
-                                                                            stream.name,
-                                                                            field.name,
-                                                                        )
+                                                                    className={
+                                                                        styles.fieldRow
                                                                     }
-                                                                />
-                                                                <Text
-                                                                    size="xs"
-                                                                    weight={500}
                                                                 >
-                                                                    {field.name}
-                                                                </Text>
-                                                                <Badge
-                                                                    size="xs"
-                                                                    color="gray"
-                                                                    variant="outline"
-                                                                >
-                                                                    {field.type}
-                                                                </Badge>
-                                                            </div>
-                                                        ),
+                                                                    <Checkbox
+                                                                        size="xs"
+                                                                        checked={
+                                                                            field.selected
+                                                                        }
+                                                                        onChange={() =>
+                                                                            toggleField(
+                                                                                selectedSource.tap,
+                                                                                stream.name,
+                                                                                field.name,
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                    <Text
+                                                                        size="xs"
+                                                                        weight={
+                                                                            500
+                                                                        }
+                                                                    >
+                                                                        {
+                                                                            field.name
+                                                                        }
+                                                                    </Text>
+                                                                    <Badge
+                                                                        size="xs"
+                                                                        color="gray"
+                                                                        variant="outline"
+                                                                    >
+                                                                        {
+                                                                            field.type
+                                                                        }
+                                                                    </Badge>
+                                                                    {hasError && (
+                                                                        <Tooltip
+                                                                            label={warnings
+                                                                                .filter(
+                                                                                    (
+                                                                                        w,
+                                                                                    ) =>
+                                                                                        w.severity ===
+                                                                                        'error',
+                                                                                )
+                                                                                .map(
+                                                                                    (
+                                                                                        w,
+                                                                                    ) =>
+                                                                                        w.message,
+                                                                                )
+                                                                                .join(
+                                                                                    '; ',
+                                                                                )}
+                                                                            multiline
+                                                                            width={
+                                                                                300
+                                                                            }
+                                                                        >
+                                                                            <IconAlertCircle
+                                                                                size={
+                                                                                    14
+                                                                                }
+                                                                                color="var(--mantine-color-red-6)"
+                                                                            />
+                                                                        </Tooltip>
+                                                                    )}
+                                                                    {hasWarning &&
+                                                                        !hasError && (
+                                                                            <Tooltip
+                                                                                label={warnings
+                                                                                    .filter(
+                                                                                        (
+                                                                                            w,
+                                                                                        ) =>
+                                                                                            w.severity ===
+                                                                                            'warning',
+                                                                                    )
+                                                                                    .map(
+                                                                                        (
+                                                                                            w,
+                                                                                        ) =>
+                                                                                            w.message,
+                                                                                    )
+                                                                                    .join(
+                                                                                        '; ',
+                                                                                    )}
+                                                                                multiline
+                                                                                width={
+                                                                                    300
+                                                                                }
+                                                                            >
+                                                                                <IconAlertTriangle
+                                                                                    size={
+                                                                                        14
+                                                                                    }
+                                                                                    color="var(--mantine-color-yellow-6)"
+                                                                                />
+                                                                            </Tooltip>
+                                                                        )}
+                                                                </div>
+                                                            );
+                                                        },
                                                     )}
                                                 </Stack>
                                             )}

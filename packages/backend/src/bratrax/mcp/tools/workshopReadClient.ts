@@ -1,27 +1,17 @@
-import { AnyType } from '@lightdash/common';
-import { z } from 'zod';
-import { readClient } from '../../../helpers/bratrax-api';
+import { getBratraxOntologyModel } from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
-
-const inputSchema = z
-    .object({
-        client_name: z
-            .string()
-            .describe('Name of the client to read (e.g. "vidtao", "acme")'),
-    })
-    .describe(
-        'Read all 4 YAML files (config, ontology, sources, tracking_plan) for a Bratrax client.',
-    );
 
 export function registerWorkshopReadClientTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_READ_CLIENT,
         {
-            description: inputSchema.description!,
-            inputSchema: ctx.compatSchema(inputSchema),
+            description:
+                'Read all ontology YAML files (config, ontology, sources, tracking_plan) ' +
+                'for the current project.',
+            inputSchema: {},
         },
-        async (args: AnyType, extra) => {
+        async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;
             ctx.trackToolCall(
                 pctx,
@@ -30,8 +20,12 @@ export function registerWorkshopReadClientTool(ctx: McpToolContext): void {
             ctx.canAccessMcp(pctx);
 
             try {
-                const data = await readClient(args.client_name);
-                return ctx.textResult(JSON.stringify(data, null, 2));
+                const projectUuid = await ctx.resolveProjectUuid(pctx);
+                const model = getBratraxOntologyModel(ctx.services);
+                const files = await model.getFiles(projectUuid);
+                return ctx.textResult(
+                    JSON.stringify({ files }, null, 2),
+                );
             } catch (e: unknown) {
                 const msg =
                     e instanceof Error ? e.message : 'Unknown error';
@@ -39,7 +33,7 @@ export function registerWorkshopReadClientTool(ctx: McpToolContext): void {
                     content: [
                         {
                             type: 'text' as const,
-                            text: `Error reading client: ${msg}`,
+                            text: `Error reading ontology: ${msg}`,
                         },
                     ],
                     isError: true,

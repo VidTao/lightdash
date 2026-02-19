@@ -1,29 +1,21 @@
-import { AnyType } from '@lightdash/common';
-import { z } from 'zod';
-import { validateClient } from '../../../helpers/bratrax-api';
+import {
+    getBratraxOntologyModel,
+    validateYaml,
+} from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
-
-const inputSchema = z
-    .object({
-        client_name: z
-            .string()
-            .describe('Name of the client to validate'),
-    })
-    .describe(
-        'Validate a Bratrax client by parsing its YAML files from disk, ' +
-            'resolving $ref references, and running all validation rules. ' +
-            'Returns errors and warnings.',
-    );
 
 export function registerWorkshopValidateTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_VALIDATE,
         {
-            description: inputSchema.description!,
-            inputSchema: ctx.compatSchema(inputSchema),
+            description:
+                'Validate the ontology for the current project. ' +
+                'Reads YAML from DB, parses, resolves $ref references, ' +
+                'and runs all validation rules. Returns errors and warnings.',
+            inputSchema: {},
         },
-        async (args: AnyType, extra) => {
+        async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;
             ctx.trackToolCall(
                 pctx,
@@ -32,7 +24,15 @@ export function registerWorkshopValidateTool(ctx: McpToolContext): void {
             ctx.canAccessMcp(pctx);
 
             try {
-                const data = await validateClient(args.client_name);
+                const projectUuid = await ctx.resolveProjectUuid(pctx);
+                const model = getBratraxOntologyModel(ctx.services);
+                const files = await model.getFiles(projectUuid);
+                const data = await validateYaml({
+                    config: files.config ?? '',
+                    ontology: files.ontology ?? '',
+                    sources: files.sources ?? '',
+                    tracking_plan: files.tracking_plan ?? '',
+                });
                 return ctx.textResult(JSON.stringify(data, null, 2));
             } catch (e: unknown) {
                 const msg =
@@ -41,7 +41,7 @@ export function registerWorkshopValidateTool(ctx: McpToolContext): void {
                     content: [
                         {
                             type: 'text' as const,
-                            text: `Error validating client: ${msg}`,
+                            text: `Error validating ontology: ${msg}`,
                         },
                     ],
                     isError: true,

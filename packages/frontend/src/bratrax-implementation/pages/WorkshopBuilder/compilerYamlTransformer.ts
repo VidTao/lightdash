@@ -11,6 +11,7 @@ import type {
     ObjectProperty,
     OntologyObject,
     SourceConnector,
+    SourceMapping,
     TrackingEvent,
 } from './types';
 
@@ -37,7 +38,9 @@ const FIELD_TYPE_TO_COMPILER: Record<string, string> = {
 };
 
 function logicalSourceName(src: SourceConnector): string {
-    return src.source_name ?? src.tap.replace('tap-', '');
+    if (src.source_name) return src.source_name;
+    // Fallback: derive from tap name for backward compatibility
+    return src.tap.replace(/^(tap-|webhook-)/, '');
 }
 
 // ─── Ref parsing ───
@@ -90,13 +93,15 @@ function buildSourceEntry(src: SourceConnector) {
     const selectedStreams = src.streams.filter((s) => s.selected);
     if (selectedStreams.length === 0) return null;
 
-    const sourceType = src.source_type ?? 'meltano';
+    const sourceType =
+        src.source_type ??
+        (src.tap.startsWith('webhook-') ? 'webhook' : 'meltano');
     const rawTable = src.raw_table ?? 'raw_data';
 
     const streams: Record<string, unknown> = {};
     for (const stream of selectedStreams) {
         const fields: Record<string, string> = {};
-        for (const field of stream.fields.filter((f) => f.selected)) {
+        for (const field of stream.fields) {
             fields[field.name] = field.type;
         }
         streams[stream.name] = {
@@ -115,6 +120,10 @@ function buildSourceEntry(src: SourceConnector) {
         streams,
     };
 
+    // Preserve field_mapping and produces_events from YAML
+    if (src.field_mapping) entry.field_mapping = src.field_mapping;
+    if (src.produces_events) entry.produces_events = src.produces_events;
+
     return { name, entry };
 }
 
@@ -131,13 +140,16 @@ export function generateCompilerSources(
         }
     }
 
-    // Check if any events exist (implies browser_events source needed)
-    const hasBrowserEvents = state.events.length > 0;
-    if (hasBrowserEvents && !sourcesMap['browser_events']) {
-        sourcesMap['browser_events'] = {
+    // Add browser_events source if any events use browser collection
+    const browserEvents = state.events.filter(
+        (e) => e.collectionMethod === 'browser',
+    );
+    const browserEventsKey = 'browser_events';
+    if (browserEvents.length > 0 && !sourcesMap[browserEventsKey]) {
+        sourcesMap[browserEventsKey] = {
             type: 'pubsub',
             description: 'Browser events from tracking pixel',
-            produces_events: state.events.map((e) => `$events.${e.name}`),
+            produces_events: browserEvents.map((e) => `$events.${e.name}`),
             field_mapping: {
                 activity_id: 'event_id',
                 ts: 'timestamp',
@@ -176,10 +188,38 @@ export function generateCompilerSources(
 
 // ─── Ontology YAML ───
 
+function buildBackingEntry(ref: string, transform?: string) {
+    const parsed = parseBackingRef(ref);
+    if (!parsed) return { source: ref, field: '' };
+    const entry: Record<string, string> = {
+        source: parsed.source,
+        field: parsed.field,
+    };
+    if (transform) entry.transform = transform;
+    return entry;
+}
+
 function buildPropertyDef(prop: ObjectProperty) {
     const compilerType = FIELD_TYPE_TO_COMPILER[prop.type] ?? 'string';
 
     if (prop.kind === 'backing') {
+        // Skip backing block when ref is empty or just "."
+        if (!prop.ref || prop.ref === '.') {
+            return { type: compilerType };
+        }
+
+        // Multi-source: write backing as array
+        if (prop.additionalMappings && prop.additionalMappings.length > 0) {
+            const backingArray = [
+                buildBackingEntry(prop.ref),
+                ...prop.additionalMappings.map((m: SourceMapping) =>
+                    buildBackingEntry(m.ref, m.transform),
+                ),
+            ];
+            return { type: compilerType, backing: backingArray };
+        }
+
+        // Single-source: write backing as object
         const parsed = parseBackingRef(prop.ref);
         if (parsed) {
             return {
@@ -190,14 +230,12 @@ function buildPropertyDef(prop: ObjectProperty) {
                 },
             };
         }
-        // Fallback: treat as direct reference
         return { type: compilerType, backing: { source: prop.ref, field: '' } };
     }
 
     if (prop.kind === 'derived') {
-        // Parse derived ref: "$events.order_completed" or more complex
         const derivedDef: Record<string, unknown> = {
-            type: 'sum', // Default derivation type
+            type: 'sum',
         };
         if (isEventRef(prop.ref)) {
             derivedDef.event = prop.ref;
@@ -214,13 +252,17 @@ function buildPropertyDef(prop: ObjectProperty) {
         };
     }
 
+    if (prop.kind === 'system') {
+        return { type: compilerType, kind: 'system' };
+    }
+
     return { type: compilerType };
 }
 
 function inferPrimaryKey(obj: OntologyObject): string {
     // Try to find a property ending with _id
     const idProp = obj.properties.find(
-        (p) => p.name.endsWith('_id') && p.kind === 'backing',
+        (p) => p.name.endsWith('_id') && (p.kind === 'backing' || p.kind === 'system'),
     );
     return idProp?.name ?? obj.properties[0]?.name ?? 'id';
 }
@@ -284,10 +326,20 @@ export function generateCompilerOntology(
 // ─── Tracking Plan YAML ───
 
 function buildEventDef(event: TrackingEvent, objects: OntologyObject[]) {
-    const eventDef: Record<string, unknown> = {
-        category: event.category === 'page_view' ? 'navigation' : 'ecommerce',
-        source: '$sources.browser_events',
+    const categoryMap: Record<string, string> = {
+        page_view: 'navigation',
+        identify: 'lifecycle',
+        track: 'conversion',
+        group: 'system',
     };
+    const eventDef: Record<string, unknown> = {
+        category: categoryMap[event.category] ?? 'conversion',
+        source: event.source || '$sources.browser_events',
+    };
+
+    // Preserve per-event metadata from YAML
+    if (event.trigger) eventDef.trigger = event.trigger;
+    if (event.description) eventDef.description = event.description;
 
     if (event.properties.length > 0) {
         const properties: Record<string, unknown> = {};
@@ -314,6 +366,11 @@ function buildEventDef(event: TrackingEvent, objects: OntologyObject[]) {
         }
     }
 
+    // Preserve additional YAML metadata
+    if (event.attribution) eventDef.attribution = event.attribution;
+    if (event.revenueImpact) eventDef.revenue_impact = event.revenueImpact;
+    if (event.tests) eventDef.tests = event.tests;
+
     return eventDef;
 }
 
@@ -327,20 +384,28 @@ export function generateCompilerTrackingPlan(
         events[event.name] = buildEventDef(event, state.objects);
     }
 
-    // Derive categories from events
-    const categories: Record<string, unknown> = {};
-    const usedCategories = new Set(state.events.map((e) => e.category));
-    if (usedCategories.has('page_view')) {
-        categories.navigation = {
-            description: 'Page views and navigation',
-            color: '#3b82f6',
-        };
-    }
-    if (usedCategories.has('track') || usedCategories.has('identify')) {
-        categories.ecommerce = {
-            description: 'Shopping and purchase events',
-            color: '#10b981',
-        };
+    // Use preserved categories from YAML, or derive from events as fallback
+    let categories: Record<string, unknown>;
+    if (
+        state.trackingPlanMeta?.categories &&
+        Object.keys(state.trackingPlanMeta.categories).length > 0
+    ) {
+        categories = state.trackingPlanMeta.categories;
+    } else {
+        categories = {};
+        const usedCategories = new Set(state.events.map((e) => e.category));
+        if (usedCategories.has('page_view')) {
+            categories.navigation = {
+                description: 'Page views and navigation',
+                color: '#3b82f6',
+            };
+        }
+        if (usedCategories.has('track') || usedCategories.has('identify')) {
+            categories.ecommerce = {
+                description: 'Shopping and purchase events',
+                color: '#10b981',
+            };
+        }
     }
 
     const spec: Record<string, unknown> = {
@@ -353,6 +418,14 @@ export function generateCompilerTrackingPlan(
     }
 
     spec.events = events;
+
+    // Preserve validation and identity blocks from YAML
+    if (state.trackingPlanMeta?.validation) {
+        spec.validation = state.trackingPlanMeta.validation;
+    }
+    if (state.trackingPlanMeta?.identity) {
+        spec.identity = state.trackingPlanMeta.identity;
+    }
 
     return yaml.dump(spec, { lineWidth: 120, noRefs: true });
 }

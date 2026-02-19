@@ -19,6 +19,7 @@ import { generateFullSnippet } from './snippetGenerator';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
 import type {
+    CollectionMethod,
     EnrichmentMapping,
     EventCategory,
     EventProperty,
@@ -43,6 +44,11 @@ const EVENT_CATEGORIES: EventCategory[] = [
     'track',
     'group',
 ];
+const COLLECTION_METHODS: CollectionMethod[] = [
+    'browser',
+    'webhook',
+    'api_pull',
+];
 const FIELD_TYPES: FieldType[] = [
     'STRING',
     'INT64',
@@ -61,6 +67,18 @@ const CATEGORY_COLORS: Record<EventCategory, string> = {
     group: 'orange',
 };
 
+const COLLECTION_METHOD_COLORS: Record<CollectionMethod, string> = {
+    browser: 'blue',
+    webhook: 'green',
+    api_pull: 'gray',
+};
+
+const SNIPPET_TITLES: Record<CollectionMethod, string> = {
+    browser: 'Tracking Snippet',
+    webhook: 'Webhook Payload',
+    api_pull: 'Data Source',
+};
+
 const TrackingPlanBuilder: FC<Props> = ({
     events,
     objects,
@@ -72,8 +90,9 @@ const TrackingPlanBuilder: FC<Props> = ({
 }) => {
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [newEventName, setNewEventName] = useState('');
-    const [newEventCategory, setNewEventCategory] =
-        useState<EventCategory>('track');
+    const [newEventCategory] = useState<EventCategory>('track');
+    const [newCollectionMethod, setNewCollectionMethod] =
+        useState<CollectionMethod>('browser');
 
     // Property form state
     const [newPropName, setNewPropName] = useState('');
@@ -94,12 +113,14 @@ const TrackingPlanBuilder: FC<Props> = ({
             id,
             name: newEventName.trim(),
             category: newEventCategory,
+            collectionMethod: newCollectionMethod,
+            source: '',
             properties: [],
             enrichments: [],
         });
         setSelectedEventId(id);
         setNewEventName('');
-    }, [newEventName, newEventCategory, addEvent]);
+    }, [newEventName, newEventCategory, newCollectionMethod, addEvent]);
 
     const handleAddProperty = useCallback(() => {
         if (!selectedEventId || !newPropName.trim()) return;
@@ -169,15 +190,15 @@ const TrackingPlanBuilder: FC<Props> = ({
                         />
                         <NativeSelect
                             size="sm"
-                            value={newEventCategory}
+                            value={newCollectionMethod}
                             onChange={(
                                 e: React.ChangeEvent<HTMLSelectElement>,
                             ) =>
-                                setNewEventCategory(
-                                    e.currentTarget.value as EventCategory,
+                                setNewCollectionMethod(
+                                    e.currentTarget.value as CollectionMethod,
                                 )
                             }
-                            data={EVENT_CATEGORIES}
+                            data={COLLECTION_METHODS}
                             style={{ width: 110 }}
                         />
                         <Button
@@ -207,17 +228,30 @@ const TrackingPlanBuilder: FC<Props> = ({
                                             <Text size="sm" weight={500}>
                                                 {event.name}
                                             </Text>
-                                            <Badge
-                                                size="xs"
-                                                color={
-                                                    CATEGORY_COLORS[
-                                                        event.category
-                                                    ]
-                                                }
-                                                variant="light"
-                                            >
-                                                {event.category}
-                                            </Badge>
+                                            <Group spacing={4}>
+                                                <Badge
+                                                    size="xs"
+                                                    color={
+                                                        COLLECTION_METHOD_COLORS[
+                                                            event.collectionMethod
+                                                        ]
+                                                    }
+                                                    variant="filled"
+                                                >
+                                                    {event.collectionMethod}
+                                                </Badge>
+                                                <Badge
+                                                    size="xs"
+                                                    color={
+                                                        CATEGORY_COLORS[
+                                                            event.category
+                                                        ]
+                                                    }
+                                                    variant="light"
+                                                >
+                                                    {event.category}
+                                                </Badge>
+                                            </Group>
                                         </Stack>
                                         <ActionIcon
                                             size="xs"
@@ -258,6 +292,17 @@ const TrackingPlanBuilder: FC<Props> = ({
                                 <Title order={5}>{selectedEvent.name}</Title>
                                 <Badge
                                     color={
+                                        COLLECTION_METHOD_COLORS[
+                                            selectedEvent.collectionMethod
+                                        ]
+                                    }
+                                    variant="filled"
+                                    size="sm"
+                                >
+                                    {selectedEvent.collectionMethod}
+                                </Badge>
+                                <Badge
+                                    color={
                                         CATEGORY_COLORS[selectedEvent.category]
                                     }
                                     variant="light"
@@ -265,20 +310,36 @@ const TrackingPlanBuilder: FC<Props> = ({
                                     {selectedEvent.category}
                                 </Badge>
                             </Group>
-                            <NativeSelect
-                                size="xs"
-                                value={selectedEvent.category}
-                                onChange={(
-                                    e: React.ChangeEvent<HTMLSelectElement>,
-                                ) =>
-                                    updateEvent(selectedEvent.id, {
-                                        category: e.currentTarget
-                                            .value as EventCategory,
-                                    })
-                                }
-                                data={EVENT_CATEGORIES}
-                                style={{ width: 120 }}
-                            />
+                            <Group spacing={8}>
+                                <NativeSelect
+                                    size="xs"
+                                    value={selectedEvent.collectionMethod}
+                                    onChange={(
+                                        e: React.ChangeEvent<HTMLSelectElement>,
+                                    ) =>
+                                        updateEvent(selectedEvent.id, {
+                                            collectionMethod: e.currentTarget
+                                                .value as CollectionMethod,
+                                        })
+                                    }
+                                    data={COLLECTION_METHODS}
+                                    style={{ width: 110 }}
+                                />
+                                <NativeSelect
+                                    size="xs"
+                                    value={selectedEvent.category}
+                                    onChange={(
+                                        e: React.ChangeEvent<HTMLSelectElement>,
+                                    ) =>
+                                        updateEvent(selectedEvent.id, {
+                                            category: e.currentTarget
+                                                .value as EventCategory,
+                                        })
+                                    }
+                                    data={EVENT_CATEGORIES}
+                                    style={{ width: 120 }}
+                                />
+                            </Group>
                         </Group>
 
                         {/* Properties */}
@@ -487,10 +548,14 @@ const TrackingPlanBuilder: FC<Props> = ({
                                 )}
                         </Stack>
 
-                        {/* Tracking Code Snippet */}
+                        {/* Tracking Code Snippet / Webhook Payload */}
                         <Stack spacing={8}>
                             <Group position="apart">
-                                <Title order={6}>Tracking Snippet</Title>
+                                <Title order={6}>
+                                    {SNIPPET_TITLES[
+                                        selectedEvent.collectionMethod
+                                    ] ?? 'Tracking Snippet'}
+                                </Title>
                                 <CopyButton value={snippet}>
                                     {({ copied, copy }) => (
                                         <Button

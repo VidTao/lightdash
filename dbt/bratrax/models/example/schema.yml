@@ -1,0 +1,1453 @@
+version: 2
+
+models:
+    - name: orders
+      label: Orders
+      description: 'Orders data from production_tables.orders_table'
+      meta:
+          default_time_dimension:
+            field: event_date  # ← Use created_at or event_date
+            interval: DAY
+          join_field: order_id
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: order_id
+            description: 'Unique identifier for each order'
+            tests:
+                - not_null
+            meta:
+                dimension:
+                    type: string
+                    label: Order ID
+                    hidden: false
+
+          - name: customer_id
+            description: 'Unique identifier for each customer'
+            meta:
+                dimension:
+                    type: string
+
+          - name: order_revenue
+            description: 'Revenue amount for the order'
+            meta:
+                metrics:
+                    total_revenue:
+                        type: sum
+                        label: Total Revenue
+                        hidden: false
+
+          - name: gross_revenue
+            description: 'Gross revenue for the order'
+            meta:
+                metrics:
+                    total_gross_revenue:
+                        type: sum
+
+          - name: net_revenue
+            description: 'Net revenue for the order'
+            meta:
+                metrics:
+                    total_net_revenue:
+                        type: sum
+
+          - name: created_at
+            description: 'Timestamp when the order was created'
+            meta:
+                dimension:
+                    type: timestamp
+                    label: Created At
+                    time_intervals: true
+                    hidden: false
+
+          - name: event_date
+            description: 'Date of the order event'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals:
+                        - DAY
+                        - WEEK
+                        - MONTH
+                        - YEAR
+
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: write_key
+            description: 'Write key'
+            meta:
+                dimension:
+                    type: string
+
+          - name: platform
+            description: 'Platform information'
+            meta:
+                dimension:
+                    type: string
+
+          - name: order_name
+            description: 'Order name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: customer_email
+            description: 'Customer email'
+            meta:
+                dimension:
+                    type: string
+
+          - name: customer_first_name
+            description: 'Customer first name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: customer_last_name
+            description: 'Customer last name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: customer_from_city
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: customer_from_country_code
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: customer_from_state_code
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: tags
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: note
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: discount_codes
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: fulfillment_status
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: source_name
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: source_category
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: cancelled_at
+            description: ''
+            meta:
+                dimension:
+                    type: timestamp
+
+          - name: event_hour
+            description: ''
+            meta:
+                dimension:
+                    type: number
+
+          - name: timezone
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: discount_amount
+            description: 'Discount amount'
+            meta:
+                metrics:
+                    total_discount_amount:
+                        type: sum
+
+          - name: taxes
+            description: 'Taxes amount'
+            meta:
+                metrics:
+                    total_taxes:
+                        type: sum
+
+          - name: shipping_price
+            description: 'Shipping price'
+            meta:
+                metrics:
+                    sum_shipping_price:
+                        type: sum
+
+          - name: refund_money
+            description: 'Refund amount'
+            meta:
+                metrics:
+                    total_refund_money:
+                        type: sum
+
+          - name: cost_of_goods
+            description: 'Cost of goods'
+            meta:
+                metrics:
+                    total_cost_of_goods:
+                        type: sum
+
+          - name: payment_gateway_costs
+            description: 'Payment gateway costs'
+            meta:
+                metrics:
+                    total_payment_gateway_costs:
+                        type: sum
+
+          - name: shipping_costs
+            description: 'Shipping costs'
+            meta:
+                metrics:
+                    total_shipping_costs:
+                        type: sum
+
+          - name: handling_fees
+            description: 'Handling fees'
+            meta:
+                metrics:
+                    total_handling_fees:
+                        type: sum
+
+          - name: amazon_estimated_fees
+            description: 'Amazon estimated fees'
+            meta:
+                metrics:
+                    total_amazon_estimated_fees:
+                        type: sum
+
+          - name: estimated_profit
+            description: 'Estimated profit'
+            meta:
+                metrics:
+                    total_estimated_profit:
+                        type: sum
+
+          - name: product_quantity_sold_in_order
+            description: 'Product quantity sold in order'
+            meta:
+                metrics:
+                    total_product_quantity_sold:
+                        type: sum
+
+          - name: line_items_skus
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: line_items_titles
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: line_items_vendors
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: line_items_requires_shipping
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: line_items_gift_card
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: line_items_taxable
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: line_items_fulfillment_service
+            description: ''
+            meta:
+                dimension:
+                    type: string
+
+          - name: total_shipping_price
+            description: 'Total shipping price'
+            meta:
+                metrics:
+                    sum_total_shipping_price:
+                        type: sum
+
+          - name: estimated_taxes
+            description: ''
+            meta:
+                dimension:
+                    type: boolean
+
+          - name: current_subtotal_price_shop
+            description: 'Current subtotal price shop'
+            meta:
+                metrics:
+                    total_current_subtotal_price_shop:
+                        type: sum
+
+          - name: current_subtotal_price_presentment
+            description: 'Current subtotal price presentment'
+            meta:
+                metrics:
+                    total_current_subtotal_price_presentment:
+                        type: sum
+
+          - name: orders_processed_at
+            description: 'Timestamp when the order was processed'
+            meta:
+                dimension:
+                    type: timestamp
+
+          - name: date_plus_10h
+            description: 'Date with 10 hour offset applied to created_at (for local timezone grouping)'
+            meta:
+                dimension:
+                    type: date
+
+    - name: ads
+      description: 'Advertising data across different platforms'
+      meta:
+          default_time_dimension:
+            field: event_date
+            interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: platform
+            description: 'Platform name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: channel
+            description: 'Marketing channel'
+            meta:
+                dimension:
+                    type: string
+
+          - name: channel_category
+            description: 'Channel category'
+            meta:
+                dimension:
+                    type: string
+
+          - name: account_id
+            description: 'Account identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_id
+            description: 'Campaign identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: adset_id
+            description: 'Ad set identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_id
+            description: 'Ad identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_name
+            description: 'Campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: adset_name
+            description: 'Ad set name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_name
+            description: 'Ad name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: account_name
+            description: 'Account name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_type
+            description: 'Campaign type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_status
+            description: 'Campaign status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_objective
+            description: 'Campaign objective'
+            meta:
+                dimension:
+                    type: string
+
+          - name: optimization_goal
+            description: 'Optimization goal'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buying_type
+            description: 'Buying type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_type
+            description: 'Ad type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: device_type
+            description: 'Device type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: impressions
+            description: 'Number of impressions'
+            meta:
+                metrics:
+                    total_impressions:
+                        type: sum
+
+          - name: clicks
+            description: 'Number of clicks'
+            meta:
+                metrics:
+                    total_clicks:
+                        type: sum
+
+          - name: video_views
+            description: 'Video views count'
+            meta:
+                metrics:
+                    total_video_views:
+                        type: sum
+
+          - name: engagements
+            description: 'Engagement count'
+            meta:
+                metrics:
+                    total_engagements:
+                        type: sum
+
+          - name: conversions
+            description: 'Number of conversions'
+            meta:
+                metrics:
+                    total_conversions:
+                        type: sum
+
+          - name: conversions_value
+            description: 'Conversion value'
+            meta:
+                metrics:
+                    total_conversions_value:
+                        type: sum
+
+          - name: sales
+            description: 'Sales amount'
+            meta:
+                metrics:
+                    total_sales:
+                        type: sum
+
+          - name: cost
+            description: 'Cost amount'
+            meta:
+                metrics:
+                    total_cost:
+                        type: sum
+
+          - name: currency
+            description: 'Currency'
+            meta:
+                dimension:
+                    type: string
+
+          - name: cost_per_click
+            description: 'Cost per click'
+            meta:
+                metrics:
+                    avg_cost_per_click:
+                        type: average
+
+          - name: cost_per_conversion
+            description: 'Cost per conversion'
+            meta:
+                metrics:
+                    avg_cost_per_conversion:
+                        type: average
+
+          - name: cost_per_mille
+            description: 'Cost per thousand impressions'
+            meta:
+                metrics:
+                    avg_cost_per_mille:
+                        type: average
+
+          - name: ctr
+            description: 'Click-through rate'
+            meta:
+                metrics:
+                    avg_ctr:
+                        type: average
+
+          - name: conversion_rate
+            description: 'Conversion rate'
+            meta:
+                metrics:
+                    avg_conversion_rate:
+                        type: average
+
+          - name: recipients
+            description: 'Number of recipients'
+            meta:
+                metrics:
+                    total_recipients:
+                        type: sum
+
+          - name: opens
+            description: 'Number of opens'
+            meta:
+                metrics:
+                    total_opens:
+                        type: sum
+
+          - name: bounced
+            description: 'Number of bounces'
+            meta:
+                metrics:
+                    total_bounced:
+                        type: sum
+
+          - name: failed
+            description: 'Number of failures'
+            meta:
+                metrics:
+                    total_failed:
+                        type: sum
+
+          - name: unsubscribes
+            description: 'Number of unsubscribes'
+            meta:
+                metrics:
+                    total_unsubscribes:
+                        type: sum
+
+          - name: send_channel
+            description: 'Send channel'
+            meta:
+                dimension:
+                    type: string
+
+          - name: open_rate
+            description: 'Open rate'
+            meta:
+                metrics:
+                    avg_open_rate:
+                        type: average
+
+          - name: bounce_rate
+            description: 'Bounce rate'
+            meta:
+                metrics:
+                    avg_bounce_rate:
+                        type: average
+
+          - name: unsubscribe_rate
+            description: 'Unsubscribe rate'
+            meta:
+                metrics:
+                    avg_unsubscribe_rate:
+                        type: average
+
+          - name: event_date
+            description: 'Event date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals:
+                        - DAY
+                        - WEEK
+                        - MONTH
+                        - YEAR
+
+          - name: processed_at
+            description: 'Processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+
+          - name: last_processed_at
+            description: 'Last processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+
+          - name: ads_processed_at
+            description: 'Ads processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+
+    - name: pixel_joined
+      description: 'Pixel orders data with marketing attribution'
+      meta:
+          default_time_dimension:
+            field: event_date
+            interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+      columns:
+          - name: client_id
+            description: 'Client identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: platform
+            description: 'Platform name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: channel
+            description: 'Marketing channel'
+            meta:
+                dimension:
+                    type: string
+
+          - name: account_id
+            description: 'Account identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_id
+            description: 'Campaign identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: adset_id
+            description: 'Ad set identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_id
+            description: 'Ad identifier'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_name
+            description: 'Campaign name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: adset_name
+            description: 'Ad set name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_name
+            description: 'Ad name'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_objective
+            description: 'Campaign objective'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_status
+            description: 'Campaign status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: adset_status
+            description: 'Ad set status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_status
+            description: 'Ad status'
+            meta:
+                dimension:
+                    type: string
+
+          - name: ad_type
+            description: 'Ad type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_category
+            description: 'Campaign category'
+            meta:
+                dimension:
+                    type: string
+
+          - name: audience_type
+            description: 'Audience type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: creative_type
+            description: 'Creative type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: extracted_utm_source
+            description: 'UTM source'
+            meta:
+                dimension:
+                    type: string
+
+          - name: extracted_utm_medium
+            description: 'UTM medium'
+            meta:
+                dimension:
+                    type: string
+
+          - name: extracted_utm_campaign
+            description: 'UTM campaign'
+            meta:
+                dimension:
+                    type: string
+
+          - name: extracted_utm_content
+            description: 'UTM content'
+            meta:
+                dimension:
+                    type: string
+
+          - name: device_type
+            description: 'Device type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: event_date
+            description: 'Event date'
+            meta:
+                dimension:
+                    type: date
+                    time_intervals:
+                        - DAY
+                        - WEEK
+                        - MONTH
+                        - YEAR
+
+          - name: clicks
+            description: 'Number of clicks'
+            meta:
+                metrics:
+                    total_clicks:
+                        type: sum
+
+          - name: impressions
+            description: 'Number of impressions'
+            meta:
+                metrics:
+                    total_impressions:
+                        type: sum
+
+          - name: reach
+            description: 'Reach count'
+            meta:
+                metrics:
+                    total_reach:
+                        type: sum
+
+          - name: video_views
+            description: 'Video views count'
+            meta:
+                metrics:
+                    total_video_views:
+                        type: sum
+
+          - name: engagements
+            description: 'Engagement count'
+            meta:
+                metrics:
+                    total_engagements:
+                        type: sum
+
+          - name: channel_reported_conversions
+            description: 'Conversions reported by channel'
+            meta:
+                metrics:
+                    total_channel_reported_conversions:
+                        type: sum
+
+          - name: channel_reported_conversion_value
+            description: 'Conversion value reported by channel'
+            meta:
+                metrics:
+                    total_channel_reported_conversion_value:
+                        type: sum
+
+          - name: spend
+            description: 'Amount spent'
+            meta:
+                metrics:
+                    total_spend:
+                        type: sum
+
+          - name: recipients
+            description: 'Number of recipients'
+            meta:
+                metrics:
+                    total_recipients:
+                        type: sum
+
+          - name: opens
+            description: 'Number of opens'
+            meta:
+                metrics:
+                    total_opens:
+                        type: sum
+
+          - name: bounced
+            description: 'Number of bounces'
+            meta:
+                metrics:
+                    total_bounced:
+                        type: sum
+
+          - name: failed
+            description: 'Number of failures'
+            meta:
+                metrics:
+                    total_failed:
+                        type: sum
+
+          - name: unsubscribes
+            description: 'Number of unsubscribes'
+            meta:
+                metrics:
+                    total_unsubscribes:
+                        type: sum
+
+          - name: send_channel
+            description: 'Send channel'
+            meta:
+                dimension:
+                    type: string
+
+          - name: open_rate
+            description: 'Open rate'
+            meta:
+                metrics:
+                    avg_open_rate:
+                        type: average
+
+          - name: email_bounce_rate
+            description: 'Email bounce rate'
+            meta:
+                metrics:
+                    avg_email_bounce_rate:
+                        type: average
+
+          - name: unsubscribe_rate
+            description: 'Unsubscribe rate'
+            meta:
+                metrics:
+                    avg_unsubscribe_rate:
+                        type: average
+
+          - name: sessions
+            description: 'Number of sessions'
+            meta:
+                metrics:
+                    total_sessions:
+                        type: sum
+
+          - name: unique_visitors
+            description: 'Number of unique visitors'
+            meta:
+                metrics:
+                    total_unique_visitors:
+                        type: sum
+
+          - name: new_visitors
+            description: 'Number of new visitors'
+            meta:
+                metrics:
+                    total_new_visitors:
+                        type: sum
+
+          - name: bounces
+            description: 'Number of bounces'
+            meta:
+                metrics:
+                    total_bounces:
+                        type: sum
+
+          - name: session_page_views
+            description: 'Number of page views per session'
+            meta:
+                metrics:
+                    total_session_page_views:
+                        type: sum
+
+          - name: time_on_site
+            description: 'Time spent on site'
+            meta:
+                metrics:
+                    total_time_on_site:
+                        type: sum
+
+          - name: email_signups
+            description: 'Number of email signups'
+            meta:
+                metrics:
+                    total_email_signups:
+                        type: sum
+
+          - name: attributed_purchases
+            description: 'Number of attributed purchases'
+            meta:
+                metrics:
+                    total_attributed_purchases:
+                        type: sum
+
+          - name: attributed_revenue
+            description: 'Attributed revenue'
+            meta:
+                metrics:
+                    total_attributed_revenue:
+                        type: sum
+
+          - name: attributed_gross_product_sales
+            description: 'Attributed gross product sales'
+            meta:
+                metrics:
+                    total_attributed_gross_product_sales:
+                        type: sum
+
+          - name: unattributed_purchases
+            description: 'Number of unattributed purchases'
+            meta:
+                metrics:
+                    total_unattributed_purchases:
+                        type: sum
+
+          - name: unattributed_revenue
+            description: 'Unattributed revenue'
+            meta:
+                metrics:
+                    total_unattributed_revenue:
+                        type: sum
+
+          - name: unattributed_gross_product_sales
+            description: 'Unattributed gross product sales'
+            meta:
+                metrics:
+                    total_unattributed_gross_product_sales:
+                        type: sum
+
+          - name: website_purchases
+            description: 'Number of website purchases'
+            meta:
+                metrics:
+                    total_website_purchases:
+                        type: sum
+
+          - name: order_revenue
+            description: 'Order revenue'
+            meta:
+                metrics:
+                    total_order_revenue:
+                        type: sum
+
+          - name: gross_product_sales
+            description: 'Gross product sales'
+            meta:
+                metrics:
+                    total_gross_product_sales:
+                        type: sum
+
+          - name: model
+            description: 'Attribution model'
+            meta:
+                dimension:
+                    type: string
+
+          - name: attribution_window
+            description: 'Attribution window'
+            meta:
+                dimension:
+                    type: string
+
+          - name: new_customer_orders
+            description: 'Number of new customer orders'
+            meta:
+                metrics:
+                    total_new_customer_orders:
+                        type: sum
+
+          - name: new_customer_order_revenue
+            description: 'New customer order revenue'
+            meta:
+                metrics:
+                    total_new_customer_order_revenue:
+                        type: sum
+
+          - name: cogs
+            description: 'Cost of goods sold'
+            meta:
+                metrics:
+                    total_cogs:
+                        type: sum
+
+          - name: ctr
+            description: 'Click-through rate'
+            meta:
+                metrics:
+                    avg_ctr:
+                        type: average
+
+          - name: cpc
+            description: 'Cost per click'
+            meta:
+                metrics:
+                    avg_cpc:
+                        type: average
+
+          - name: cpm
+            description: 'Cost per thousand impressions'
+            meta:
+                metrics:
+                    avg_cpm:
+                        type: average
+
+          - name: cpv
+            description: 'Cost per view'
+            meta:
+                metrics:
+                    avg_cpv:
+                        type: average
+
+          - name: pixel_conversion_rate
+            description: 'Pixel conversion rate'
+            meta:
+                metrics:
+                    avg_pixel_conversion_rate:
+                        type: average
+
+          - name: pixel_aov
+            description: 'Pixel average order value'
+            meta:
+                metrics:
+                    avg_pixel_aov:
+                        type: average
+
+          - name: pixel_roas
+            description: 'Pixel return on ad spend'
+            meta:
+                metrics:
+                    avg_pixel_roas:
+                        type: average
+
+          - name: pixel_new_visitor_percent
+            description: 'Pixel new visitor percentage'
+            meta:
+                metrics:
+                    avg_pixel_new_visitor_percent:
+                        type: average
+
+          - name: bounce_rate
+            description: 'Bounce rate'
+            meta:
+                metrics:
+                    avg_bounce_rate:
+                        type: average
+
+          - name: average_page_views_per_session
+            description: 'Average page views per session'
+            meta:
+                metrics:
+                    avg_page_views_per_session:
+                        type: average
+
+          - name: average_session_duration
+            description: 'Average session duration'
+            meta:
+                metrics:
+                    avg_session_duration:
+                        type: average
+
+          - name: email_signup_rate
+            description: 'Email signup rate'
+            meta:
+                metrics:
+                    avg_email_signup_rate:
+                        type: average
+
+          - name: pixel_cost_per_email_signup
+            description: 'Pixel cost per email signup'
+            meta:
+                metrics:
+                    avg_pixel_cost_per_email_signup:
+                        type: average
+
+          - name: pixel_cost_per_new_visitor
+            description: 'Pixel cost per new visitor'
+            meta:
+                metrics:
+                    avg_pixel_cost_per_new_visitor:
+                        type: average
+
+          - name: pixel_cost_per_visitor
+            description: 'Pixel cost per visitor'
+            meta:
+                metrics:
+                    avg_pixel_cost_per_visitor:
+                        type: average
+
+          - name: pixel_nc_aov
+            description: 'Pixel new customer average order value'
+            meta:
+                metrics:
+                    avg_pixel_nc_aov:
+                        type: average
+
+          - name: pixel_nc_conversion_rate
+            description: 'Pixel new customer conversion rate'
+            meta:
+                metrics:
+                    avg_pixel_nc_conversion_rate:
+                        type: average
+
+          - name: purchase_attribution_rate
+            description: 'Purchase attribution rate'
+            meta:
+                metrics:
+                    avg_purchase_attribution_rate:
+                        type: average
+
+          - name: revenue_attribution_rate
+            description: 'Revenue attribution rate'
+            meta:
+                metrics:
+                    avg_revenue_attribution_rate:
+                        type: average
+
+          - name: pixel_conversion_value_delta
+            description: 'Pixel conversion value delta'
+            meta:
+                metrics:
+                    total_pixel_conversion_value_delta:
+                        type: sum
+
+          - name: pixel_profit
+            description: 'Pixel profit'
+            meta:
+                metrics:
+                    total_pixel_profit:
+                        type: sum
+
+          - name: refund_orders
+            description: 'Number of refund orders'
+            meta:
+                metrics:
+                    total_refund_orders:
+                        type: sum
+
+          - name: refund_amount
+            description: 'Refund amount'
+            meta:
+                metrics:
+                    total_refund_amount:
+                        type: sum
+
+          - name: retention_rate
+            description: 'Retention rate'
+            meta:
+                metrics:
+                    avg_retention_rate:
+                        type: average
+
+          - name: currency
+            description: 'Currency'
+            meta:
+                dimension:
+                    type: string
+
+          - name: campaign_type
+            description: 'Campaign type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: buying_type
+            description: 'Buying type'
+            meta:
+                dimension:
+                    type: string
+
+          - name: pixel_joined_processed_at
+            description: 'Pixel joined processed timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+
+          - name: processed_at
+            description: 'Processing timestamp'
+            meta:
+                dimension:
+                    type: timestamp
+
+    - name: geo_reports_table
+      description: "Geographical distribution of advertising spend and revenue across platforms"
+      meta:
+          default_time_dimension:
+            field: date
+            interval: DAY
+          sql_where: "client_id = ${lightdash.attribute.organizationUuid}"
+          group_details:
+              "Spend Metrics": { order: 1 }
+              "Lead Metrics": { order: 2 }
+              "Financial Metrics": { order: 3 }
+              "Performance Metrics": { order: 4 }
+          metrics:
+              cost_per_lead:
+                  type: number
+                  label: "Cost Per Lead (CPL)"
+                  description: "Cost per lead calculated as total spend divided by total leads"
+                  sql: "CASE WHEN ${total_lead_count} > 0 THEN ${sum_total_spend} / ${total_lead_count} ELSE 0 END"
+                  hidden: false
+                  round: 2
+                  format: "usd"
+                  groups: ["Performance Metrics"]
+      columns:
+          - name: date
+            description: "Report date"
+            meta:
+                dimension:
+                    type: date
+                    time_intervals:
+                        - DAY
+                        - WEEK
+                        - MONTH
+                        - YEAR
+                    hidden: false
+
+          - name: country
+            description: "Country code"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: state
+            description: "State or region"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: supplier_id
+            description: "Supplier identifier"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: supplier_name
+            description: "Supplier name"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: model_type
+            description: "Business model type"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: buyer_id
+            description: "Buyer identifier"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: buyer_name
+            description: "Buyer name"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: leadbyte_campaign
+            description: "Leadbyte campaign name"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: lead_status
+            description: "Lead status"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: client_id
+            description: "Client identifier"
+            meta:
+                dimension:
+                    type: string
+                    hidden: false
+
+          - name: last_processed_at
+            description: "Timestamp of last data processing"
+            meta:
+                dimension:
+                    type: timestamp
+                    hidden: false
+
+          - name: facebook_spend
+            description: "Facebook advertising spend"
+            meta:
+                metrics:
+                    total_facebook_spend:
+                        type: sum
+                        label: "Facebook Spend"
+                        hidden: false
+                        round: 2
+                        format: "usd"
+                        groups: ["Spend Metrics"]
+
+          - name: google_spend
+            description: "Google advertising spend"
+            meta:
+                metrics:
+                    total_google_spend:
+                        type: sum
+                        label: "Google Spend"
+                        hidden: false
+                        round: 2
+                        format: "usd"
+                        groups: ["Spend Metrics"]
+
+          - name: total_spend
+            description: "Total advertising spend"
+            meta:
+                metrics:
+                    sum_total_spend:
+                        type: sum
+                        label: "Total Spend"
+                        hidden: false
+                        round: 2
+                        format: "usd"
+                        groups: ["Spend Metrics"]
+
+          - name: lead_count
+            description: "Number of leads"
+            meta:
+                metrics:
+                    total_lead_count:
+                        type: sum
+                        label: "Total Leads"
+                        hidden: false
+                        groups: ["Lead Metrics"]
+
+          - name: revenue
+            description: "Revenue amount"
+            meta:
+                metrics:
+                    total_revenue:
+                        type: sum
+                        label: "Total Revenue"
+                        hidden: false
+                        round: 2
+                        format: "usd"
+                        groups: ["Financial Metrics"]
+
+          - name: gross_profit
+            description: "Gross profit"
+            meta:
+                metrics:
+                    total_gross_profit:
+                        type: sum
+                        label: "Gross Profit"
+                        hidden: false
+                        round: 2
+                        format: "usd"
+                        groups: ["Financial Metrics"]

@@ -1,0 +1,37 @@
+version: 2
+
+sources:
+    # Original bratrax project
+    - name: production_tables_bratrax
+      description: 'Production tables from bratrax project'
+      database: 'bratrax'
+      schema: 'production_tables'
+      tables:
+          - name: geo_reports
+            description: 'Geographical reports data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+
+    # New bratrax-without-flattening project  
+    - name: production_tables_no_flat
+      description: 'Production tables from bratrax-without-flattening project'
+      database: 'bratrax-without-flattening'
+      schema: 'production_tables'
+      tables:
+          - name: orders
+            description: 'Orders data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: ads
+            description: 'Advertising data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+          - name: pixel_joined
+            description: 'Pixel tracking data with client_id for multi-tenancy'
+            columns:
+              - name: client_id
+                description: 'Client identifier for filtering (maps to organizationUuid)'
+            

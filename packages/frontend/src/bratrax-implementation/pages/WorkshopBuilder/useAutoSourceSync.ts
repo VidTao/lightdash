@@ -6,8 +6,11 @@
  * is added to the builder state with the referenced stream and field selected.
  */
 import { useEffect } from 'react';
-import type { CatalogEntry } from '../../hooks/useBratraxCatalogs';
-import type { BuilderState, FieldType, SourceConnector } from './types';
+import {
+    normalizeSingerType,
+    type CatalogEntry,
+} from '../../hooks/useBratraxCatalogs';
+import type { BuilderState, SourceConnector } from './types';
 
 /**
  * Build source_name → tap reverse lookup from catalog entries.
@@ -43,13 +46,7 @@ function parseSourceRef(ref: string): ParsedRef | null {
     };
 }
 
-const BQ_TYPE_MAP: Record<string, FieldType> = {
-    STRING: 'STRING',
-    INT64: 'INT64',
-    FLOAT64: 'FLOAT64',
-    BOOLEAN: 'BOOLEAN',
-    JSON: 'JSON',
-};
+// BQ_TYPE_MAP removed — using normalizeSingerType instead
 
 export function useAutoSourceSync(
     state: BuilderState,
@@ -124,7 +121,7 @@ export function useAutoSourceSync(
                     selected: s.name === streamName,
                     fields: s.fields.map((f) => ({
                         name: f.name,
-                        type: (BQ_TYPE_MAP[f.type] ?? 'STRING') as FieldType,
+                        type: normalizeSingerType(f.type),
                         selected:
                             s.name === streamName && fieldNames.has(f.name),
                     })),

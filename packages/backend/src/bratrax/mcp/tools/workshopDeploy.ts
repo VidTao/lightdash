@@ -1,14 +1,14 @@
 import { AnyType } from '@lightdash/common';
 import { z } from 'zod';
-import { deployClient } from '../../../helpers/bratrax-api';
+import {
+    deployYaml,
+    getBratraxOntologyModel,
+} from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 const inputSchema = z
     .object({
-        client_name: z
-            .string()
-            .describe('Name of the client to deploy'),
         apply: z
             .boolean()
             .optional()
@@ -39,10 +39,16 @@ export function registerWorkshopDeployTool(ctx: McpToolContext): void {
             ctx.canAccessMcp(pctx);
 
             try {
-                const data = await deployClient(
-                    args.client_name,
-                    args.apply ?? false,
-                );
+                const projectUuid = await ctx.resolveProjectUuid(pctx);
+                const model = getBratraxOntologyModel(ctx.services);
+                const files = await model.getFiles(projectUuid);
+                const data = await deployYaml({
+                    config: files.config ?? '',
+                    ontology: files.ontology ?? '',
+                    sources: files.sources ?? '',
+                    tracking_plan: files.tracking_plan ?? '',
+                    apply: args.apply ?? false,
+                });
                 return ctx.textResult(JSON.stringify(data, null, 2));
             } catch (e: unknown) {
                 const msg =
@@ -51,7 +57,7 @@ export function registerWorkshopDeployTool(ctx: McpToolContext): void {
                     content: [
                         {
                             type: 'text' as const,
-                            text: `Error deploying client: ${msg}`,
+                            text: `Error deploying: ${msg}`,
                         },
                     ],
                     isError: true,

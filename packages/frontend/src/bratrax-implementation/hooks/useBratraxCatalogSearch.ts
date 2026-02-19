@@ -22,17 +22,23 @@ export type CatalogSearchResponse = {
 
 export function useBratraxCatalogSearch(
     query: string,
-    options?: { type?: string; enabled?: boolean },
+    options?: { type?: string; enabled?: boolean; projectUuid?: string },
 ) {
     const trimmed = query.trim();
     return useQuery({
-        queryKey: ['bratrax-catalog-search', trimmed, options?.type],
+        queryKey: [
+            'bratrax-catalog-search',
+            trimmed,
+            options?.type,
+            options?.projectUuid,
+        ],
         queryFn: async (): Promise<CatalogSearchResponse> => {
             const params = new URLSearchParams({ q: trimmed });
             if (options?.type) params.set('type', options.type);
-            const response = await fetch(
-                `${BRATRAX_API_BASE}/catalogs/search?${params.toString()}`,
-            );
+            const url = options?.projectUuid
+                ? `${BRATRAX_API_BASE}/ontology/${options.projectUuid}/catalogs/search?${params.toString()}`
+                : `${BRATRAX_API_BASE}/catalogs/search?${params.toString()}`;
+            const response = await fetch(url);
             if (!response.ok) {
                 return { query: trimmed, results: [], count: 0 };
             }

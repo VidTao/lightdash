@@ -10,6 +10,7 @@ import {
 } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
+import { normalizeSingerType } from '../hooks/useBratraxCatalogs';
 
 const BRATRAX_API_BASE = '/api/v1/bratrax';
 
@@ -82,7 +83,7 @@ const StreamFieldsTable = ({
                         </td>
                         <td>
                             <Badge size="sm" variant="light">
-                                {f.type}
+                                {normalizeSingerType(f.type)}
                             </Badge>
                         </td>
                         <td>

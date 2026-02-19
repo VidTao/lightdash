@@ -17,10 +17,12 @@ import {
     Text,
     TextInput,
     Title,
+    Tooltip,
 } from '@mantine/core';
-import { IconSearch } from '@tabler/icons-react';
+import { IconAlertTriangle, IconSearch } from '@tabler/icons-react';
 import { useCallback, useMemo, useState, type FC } from 'react';
 import {
+    normalizeSingerType,
     useBratraxCatalogs,
     type CatalogEntry,
     type CatalogField,
@@ -99,7 +101,7 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
             const sourceName =
                 selectedTap.source_name ?? selectedTap.tap.replace('tap-', '');
             const ref = `$sources.${sourceName}.${selectedStream.name}.${field.name}`;
-            const fieldType: FieldType = BQ_TYPE_MAP[field.type] ?? 'STRING';
+            const fieldType: FieldType = normalizeSingerType(field.type);
             onSelect(ref, fieldType);
             onClose();
             setSelectedTap(null);
@@ -125,6 +127,31 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
             setFormulaText('');
         }
     }, [formulaText, onSelect, onClose]);
+
+    // System kind: informational — no picker needed
+    if (kind === 'system') {
+        return (
+            <Modal
+                opened={opened}
+                onClose={onClose}
+                title="System Property"
+                size="sm"
+            >
+                <Stack spacing="md">
+                    <Text size="sm" color="dimmed">
+                        System properties (like client_id) are added by the
+                        Bratrax ingestion pipeline to every record before it
+                        reaches BigQuery. They exist in all source tables and
+                        don't need a source mapping — the compiler reads them
+                        directly.
+                    </Text>
+                    <Button variant="light" onClick={onClose}>
+                        Close
+                    </Button>
+                </Stack>
+            </Modal>
+        );
+    }
 
     // Computed kind: show formula textarea
     if (kind === 'computed') {
@@ -335,29 +362,70 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
                         <ScrollArea h={360}>
                             <Stack spacing={2} px={4}>
                                 {selectedStream ? (
-                                    filteredFields.map((field) => (
-                                        <div
-                                            key={field.name}
-                                            style={{
-                                                ...itemStyle(false),
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                            }}
-                                            onClick={() =>
-                                                handleFieldSelect(field)
-                                            }
-                                        >
-                                            <Text size="sm">{field.name}</Text>
-                                            <Badge
-                                                size="xs"
-                                                color="gray"
-                                                variant="outline"
+                                    filteredFields.map((field) => {
+                                        const behaviorColor =
+                                            field.behavior === 'METRIC'
+                                                ? 'blue'
+                                                : field.behavior === 'SEGMENT'
+                                                  ? 'grape'
+                                                  : field.behavior ===
+                                                      'ATTRIBUTE'
+                                                    ? 'gray'
+                                                    : undefined;
+                                        return (
+                                            <div
+                                                key={field.name}
+                                                style={{
+                                                    ...itemStyle(false),
+                                                    display: 'flex',
+                                                    justifyContent:
+                                                        'space-between',
+                                                    alignItems: 'center',
+                                                    gap: 4,
+                                                }}
+                                                onClick={() =>
+                                                    handleFieldSelect(field)
+                                                }
                                             >
-                                                {field.type}
-                                            </Badge>
-                                        </div>
-                                    ))
+                                                <Text
+                                                    size="sm"
+                                                    style={{
+                                                        flex: 1,
+                                                        minWidth: 0,
+                                                    }}
+                                                    truncate
+                                                >
+                                                    {field.name}
+                                                </Text>
+                                                {field.polymorphic && (
+                                                    <Tooltip label="Polymorphic — may return NULL for object values">
+                                                        <IconAlertTriangle
+                                                            size={12}
+                                                            color="var(--mantine-color-yellow-6)"
+                                                        />
+                                                    </Tooltip>
+                                                )}
+                                                {behaviorColor && (
+                                                    <Badge
+                                                        size="xs"
+                                                        color={behaviorColor}
+                                                        variant="light"
+                                                    >
+                                                        {field.behavior}
+                                                    </Badge>
+                                                )}
+                                                <Badge
+                                                    size="xs"
+                                                    color="gray"
+                                                    variant="outline"
+                                                >
+                                                    {normalizeSingerType(
+                                                        field.type,
+                                                    )}
+                                                </Badge>
+                                            </div>
+                                        );
+                                    })
                                 ) : (
                                     <Text
                                         size="xs"

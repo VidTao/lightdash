@@ -1,32 +1,22 @@
 import axios from 'axios';
+import type { BratraxOntologyModel } from '../models/BratraxOntologyModel';
+import type { ModelRepository } from '../models/ModelRepository';
+import type { ServiceRepository } from '../services/ServiceRepository';
 
 const BRATRAX_API_URL = process.env.BRATRAX_API_URL || 'http://localhost:8081';
 
 const COMPILER_API = `${BRATRAX_API_URL}/api/v1`;
 
-/**
- * Get platform credential field for a user
- */
-export const getPlatformCredentials = async (userId: string) => {
-    try {
-        const response = await axios.get(
-            `${BRATRAX_API_URL}/connectors/platform-credentials`,
-            {
-                headers: {
-                    'user-id': userId,
-                    'Content-Type': 'application/json',
-                },
-            },
-        );
+// ─── Model access helper ───
 
-        return response.data;
-    } catch (error) {
-        console.error('Error getting platform credential:', error);
-        throw error;
-    }
-};
+export function getBratraxOntologyModel(
+    services: ServiceRepository,
+): BratraxOntologyModel {
+    const models = (services as unknown as { models: ModelRepository }).models;
+    return models.getBratraxOntologyModel();
+}
 
-// ─── Compiler API helpers ───
+// ─── Compiler API helpers (stateless compute) ───
 
 type CompilerYamlPayload = {
     config: string;
@@ -59,10 +49,76 @@ export const getGraph = async (payload: CompilerYamlPayload) => {
     return response.data;
 };
 
+export const deployYaml = async (
+    payload: CompilerYamlPayload & { apply?: boolean },
+) => {
+    const response = await axios.post(
+        `${COMPILER_API}/deploy-payload`,
+        payload,
+        {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 60000,
+        },
+    );
+    return response.data;
+};
+
+export const driftCheckYaml = async (
+    payload: CompilerYamlPayload & { source?: string },
+) => {
+    const response = await axios.post(
+        `${COMPILER_API}/drift/check-payload`,
+        payload,
+        {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000,
+        },
+    );
+    return response.data;
+};
+
+// ─── Model access helpers ───
+
+export function getBratraxDiscoveryModel(
+    services: ServiceRepository,
+) {
+    const models = (services as unknown as { models: ModelRepository }).models;
+    return models.getBratraxDiscoveryModel();
+}
+
+// ─── Catalog helpers (codebase constants, not client data) ───
+
 export const getCatalogs = async () => {
     const response = await axios.get(`${COMPILER_API}/catalogs`, {
         timeout: 15000,
     });
+    return response.data;
+};
+
+export const getRawCatalogs = async (): Promise<
+    Record<string, object>
+> => {
+    const response = await axios.get(`${COMPILER_API}/catalogs/raw`, {
+        timeout: 30000,
+    });
+    return response.data.catalogs;
+};
+
+export const introspectWebhookPayload = async (payload: {
+    source: string;
+    stream: string;
+    payload: object;
+    key_properties?: string[];
+    existing_catalog?: object | null;
+}) => {
+    const response = await axios.post(
+        `${COMPILER_API}/catalogs/introspect-payload`,
+        payload,
+        {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 15000,
+        },
+    );
     return response.data;
 };
 
@@ -105,6 +161,8 @@ export const searchCatalogs = async (
     return response.data;
 };
 
+// ─── Template helpers (codebase constants) ───
+
 export const listTemplates = async () => {
     const response = await axios.get(`${COMPILER_API}/templates`, {
         timeout: 10000,
@@ -119,67 +177,17 @@ export const getTemplate = async (name: string) => {
     return response.data;
 };
 
-// ─── Client CRUD helpers ───
+// ─── Platform credentials ───
 
-export const listClients = async () => {
-    const response = await axios.get(`${COMPILER_API}/clients`, {
-        timeout: 10000,
-    });
-    return response.data;
-};
-
-export const createClient = async (name: string, stack?: string) => {
-    const response = await axios.post(
-        `${COMPILER_API}/clients`,
-        { name, stack: stack || 'shopify-paid-media' },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 15000 },
-    );
-    return response.data;
-};
-
-export const readClient = async (name: string) => {
-    const response = await axios.get(`${COMPILER_API}/clients/${name}`, {
-        timeout: 10000,
-    });
-    return response.data;
-};
-
-export const writeClientYaml = async (
-    name: string,
-    file: string,
-    content: string,
-) => {
-    const response = await axios.put(
-        `${COMPILER_API}/clients/${name}/${file}`,
-        { content },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 15000 },
-    );
-    return response.data;
-};
-
-export const validateClient = async (name: string) => {
-    const response = await axios.post(
-        `${COMPILER_API}/clients/${name}/validate`,
-        {},
-        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 },
-    );
-    return response.data;
-};
-
-export const compileClient = async (name: string) => {
-    const response = await axios.post(
-        `${COMPILER_API}/clients/${name}/compile`,
-        {},
-        { headers: { 'Content-Type': 'application/json' }, timeout: 60000 },
-    );
-    return response.data;
-};
-
-export const deployClient = async (name: string, apply: boolean) => {
-    const response = await axios.post(
-        `${COMPILER_API}/clients/${name}/deploy`,
-        { apply },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 60000 },
+export const getPlatformCredentials = async (userId: string) => {
+    const response = await axios.get(
+        `${BRATRAX_API_URL}/connectors/platform-credentials`,
+        {
+            headers: {
+                'user-id': userId,
+                'Content-Type': 'application/json',
+            },
+        },
     );
     return response.data;
 };

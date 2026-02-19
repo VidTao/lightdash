@@ -3,7 +3,7 @@ import { IconHammer } from '@tabler/icons-react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useCallback, useState, type FC } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { useOntologyGraph } from '../../hooks/useOntologyGraph';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './Observatory.module.css';
@@ -14,12 +14,10 @@ import type { OntologyGraphData } from './types';
 
 const ObservatoryPage: FC = () => {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-    const [searchParams] = useSearchParams();
-    const client = searchParams.get('client');
     const navigate = useNavigate();
     const { projectUuid } = useParams<{ projectUuid: string }>();
 
-    // Fetch live graph data if client param is present
+    // Fetch live graph data from sessionStorage
     const { data: liveGraphData, isLoading, error } = useOntologyGraph();
 
     const handleNodeSelect = useCallback((nodeId: string | null) => {
@@ -27,10 +25,9 @@ const ObservatoryPage: FC = () => {
     }, []);
 
     // Use live data if available, fallback to sample
-    const graphData: OntologyGraphData =
-        client && liveGraphData ? liveGraphData : VIDTAO_SAMPLE_DATA;
+    const graphData: OntologyGraphData = liveGraphData ?? VIDTAO_SAMPLE_DATA;
 
-    if (client && isLoading) {
+    if (liveGraphData === undefined && isLoading) {
         return (
             <Box
                 className={styles.container}
@@ -45,7 +42,7 @@ const ObservatoryPage: FC = () => {
         );
     }
 
-    if (client && error) {
+    if (error) {
         return (
             <Box
                 className={styles.container}
@@ -90,12 +87,8 @@ const ObservatoryPage: FC = () => {
                     variant="light"
                     leftIcon={<IconHammer size={14} />}
                     onClick={() => {
-                        const params =
-                            client && client !== 'preview'
-                                ? `?client=${client}`
-                                : '';
                         void navigate(
-                            `/projects/${projectUuid}/workshop-builder${params}`,
+                            `/projects/${projectUuid}/workshop-builder`,
                         );
                     }}
                 >

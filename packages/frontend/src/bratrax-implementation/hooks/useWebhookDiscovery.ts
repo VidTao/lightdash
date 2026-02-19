@@ -15,14 +15,19 @@ interface DiscoveryStatus {
     label?: string;
 }
 
-export function useWebhookDiscovery(source: string, enabled: boolean) {
+export function useWebhookDiscovery(
+    source: string,
+    enabled: boolean,
+    projectUuid?: string,
+) {
     const query = useQuery({
-        queryKey: ['webhook-discovery-status', source],
+        queryKey: ['webhook-discovery-status', source, projectUuid],
         queryFn: async (): Promise<DiscoveryStatus> => {
             try {
-                const resp = await fetch(
-                    `${BRATRAX_API_BASE}/webhooks/${source}/discovery-status`,
-                );
+                const url = projectUuid
+                    ? `${BRATRAX_API_BASE}/ontology/${projectUuid}/webhook-discovery-status/${source}`
+                    : `${BRATRAX_API_BASE}/webhooks/${source}/discovery-status`;
+                const resp = await fetch(url);
                 if (!resp.ok) {
                     return {
                         source,

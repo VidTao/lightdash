@@ -1,4 +1,9 @@
-import { getCatalogs } from '../../../helpers/bratrax-api';
+import { getBratraxDiscoveryModel } from '../../../helpers/bratrax-api';
+import {
+    parseSingerCatalog,
+    safeParseCatalogJson,
+    type CatalogEntry,
+} from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
@@ -21,8 +26,31 @@ export function registerWorkshopGetCatalogsTool(ctx: McpToolContext): void {
             ctx.canAccessMcp(pctx);
 
             try {
-                const data = await getCatalogs();
-                return ctx.textResult(JSON.stringify(data, null, 2));
+                const projectUuid = await ctx.resolveProjectUuid(pctx);
+                const discoveryModel = getBratraxDiscoveryModel(
+                    ctx.services,
+                );
+                const rows =
+                    await discoveryModel.getCatalogsForProject(projectUuid);
+
+                const catalogs: CatalogEntry[] = [];
+                for (const row of rows) {
+                    const catalogJson = safeParseCatalogJson(
+                        row.catalog_json,
+                    );
+                    if (!catalogJson) continue;
+                    const entry = parseSingerCatalog(
+                        row.source_key,
+                        catalogJson,
+                    );
+                    if (entry) {
+                        catalogs.push(entry);
+                    }
+                }
+
+                return ctx.textResult(
+                    JSON.stringify({ catalogs }, null, 2),
+                );
             } catch (e: unknown) {
                 const msg =
                     e instanceof Error ? e.message : 'Unknown error';
