@@ -12,9 +12,10 @@ import {
     TextInput,
     Title,
 } from '@mantine/core';
-import { IconLink, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useCallback, useState, type FC } from 'react';
 import FieldRefPicker from './FieldRefPicker';
+import PropertyRefInput from './PropertyRefInput';
 // eslint-disable-next-line css-modules/no-unused-class
 import styles from './WorkshopBuilder.module.css';
 import type {
@@ -23,6 +24,7 @@ import type {
     ObjectProperty,
     OntologyObject,
     PropertyKind,
+    SourceConnector,
     SourceMapping,
     TrackingEvent,
 } from './types';
@@ -31,6 +33,8 @@ type Props = {
     objects: OntologyObject[];
     links: ObjectLink[];
     events: TrackingEvent[];
+    sources: SourceConnector[];
+    projectUuid?: string;
     addObject: (obj: OntologyObject) => void;
     updateObject: (id: string, updates: Partial<OntologyObject>) => void;
     removeObject: (id: string) => void;
@@ -48,19 +52,36 @@ const FIELD_TYPES: FieldType[] = [
     'TIMESTAMP',
     'DATE',
 ];
-const PROPERTY_KINDS: PropertyKind[] = ['backing', 'derived', 'computed', 'system'];
+const PROPERTY_KINDS: PropertyKind[] = [
+    'backing',
+    'derived',
+    'computed',
+    'system',
+];
 const CARDINALITIES = ['one-to-one', 'one-to-many', 'many-to-many'] as const;
 
 const OBJECT_PRESETS = [
     {
         name: 'Customer',
         description: 'Person who buys from your store',
-        props: ['customer_id', 'email', 'first_name', 'last_name', 'created_at'],
+        props: [
+            'customer_id',
+            'email',
+            'first_name',
+            'last_name',
+            'created_at',
+        ],
     },
     {
         name: 'Order',
         description: 'A purchase transaction',
-        props: ['order_id', 'customer_id', 'total_price', 'created_at', 'status'],
+        props: [
+            'order_id',
+            'customer_id',
+            'total_price',
+            'created_at',
+            'status',
+        ],
     },
     {
         name: 'Campaign',
@@ -87,6 +108,8 @@ const OntologyBuilder: FC<Props> = ({
     objects,
     links,
     events,
+    sources,
+    projectUuid,
     addObject,
     updateObject,
     removeObject,
@@ -110,7 +133,12 @@ const OntologyBuilder: FC<Props> = ({
     const [editingPropKind, setEditingPropKind] =
         useState<PropertyKind>('backing');
     // When true, picker adds an additional mapping instead of replacing primary ref
-    const [addingAdditionalMapping, setAddingAdditionalMapping] = useState(false);
+    const [addingAdditionalMapping, setAddingAdditionalMapping] =
+        useState(false);
+    // Which additional mapping index is being edited via the browse picker
+    const [editingMappingIdx, setEditingMappingIdx] = useState<number | null>(
+        null,
+    );
 
     // Link creation state
     const [newLinkTarget, setNewLinkTarget] = useState('');
@@ -168,18 +196,43 @@ const OntologyBuilder: FC<Props> = ({
         (ref: string, fieldType: FieldType) => {
             if (editingPropId && selectedObject) {
                 if (addingAdditionalMapping) {
-                    // Adding an additional source mapping
-                    updateObject(selectedObject.id, {
-                        properties: selectedObject.properties.map((p) => {
-                            if (p.id !== editingPropId) return p;
-                            const newMapping: SourceMapping = { ref };
-                            const existing = p.additionalMappings ?? [];
-                            return {
-                                ...p,
-                                additionalMappings: [...existing, newMapping],
-                            };
-                        }),
-                    });
+                    if (editingMappingIdx !== null) {
+                        // Updating an existing additional mapping at a specific index
+                        updateObject(selectedObject.id, {
+                            properties: selectedObject.properties.map((p) => {
+                                if (
+                                    p.id !== editingPropId ||
+                                    !p.additionalMappings
+                                )
+                                    return p;
+                                return {
+                                    ...p,
+                                    additionalMappings:
+                                        p.additionalMappings.map((m, i) =>
+                                            i === editingMappingIdx
+                                                ? { ...m, ref }
+                                                : m,
+                                        ),
+                                };
+                            }),
+                        });
+                    } else {
+                        // Appending a new additional source mapping
+                        updateObject(selectedObject.id, {
+                            properties: selectedObject.properties.map((p) => {
+                                if (p.id !== editingPropId) return p;
+                                const newMapping: SourceMapping = { ref };
+                                const existing = p.additionalMappings ?? [];
+                                return {
+                                    ...p,
+                                    additionalMappings: [
+                                        ...existing,
+                                        newMapping,
+                                    ],
+                                };
+                            }),
+                        });
+                    }
                 } else {
                     // Updating an existing property's primary ref
                     updateObject(selectedObject.id, {
@@ -192,31 +245,74 @@ const OntologyBuilder: FC<Props> = ({
                 }
                 setEditingPropId(null);
                 setAddingAdditionalMapping(false);
+                setEditingMappingIdx(null);
             } else {
                 // Setting ref for new property form
                 setNewPropRef(ref);
                 setNewPropType(fieldType);
             }
         },
-        [editingPropId, selectedObject, updateObject, addingAdditionalMapping],
+        [
+            editingPropId,
+            selectedObject,
+            updateObject,
+            addingAdditionalMapping,
+            editingMappingIdx,
+        ],
     );
 
-    const openPickerForExisting = useCallback(
-        (prop: ObjectProperty) => {
+    const openPickerForExisting = useCallback((prop: ObjectProperty) => {
+        setEditingPropId(prop.id);
+        setEditingPropKind(prop.kind);
+        setAddingAdditionalMapping(false);
+        setPickerOpen(true);
+    }, []);
+
+    const openPickerForAdditionalAtIndex = useCallback(
+        (prop: ObjectProperty, idx: number) => {
             setEditingPropId(prop.id);
-            setEditingPropKind(prop.kind);
-            setAddingAdditionalMapping(false);
+            setEditingPropKind('backing');
+            setAddingAdditionalMapping(true);
+            setEditingMappingIdx(idx);
             setPickerOpen(true);
         },
         [],
     );
 
-    const openPickerForAdditional = useCallback((prop: ObjectProperty) => {
-        setEditingPropId(prop.id);
-        setEditingPropKind('backing');
-        setAddingAdditionalMapping(true);
-        setPickerOpen(true);
-    }, []);
+    const addEmptyAdditionalMapping = useCallback(
+        (propId: string) => {
+            if (!selectedObject) return;
+            updateObject(selectedObject.id, {
+                properties: selectedObject.properties.map((p) => {
+                    if (p.id !== propId) return p;
+                    const existing = p.additionalMappings ?? [];
+                    return {
+                        ...p,
+                        additionalMappings: [...existing, { ref: '' }],
+                    };
+                }),
+            });
+        },
+        [selectedObject, updateObject],
+    );
+
+    const updateAdditionalMappingRef = useCallback(
+        (propId: string, mappingIdx: number, ref: string) => {
+            if (!selectedObject) return;
+            updateObject(selectedObject.id, {
+                properties: selectedObject.properties.map((p) => {
+                    if (p.id !== propId || !p.additionalMappings) return p;
+                    return {
+                        ...p,
+                        additionalMappings: p.additionalMappings.map((m, i) =>
+                            i === mappingIdx ? { ...m, ref } : m,
+                        ),
+                    };
+                }),
+            });
+        },
+        [selectedObject, updateObject],
+    );
 
     const removeAdditionalMapping = useCallback(
         (propId: string, mappingIdx: number) => {
@@ -414,65 +510,77 @@ const OntologyBuilder: FC<Props> = ({
                                         >
                                             {prop.type}
                                         </Badge>
-                                        <Badge
+                                        <NativeSelect
                                             size="xs"
-                                            color={
-                                                prop.kind === 'backing'
-                                                    ? 'blue'
-                                                    : prop.kind === 'derived'
-                                                      ? 'teal'
-                                                      : prop.kind === 'system'
-                                                        ? 'gray'
-                                                        : 'orange'
-                                            }
-                                            variant="light"
-                                        >
-                                            {prop.kind}
-                                        </Badge>
+                                            value={prop.kind}
+                                            data={PROPERTY_KINDS}
+                                            onChange={(e) => {
+                                                const newKind = e.currentTarget
+                                                    .value as PropertyKind;
+                                                updateObject(
+                                                    selectedObject.id,
+                                                    {
+                                                        properties:
+                                                            selectedObject.properties.map(
+                                                                (p) =>
+                                                                    p.id ===
+                                                                    prop.id
+                                                                        ? {
+                                                                              ...p,
+                                                                              kind: newKind,
+                                                                              ref: '',
+                                                                          }
+                                                                        : p,
+                                                            ),
+                                                    },
+                                                );
+                                            }}
+                                            style={{ width: 100 }}
+                                        />
                                         {prop.kind === 'system' ? (
                                             <Text
                                                 size="xs"
                                                 color="dimmed"
                                                 style={{ flex: 1 }}
                                             >
-                                                System field — present in all sources
-                                            </Text>
-                                        ) : prop.ref ? (
-                                            <Text
-                                                size="xs"
-                                                color="blue"
-                                                style={{
-                                                    flex: 1,
-                                                    cursor: 'pointer',
-                                                }}
-                                                onClick={() =>
-                                                    openPickerForExisting(prop)
-                                                }
-                                            >
-                                                {prop.ref}
+                                                System field — present in all
+                                                sources
                                             </Text>
                                         ) : (
-                                            <Button
-                                                size="xs"
-                                                variant="subtle"
-                                                color="gray"
-                                                compact
-                                                leftIcon={
-                                                    <IconLink size={10} />
-                                                }
-                                                onClick={() =>
+                                            <PropertyRefInput
+                                                kind={prop.kind}
+                                                value={prop.ref}
+                                                onChange={(ref, fieldType) => {
+                                                    updateObject(
+                                                        selectedObject.id,
+                                                        {
+                                                            properties:
+                                                                selectedObject.properties.map(
+                                                                    (p) =>
+                                                                        p.id ===
+                                                                        prop.id
+                                                                            ? {
+                                                                                  ...p,
+                                                                                  ref,
+                                                                                  ...(fieldType
+                                                                                      ? {
+                                                                                            type: fieldType,
+                                                                                        }
+                                                                                      : {}),
+                                                                              }
+                                                                            : p,
+                                                                ),
+                                                        },
+                                                    );
+                                                }}
+                                                onOpenPicker={() =>
                                                     openPickerForExisting(prop)
                                                 }
-                                                style={{ flex: 1 }}
-                                                styles={{
-                                                    label: {
-                                                        fontWeight: 400,
-                                                        fontSize: 11,
-                                                    },
-                                                }}
-                                            >
-                                                Map to source...
-                                            </Button>
+                                                objects={objects}
+                                                events={events}
+                                                sources={sources}
+                                                projectUuid={projectUuid}
+                                            />
                                         )}
                                         <ActionIcon
                                             size="xs"
@@ -503,15 +611,29 @@ const OntologyBuilder: FC<Props> = ({
                                                     >
                                                         +
                                                     </Text>
-                                                    <Text
-                                                        size="xs"
-                                                        color="blue"
-                                                        style={{
-                                                            cursor: 'pointer',
-                                                        }}
-                                                    >
-                                                        {mapping.ref}
-                                                    </Text>
+                                                    <PropertyRefInput
+                                                        kind="backing"
+                                                        value={mapping.ref}
+                                                        onChange={(ref) =>
+                                                            updateAdditionalMappingRef(
+                                                                prop.id,
+                                                                idx,
+                                                                ref,
+                                                            )
+                                                        }
+                                                        onOpenPicker={() =>
+                                                            openPickerForAdditionalAtIndex(
+                                                                prop,
+                                                                idx,
+                                                            )
+                                                        }
+                                                        objects={objects}
+                                                        events={events}
+                                                        sources={sources}
+                                                        projectUuid={
+                                                            projectUuid
+                                                        }
+                                                    />
                                                     {mapping.transform && (
                                                         <TextInput
                                                             size="xs"
@@ -579,8 +701,8 @@ const OntologyBuilder: FC<Props> = ({
                                                     <IconPlus size={10} />
                                                 }
                                                 onClick={() =>
-                                                    openPickerForAdditional(
-                                                        prop,
+                                                    addEmptyAdditionalMapping(
+                                                        prop.id,
                                                     )
                                                 }
                                                 styles={{
@@ -635,21 +757,7 @@ const OntologyBuilder: FC<Props> = ({
                                     data={PROPERTY_KINDS}
                                     style={{ width: 110 }}
                                 />
-                                {newPropKind === 'computed' ? (
-                                    <TextInput
-                                        placeholder="SQL formula"
-                                        size="xs"
-                                        value={newPropRef}
-                                        onChange={(
-                                            e: React.ChangeEvent<HTMLInputElement>,
-                                        ) =>
-                                            setNewPropRef(
-                                                e.currentTarget.value,
-                                            )
-                                        }
-                                        style={{ flex: 1 }}
-                                    />
-                                ) : newPropKind === 'system' ? (
+                                {newPropKind === 'system' ? (
                                     <Text
                                         size="xs"
                                         color="dimmed"
@@ -658,21 +766,20 @@ const OntologyBuilder: FC<Props> = ({
                                         Auto-injected by envelope
                                     </Text>
                                 ) : (
-                                    <Button
-                                        size="xs"
-                                        variant="outline"
-                                        leftIcon={<IconLink size={12} />}
-                                        onClick={() => setPickerOpen(true)}
-                                        style={{
-                                            flex: 1,
-                                            justifyContent: 'flex-start',
+                                    <PropertyRefInput
+                                        kind={newPropKind}
+                                        value={newPropRef}
+                                        onChange={(ref, fieldType) => {
+                                            setNewPropRef(ref);
+                                            if (fieldType)
+                                                setNewPropType(fieldType);
                                         }}
-                                        styles={{
-                                            label: { fontWeight: 400 },
-                                        }}
-                                    >
-                                        {newPropRef || 'Pick source field...'}
-                                    </Button>
+                                        onOpenPicker={() => setPickerOpen(true)}
+                                        objects={objects}
+                                        events={events}
+                                        sources={sources}
+                                        projectUuid={projectUuid}
+                                    />
                                 )}
                                 <Button
                                     size="xs"
@@ -803,7 +910,9 @@ const OntologyBuilder: FC<Props> = ({
                 ) : objects.length === 0 ? (
                     <Stack spacing={24} p="md">
                         <div>
-                            <Title order={5}>Define your business objects</Title>
+                            <Title order={5}>
+                                Define your business objects
+                            </Title>
                             <Text size="sm" color="dimmed" mt={4}>
                                 Start with a suggested preset or create a custom
                                 object using the panel on the left.
@@ -820,7 +929,8 @@ const OntologyBuilder: FC<Props> = ({
                                     sx={{
                                         cursor: 'pointer',
                                         '&:hover': {
-                                            borderColor: 'var(--mantine-color-blue-4)',
+                                            borderColor:
+                                                'var(--mantine-color-blue-4)',
                                             backgroundColor:
                                                 'var(--mantine-color-blue-0)',
                                         },
@@ -867,10 +977,13 @@ const OntologyBuilder: FC<Props> = ({
                     setPickerOpen(false);
                     setEditingPropId(null);
                     setAddingAdditionalMapping(false);
+                    setEditingMappingIdx(null);
                 }}
                 onSelect={handlePickerSelect}
                 kind={editingPropId ? editingPropKind : newPropKind}
+                projectUuid={projectUuid}
                 events={events}
+                objects={objects}
             />
         </div>
     );

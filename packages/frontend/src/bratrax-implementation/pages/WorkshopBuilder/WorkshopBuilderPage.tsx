@@ -12,14 +12,11 @@ import {
 import { useCallback, useState, type FC } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useNavigate, useParams } from 'react-router';
+import { useBratraxGraph, type CompileResult } from '../../hooks/useBratraxApi';
 import {
-    useBratraxGraph,
-    type CompileResult,
-} from '../../hooks/useBratraxApi';
-import {
+    useBratraxCompileOntology,
     useBratraxProjectConfig,
     useBratraxValidateOntology,
-    useBratraxCompileOntology,
 } from '../../hooks/useBratraxClients';
 import {
     useBratraxOntologyDrift,
@@ -119,9 +116,7 @@ const WorkshopBuilderPage: FC = () => {
         graphMutation.mutate(payload, {
             onSuccess: (result) => {
                 sessionStorage.setItem('bratrax-graph', JSON.stringify(result));
-                void navigate(
-                    `/projects/${projectUuid}/observatory`,
-                );
+                void navigate(`/projects/${projectUuid}/observatory`);
             },
         });
     }, [
@@ -295,6 +290,7 @@ const WorkshopBuilderPage: FC = () => {
                         {activeTab === 'sources' && (
                             <SourcesBuilder
                                 sources={builder.state.sources}
+                                projectUuid={projectUuid}
                                 setSources={builder.setSources}
                                 toggleStream={builder.toggleStream}
                                 toggleField={builder.toggleField}
@@ -305,6 +301,8 @@ const WorkshopBuilderPage: FC = () => {
                                 objects={builder.state.objects}
                                 links={builder.state.links}
                                 events={builder.state.events}
+                                sources={builder.state.sources}
+                                projectUuid={projectUuid}
                                 addObject={builder.addObject}
                                 updateObject={builder.updateObject}
                                 removeObject={builder.removeObject}

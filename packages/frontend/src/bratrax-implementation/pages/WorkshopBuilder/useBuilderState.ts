@@ -14,11 +14,11 @@ import { toCompilerPayload } from './compilerYamlTransformer';
 import { computeExclusionConflicts } from './fieldWarnings';
 import type {
     BuilderState,
+    CollectionMethod,
     EnrichmentMapping,
     EventCategory,
     EventProperty,
     FieldType,
-    CollectionMethod,
     ObjectLink,
     ObjectProperty,
     OntologyObject,
@@ -42,7 +42,10 @@ import { useAutoSourceSync } from './useAutoSourceSync';
  */
 function findMatchingCatalogStream(
     yamlStreamName: string,
-    catalogStreams: { name: string; fields: { name: string; type: string }[] }[],
+    catalogStreams: {
+        name: string;
+        fields: { name: string; type: string }[];
+    }[],
 ): { name: string; fields: { name: string; type: string }[] } | undefined {
     // 1. Exact match
     const exact = catalogStreams.find((s) => s.name === yamlStreamName);
@@ -69,8 +72,7 @@ function collectOntologyFieldRefs(ontologyYaml: string): Set<string> {
     const refs = new Set<string>();
     try {
         const parsed = yaml.load(ontologyYaml) as Record<string, unknown>;
-        const objects =
-            (parsed?.objects as Record<string, unknown>) ?? {};
+        const objects = (parsed?.objects as Record<string, unknown>) ?? {};
         for (const objData of Object.values(objects)) {
             const props =
                 ((objData as Record<string, unknown>).properties as Record<
@@ -131,7 +133,7 @@ export function useBuilderState(projectUuid?: string) {
     );
 
     // Catalog data for template loading and auto-sync
-    const { data: catalogsData } = useBratraxCatalogs();
+    const { data: catalogsData } = useBratraxCatalogs(projectUuid);
     const catalogs = catalogsData?.catalogs;
 
     // ─── Sources ───
@@ -355,9 +357,7 @@ export function useBuilderState(projectUuid?: string) {
 
     const loadFromTemplate = useCallback(
         (files: Record<string, string>) => {
-            const ontologyRefs = collectOntologyFieldRefs(
-                files.ontology ?? '',
-            );
+            const ontologyRefs = collectOntologyFieldRefs(files.ontology ?? '');
 
             const newState: BuilderState = {
                 sources: [],
@@ -399,40 +399,71 @@ export function useBuilderState(projectUuid?: string) {
                                     (sd.fields as Record<string, unknown>) ??
                                     {};
 
-                                const yamlFieldNames = new Set(
-                                    Object.keys(fieldsData),
-                                );
-                                const fields = Object.entries(fieldsData).map(
-                                    ([fieldName, fieldValue]) => ({
-                                        name: fieldName,
-                                        type: normalizeSingerType(fieldValue),
-                                        selected: ontologyRefs.has(
-                                            `${srcName}.${streamName}.${fieldName}`,
-                                        ),
-                                    }),
+                                // Build field list: catalog is primary, YAML-only fields marked stale
+                                const catalogStream = catalogEntry
+                                    ? findMatchingCatalogStream(
+                                          streamName,
+                                          catalogEntry.streams,
+                                      )
+                                    : undefined;
+
+                                const catalogFieldNames = new Set(
+                                    catalogStream?.fields.map((f) => f.name) ??
+                                        [],
                                 );
 
-                                // Merge catalog fields not already in YAML
-                                if (catalogEntry) {
-                                    const catalogStream =
-                                        findMatchingCatalogStream(
-                                            streamName,
-                                            catalogEntry.streams,
-                                        );
-                                    if (catalogStream) {
-                                        for (const cf of catalogStream.fields) {
-                                            if (!yamlFieldNames.has(cf.name)) {
-                                                fields.push({
-                                                    name: cf.name,
-                                                    type: normalizeSingerType(
-                                                        cf.type,
-                                                    ),
-                                                    selected: ontologyRefs.has(
-                                                        `${srcName}.${streamName}.${cf.name}`,
-                                                    ),
-                                                });
-                                            }
+                                const fields: Array<{
+                                    name: string;
+                                    type: FieldType;
+                                    selected: boolean;
+                                    stale?: boolean;
+                                }> = [];
+
+                                if (catalogStream) {
+                                    // Start with catalog fields (the real source of truth)
+                                    for (const cf of catalogStream.fields) {
+                                        fields.push({
+                                            name: cf.name,
+                                            type: normalizeSingerType(cf.type),
+                                            selected: ontologyRefs.has(
+                                                `${srcName}.${streamName}.${cf.name}`,
+                                            ),
+                                        });
+                                    }
+
+                                    // Then add YAML-only fields, marked stale
+                                    for (const [
+                                        fieldName,
+                                        fieldValue,
+                                    ] of Object.entries(fieldsData)) {
+                                        if (!catalogFieldNames.has(fieldName)) {
+                                            fields.push({
+                                                name: fieldName,
+                                                type: normalizeSingerType(
+                                                    fieldValue,
+                                                ),
+                                                selected: ontologyRefs.has(
+                                                    `${srcName}.${streamName}.${fieldName}`,
+                                                ),
+                                                stale: true,
+                                            });
                                         }
+                                    }
+                                } else {
+                                    // No catalog entry — fall back to YAML fields without stale marking
+                                    for (const [
+                                        fieldName,
+                                        fieldValue,
+                                    ] of Object.entries(fieldsData)) {
+                                        fields.push({
+                                            name: fieldName,
+                                            type: normalizeSingerType(
+                                                fieldValue,
+                                            ),
+                                            selected: ontologyRefs.has(
+                                                `${srcName}.${streamName}.${fieldName}`,
+                                            ),
+                                        });
                                     }
                                 }
 
@@ -587,6 +618,11 @@ export function useBuilderState(projectUuid?: string) {
                                 >;
                                 ref = computed.formula ?? '';
                                 kind = 'computed';
+                            } else if (pd.kind !== 'system') {
+                                // Naked property (type only, no backing/derived/computed)
+                                // — treat as computed placeholder, not backing
+                                kind = 'computed';
+                                ref = '';
                             }
 
                             // Map compiler types back to BQ types
@@ -789,8 +825,7 @@ export function useBuilderState(projectUuid?: string) {
                             category:
                                 categoryMap[(data.category as string) ?? ''] ??
                                 'track',
-                            collectionMethod:
-                                inferCollectionMethod(sourceRef),
+                            collectionMethod: inferCollectionMethod(sourceRef),
                             source: sourceRef,
                             properties,
                             enrichments,
@@ -937,6 +972,22 @@ export function useBuilderState(projectUuid?: string) {
                         severity: 'error',
                         tab: 'sources',
                         message: `[${source.label} / ${stream.name}] ${conflict.message}`,
+                    });
+                }
+            }
+        }
+
+        // Stale field validation (YAML-only fields not in current catalog)
+        for (const source of state.sources) {
+            for (const stream of source.streams) {
+                const staleSelected = stream.fields.filter(
+                    (f) => f.stale && f.selected,
+                );
+                if (staleSelected.length > 0) {
+                    messages.push({
+                        severity: 'warning',
+                        tab: 'sources',
+                        message: `[${source.label} / ${stream.name}] ${staleSelected.length} field(s) not found in catalog: ${staleSelected.map((f) => f.name).join(', ')}`,
                     });
                 }
             }

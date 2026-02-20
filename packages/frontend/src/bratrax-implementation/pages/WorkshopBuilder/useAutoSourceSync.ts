@@ -16,9 +16,7 @@ import type { BuilderState, SourceConnector } from './types';
  * Build source_name → tap reverse lookup from catalog entries.
  * No more hardcoded mapping — uses the enriched catalog data.
  */
-function buildSourceToTap(
-    catalogs: CatalogEntry[],
-): Record<string, string> {
+function buildSourceToTap(catalogs: CatalogEntry[]): Record<string, string> {
     const map: Record<string, string> = {};
     for (const c of catalogs) {
         const sourceName =
@@ -88,23 +86,43 @@ export function useAutoSourceSync(
             );
 
             if (existingSourceIdx >= 0) {
-                // Source exists - ensure stream is selected (immutable update)
+                // Source exists - ensure stream and referenced fields are selected
                 const src = newSources[existingSourceIdx];
                 const stream = src.streams.find((s) => s.name === streamName);
-                if (stream && !stream.selected) {
-                    newSources = newSources.map((s, idx) =>
-                        idx === existingSourceIdx
-                            ? {
-                                  ...s,
-                                  streams: s.streams.map((st) =>
-                                      st.name === streamName
-                                          ? { ...st, selected: true }
-                                          : st,
-                                  ),
-                              }
-                            : s,
+                if (stream) {
+                    const needsStreamSelect = !stream.selected;
+                    const unselectedFields = stream.fields.filter(
+                        (f) => !f.selected && fieldNames.has(f.name),
                     );
-                    updated = true;
+                    if (needsStreamSelect || unselectedFields.length > 0) {
+                        newSources = newSources.map((s, idx) =>
+                            idx === existingSourceIdx
+                                ? {
+                                      ...s,
+                                      streams: s.streams.map((st) =>
+                                          st.name === streamName
+                                              ? {
+                                                    ...st,
+                                                    selected: true,
+                                                    fields: st.fields.map(
+                                                        (f) =>
+                                                            fieldNames.has(
+                                                                f.name,
+                                                            ) && !f.stale
+                                                                ? {
+                                                                      ...f,
+                                                                      selected: true,
+                                                                  }
+                                                                : f,
+                                                    ),
+                                                }
+                                              : st,
+                                      ),
+                                  }
+                                : s,
+                        );
+                        updated = true;
+                    }
                 }
             } else {
                 // Source doesn't exist - create from catalog
@@ -133,7 +151,8 @@ export function useAutoSourceSync(
                         tap: tapName,
                         label: catalog.label,
                         category:
-                            (catalog.category as SourceConnector['category']) ?? 'other',
+                            (catalog.category as SourceConnector['category']) ??
+                            'other',
                         available: true,
                         streams,
                     },

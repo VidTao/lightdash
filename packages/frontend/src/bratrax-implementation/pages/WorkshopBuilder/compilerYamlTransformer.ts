@@ -102,7 +102,9 @@ function buildSourceEntry(src: SourceConnector) {
     for (const stream of selectedStreams) {
         const fields: Record<string, string> = {};
         for (const field of stream.fields) {
-            fields[field.name] = field.type;
+            if (field.selected && !field.stale) {
+                fields[field.name] = field.type;
+            }
         }
         streams[stream.name] = {
             key_properties: [stream.fields[0]?.name ?? 'id'],
@@ -262,7 +264,9 @@ function buildPropertyDef(prop: ObjectProperty) {
 function inferPrimaryKey(obj: OntologyObject): string {
     // Try to find a property ending with _id
     const idProp = obj.properties.find(
-        (p) => p.name.endsWith('_id') && (p.kind === 'backing' || p.kind === 'system'),
+        (p) =>
+            p.name.endsWith('_id') &&
+            (p.kind === 'backing' || p.kind === 'system'),
     );
     return idProp?.name ?? obj.properties[0]?.name ?? 'id';
 }
@@ -298,7 +302,8 @@ export function generateCompilerOntology(
         const srcPK = inferPrimaryKey(srcObj);
         // Find matching property in target
         const matchProp = tgtObj.properties.find(
-            (p) => p.name === srcPK || p.name.includes(srcObj.name.toLowerCase()),
+            (p) =>
+                p.name === srcPK || p.name.includes(srcObj.name.toLowerCase()),
         );
         const tgtField = matchProp?.name ?? srcPK;
 

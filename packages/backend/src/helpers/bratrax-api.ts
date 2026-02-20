@@ -12,7 +12,7 @@ const COMPILER_API = `${BRATRAX_API_URL}/api/v1`;
 export function getBratraxOntologyModel(
     services: ServiceRepository,
 ): BratraxOntologyModel {
-    const models = (services as unknown as { models: ModelRepository }).models;
+    const { models } = services as unknown as { models: ModelRepository };
     return models.getBratraxOntologyModel();
 }
 
@@ -64,7 +64,10 @@ export const deployYaml = async (
 };
 
 export const driftCheckYaml = async (
-    payload: CompilerYamlPayload & { source?: string },
+    payload: CompilerYamlPayload & {
+        source?: string;
+        catalogs?: Record<string, object>;
+    },
 ) => {
     const response = await axios.post(
         `${COMPILER_API}/drift/check-payload`,
@@ -79,10 +82,8 @@ export const driftCheckYaml = async (
 
 // ─── Model access helpers ───
 
-export function getBratraxDiscoveryModel(
-    services: ServiceRepository,
-) {
-    const models = (services as unknown as { models: ModelRepository }).models;
+export function getBratraxDiscoveryModel(services: ServiceRepository) {
+    const { models } = services as unknown as { models: ModelRepository };
     return models.getBratraxDiscoveryModel();
 }
 
@@ -95,13 +96,12 @@ export const getCatalogs = async () => {
     return response.data;
 };
 
-export const getRawCatalogs = async (): Promise<
-    Record<string, object>
-> => {
+export const getRawCatalogs = async (): Promise<Record<string, object>> => {
     const response = await axios.get(`${COMPILER_API}/catalogs/raw`, {
         timeout: 30000,
     });
-    return response.data.catalogs;
+    const data = response.data as { catalogs: Record<string, object> };
+    return data.catalogs;
 };
 
 export const introspectWebhookPayload = async (payload: {

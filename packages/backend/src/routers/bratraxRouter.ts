@@ -11,8 +11,8 @@ import {
     getGraph,
     getRawCatalogs,
     getStreamFields,
-    getTemplate,
     getTapStreams,
+    getTemplate,
     getWebhookDiscoveryStatus,
     introspectWebhookPayload,
     listTemplates,
@@ -152,90 +152,78 @@ bratraxRouter.get('/templates/:name', async (req, res, next) => {
 
 // ─── Project-Bound Ontology Routes (DB-backed) ───
 
-bratraxRouter.get(
-    '/project-config/:projectUuid',
-    async (req, res, next) => {
-        try {
-            const model = getBratraxOntologyModel(req.services);
-            const bound = await model.exists(req.params.projectUuid);
-            res.json({ status: 'ok', results: { bound } });
-        } catch (error) {
-            next(error);
+bratraxRouter.get('/project-config/:projectUuid', async (req, res, next) => {
+    try {
+        const model = getBratraxOntologyModel(req.services);
+        const bound = await model.exists(req.params.projectUuid);
+        res.json({ status: 'ok', results: { bound } });
+    } catch (error) {
+        next(error);
+    }
+});
+
+bratraxRouter.get('/ontology/:projectUuid', async (req, res, next) => {
+    try {
+        const model = getBratraxOntologyModel(req.services);
+        const files = await model.getFiles(req.params.projectUuid);
+        res.json({ status: 'ok', results: { files } });
+    } catch (error) {
+        next(error);
+    }
+});
+
+bratraxRouter.put('/ontology/:projectUuid/:fileKey', async (req, res, next) => {
+    try {
+        const { fileKey } = req.params;
+        if (!VALID_FILE_KEYS.has(fileKey)) {
+            res.status(400).json({
+                status: 'error',
+                results: {
+                    message: `Invalid file_key "${fileKey}". Must be one of: ${[...VALID_FILE_KEYS].join(', ')}`,
+                },
+            });
+            return;
         }
-    },
-);
 
-bratraxRouter.get(
-    '/ontology/:projectUuid',
-    async (req, res, next) => {
-        try {
-            const model = getBratraxOntologyModel(req.services);
-            const files = await model.getFiles(req.params.projectUuid);
-            res.json({ status: 'ok', results: { files } });
-        } catch (error) {
-            next(error);
+        const { content } = req.body;
+        if (typeof content !== 'string') {
+            res.status(400).json({
+                status: 'error',
+                results: { message: 'content must be a string' },
+            });
+            return;
         }
-    },
-);
 
-bratraxRouter.put(
-    '/ontology/:projectUuid/:fileKey',
-    async (req, res, next) => {
-        try {
-            const { fileKey } = req.params;
-            if (!VALID_FILE_KEYS.has(fileKey)) {
-                res.status(400).json({
-                    status: 'error',
-                    results: {
-                        message: `Invalid file_key "${fileKey}". Must be one of: ${[...VALID_FILE_KEYS].join(', ')}`,
-                    },
-                });
-                return;
-            }
+        const model = getBratraxOntologyModel(req.services);
+        await model.upsertFile(
+            req.params.projectUuid,
+            fileKey as BratraxOntologyFileKey,
+            content,
+        );
+        res.json({ status: 'ok', results: { saved: true } });
+    } catch (error) {
+        next(error);
+    }
+});
 
-            const { content } = req.body;
-            if (typeof content !== 'string') {
-                res.status(400).json({
-                    status: 'error',
-                    results: { message: 'content must be a string' },
-                });
-                return;
-            }
-
-            const model = getBratraxOntologyModel(req.services);
-            await model.upsertFile(
-                req.params.projectUuid,
-                fileKey as BratraxOntologyFileKey,
-                content,
-            );
-            res.json({ status: 'ok', results: { saved: true } });
-        } catch (error) {
-            next(error);
+bratraxRouter.post('/ontology/:projectUuid/init', async (req, res, next) => {
+    try {
+        const { files } = req.body;
+        if (!files || typeof files !== 'object') {
+            res.status(400).json({
+                status: 'error',
+                results: { message: 'files object is required' },
+            });
+            return;
         }
-    },
-);
 
-bratraxRouter.post(
-    '/ontology/:projectUuid/init',
-    async (req, res, next) => {
-        try {
-            const { files } = req.body;
-            if (!files || typeof files !== 'object') {
-                res.status(400).json({
-                    status: 'error',
-                    results: { message: 'files object is required' },
-                });
-                return;
-            }
-
-            const model = getBratraxOntologyModel(req.services);
-            await model.createFromTemplate(req.params.projectUuid, files);
-            res.json({ status: 'ok', results: { initialized: true } });
-        } catch (error) {
-            next(error);
-        }
-    },
-);
+        const model = getBratraxOntologyModel(req.services);
+        await model.createFromTemplate(req.params.projectUuid, files);
+        res.json({ status: 'ok', results: { initialized: true } });
+    } catch (error) {
+        next(error);
+    }
+});
 
 bratraxRouter.post(
     '/ontology/:projectUuid/validate',
@@ -256,64 +244,110 @@ bratraxRouter.post(
     },
 );
 
-bratraxRouter.post(
-    '/ontology/:projectUuid/compile',
-    async (req, res, next) => {
-        try {
-            const model = getBratraxOntologyModel(req.services);
-            const files = await model.getFiles(req.params.projectUuid);
-            const result = await compileYaml({
-                config: files.config ?? '',
-                ontology: files.ontology ?? '',
-                sources: files.sources ?? '',
-                tracking_plan: files.tracking_plan ?? '',
-            });
-            res.json({ status: 'ok', results: result });
-        } catch (error) {
-            next(error);
-        }
-    },
-);
+bratraxRouter.post('/ontology/:projectUuid/compile', async (req, res, next) => {
+    try {
+        const model = getBratraxOntologyModel(req.services);
+        const files = await model.getFiles(req.params.projectUuid);
+        const result = await compileYaml({
+            config: files.config ?? '',
+            ontology: files.ontology ?? '',
+            sources: files.sources ?? '',
+            tracking_plan: files.tracking_plan ?? '',
+        });
+        res.json({ status: 'ok', results: result });
+    } catch (error) {
+        next(error);
+    }
+});
 
-bratraxRouter.post(
-    '/ontology/:projectUuid/deploy',
-    async (req, res, next) => {
-        try {
-            const model = getBratraxOntologyModel(req.services);
-            const files = await model.getFiles(req.params.projectUuid);
-            const result = await deployYaml({
-                config: files.config ?? '',
-                ontology: files.ontology ?? '',
-                sources: files.sources ?? '',
-                tracking_plan: files.tracking_plan ?? '',
-                apply: req.body.apply ?? false,
-            });
-            res.json({ status: 'ok', results: result });
-        } catch (error) {
-            next(error);
-        }
-    },
-);
+bratraxRouter.post('/ontology/:projectUuid/deploy', async (req, res, next) => {
+    try {
+        const model = getBratraxOntologyModel(req.services);
+        const files = await model.getFiles(req.params.projectUuid);
+        const result = await deployYaml({
+            config: files.config ?? '',
+            ontology: files.ontology ?? '',
+            sources: files.sources ?? '',
+            tracking_plan: files.tracking_plan ?? '',
+            apply: req.body.apply ?? false,
+        });
+        res.json({ status: 'ok', results: result });
+    } catch (error) {
+        next(error);
+    }
+});
 
-bratraxRouter.post(
-    '/ontology/:projectUuid/drift',
-    async (req, res, next) => {
-        try {
-            const model = getBratraxOntologyModel(req.services);
-            const files = await model.getFiles(req.params.projectUuid);
-            const result = await driftCheckYaml({
-                config: files.config ?? '',
-                ontology: files.ontology ?? '',
-                sources: files.sources ?? '',
-                tracking_plan: files.tracking_plan ?? '',
-                source: req.body.source,
-            });
-            res.json({ status: 'ok', results: result });
-        } catch (error) {
-            next(error);
+bratraxRouter.post('/ontology/:projectUuid/drift', async (req, res, next) => {
+    try {
+        const model = getBratraxOntologyModel(req.services);
+        const discoveryModel = getBratraxDiscoveryModel(req.services);
+        const files = await model.getFiles(req.params.projectUuid);
+
+        // Auto-seed global catalogs if DB is empty (same as GET /catalogs)
+        const hasGlobal = await discoveryModel.globalCatalogsExist();
+        if (!hasGlobal) {
+            try {
+                const rawCatalogs = await getRawCatalogs();
+                await Promise.all(
+                    Object.entries(rawCatalogs).map(
+                        ([sourceKey, catalogJson]) => {
+                            const sourceType = sourceKey.startsWith('webhook-')
+                                ? 'webhook'
+                                : 'meltano';
+                            return discoveryModel.upsertGlobalCatalog(
+                                sourceKey,
+                                catalogJson,
+                                sourceType as 'meltano' | 'webhook',
+                            );
+                        },
+                    ),
+                );
+            } catch (seedError) {
+                // Non-blocking: Python API may be offline
+                const msg =
+                    seedError instanceof Error
+                        ? seedError.message
+                        : String(seedError);
+                console.warn(
+                    `[bratrax] Auto-seed catalogs failed (drift): ${msg}`,
+                );
+            }
         }
-    },
-);
+
+        // Fetch DB catalogs — project-specific rows override global ones
+        const catalogRows = await discoveryModel.getCatalogsForProject(
+            req.params.projectUuid,
+        );
+        const globalRows = catalogRows.filter(
+            (r) => r.project_uuid === null || r.project_uuid === undefined,
+        );
+        const projectRows = catalogRows.filter(
+            (r) => r.project_uuid !== null && r.project_uuid !== undefined,
+        );
+        const catalogs: Record<string, object> = {};
+        for (const row of [...globalRows, ...projectRows]) {
+            const json =
+                typeof row.catalog_json === 'string'
+                    ? safeParseCatalogJson(row.catalog_json)
+                    : row.catalog_json;
+            if (json) {
+                catalogs[row.source_key] = json;
+            }
+        }
+
+        const result = await driftCheckYaml({
+            config: files.config ?? '',
+            ontology: files.ontology ?? '',
+            sources: files.sources ?? '',
+            tracking_plan: files.tracking_plan ?? '',
+            source: req.body.source,
+            catalogs,
+        });
+        res.json({ status: 'ok', results: result });
+    } catch (error) {
+        next(error);
+    }
+});
 
 // ─── Discovery Catalog Routes (DB-backed) ───
 
@@ -326,10 +360,11 @@ function parseCatalogRows(
     const entries: CatalogEntry[] = [];
     for (const row of rows) {
         const catalogJson = safeParseCatalogJson(row.catalog_json);
-        if (!catalogJson) continue;
-        const entry = parseSingerCatalog(row.source_key, catalogJson);
-        if (entry) {
-            entries.push(entry);
+        if (catalogJson) {
+            const entry = parseSingerCatalog(row.source_key, catalogJson);
+            if (entry) {
+                entries.push(entry);
+            }
         }
     }
     return entries;
@@ -340,22 +375,26 @@ bratraxRouter.post('/sync-catalogs', async (req, res, next) => {
         const discoveryModel = getBratraxDiscoveryModel(req.services);
         const rawCatalogs = await getRawCatalogs();
 
-        let synced = 0;
         const sourceKeys: string[] = [];
-        for (const [sourceKey, catalogJson] of Object.entries(rawCatalogs)) {
-            const sourceType = sourceKey.startsWith('webhook-')
-                ? 'webhook'
-                : 'meltano';
-            await discoveryModel.upsertGlobalCatalog(
-                sourceKey,
-                catalogJson,
-                sourceType as 'meltano' | 'webhook',
-            );
-            sourceKeys.push(sourceKey);
-            synced += 1;
-        }
+        const upserts = Object.entries(rawCatalogs).map(
+            ([sourceKey, catalogJson]) => {
+                sourceKeys.push(sourceKey);
+                const sourceType = sourceKey.startsWith('webhook-')
+                    ? 'webhook'
+                    : 'meltano';
+                return discoveryModel.upsertGlobalCatalog(
+                    sourceKey,
+                    catalogJson,
+                    sourceType as 'meltano' | 'webhook',
+                );
+            },
+        );
+        await Promise.all(upserts);
 
-        res.json({ status: 'ok', results: { synced, sourceKeys } });
+        res.json({
+            status: 'ok',
+            results: { synced: sourceKeys.length, sourceKeys },
+        });
     } catch (error) {
         next(error);
     }
@@ -366,70 +405,70 @@ bratraxRouter.post('/seed-catalogs', async (req, res, next) => {
         const discoveryModel = getBratraxDiscoveryModel(req.services);
         const rawCatalogs = await getRawCatalogs();
 
-        let seeded = 0;
-        for (const [sourceKey, catalogJson] of Object.entries(rawCatalogs)) {
-            const sourceType = sourceKey.startsWith('webhook-')
-                ? 'webhook'
-                : 'meltano';
-            await discoveryModel.upsertGlobalCatalog(
-                sourceKey,
-                catalogJson,
-                sourceType as 'meltano' | 'webhook',
-            );
-            seeded += 1;
-        }
+        const upserts = Object.entries(rawCatalogs).map(
+            ([sourceKey, catalogJson]) => {
+                const sourceType = sourceKey.startsWith('webhook-')
+                    ? 'webhook'
+                    : 'meltano';
+                return discoveryModel.upsertGlobalCatalog(
+                    sourceKey,
+                    catalogJson,
+                    sourceType as 'meltano' | 'webhook',
+                );
+            },
+        );
+        await Promise.all(upserts);
 
-        res.json({ status: 'ok', results: { seeded } });
+        res.json({
+            status: 'ok',
+            results: { seeded: upserts.length },
+        });
     } catch (error) {
         next(error);
     }
 });
 
-bratraxRouter.get(
-    '/ontology/:projectUuid/catalogs',
-    async (req, res, next) => {
-        try {
-            const discoveryModel = getBratraxDiscoveryModel(req.services);
+bratraxRouter.get('/ontology/:projectUuid/catalogs', async (req, res, next) => {
+    try {
+        const discoveryModel = getBratraxDiscoveryModel(req.services);
 
-            // Auto-seed global catalogs on first access
-            const hasGlobal = await discoveryModel.globalCatalogsExist();
-            if (!hasGlobal) {
-                try {
-                    const rawCatalogs = await getRawCatalogs();
-                    for (const [sourceKey, catalogJson] of Object.entries(
-                        rawCatalogs,
-                    )) {
+        // Auto-seed global catalogs on first access
+        const hasGlobal = await discoveryModel.globalCatalogsExist();
+        if (!hasGlobal) {
+            try {
+                const rawCatalogs = await getRawCatalogs();
+                const seedUpserts = Object.entries(rawCatalogs).map(
+                    ([sourceKey, catalogJson]) => {
                         const sourceType = sourceKey.startsWith('webhook-')
                             ? 'webhook'
                             : 'meltano';
-                        await discoveryModel.upsertGlobalCatalog(
+                        return discoveryModel.upsertGlobalCatalog(
                             sourceKey,
                             catalogJson,
                             sourceType as 'meltano' | 'webhook',
                         );
-                    }
-                } catch (seedError) {
-                    // Python API may be offline — continue with empty
-                    const msg =
-                        seedError instanceof Error
-                            ? seedError.message
-                            : String(seedError);
-                    console.warn(
-                        `[bratrax] Auto-seed catalogs failed: ${msg}`,
-                    );
-                }
+                    },
+                );
+                await Promise.all(seedUpserts);
+            } catch (seedError) {
+                // Python API may be offline — continue with empty
+                const msg =
+                    seedError instanceof Error
+                        ? seedError.message
+                        : String(seedError);
+                console.warn(`[bratrax] Auto-seed catalogs failed: ${msg}`);
             }
-
-            const rows = await discoveryModel.getCatalogsForProject(
-                req.params.projectUuid,
-            );
-            const catalogs = parseCatalogRows(rows);
-            res.json({ status: 'ok', results: { catalogs } });
-        } catch (error) {
-            next(error);
         }
-    },
-);
+
+        const rows = await discoveryModel.getCatalogsForProject(
+            req.params.projectUuid,
+        );
+        const catalogs = parseCatalogRows(rows);
+        res.json({ status: 'ok', results: { catalogs } });
+    } catch (error) {
+        next(error);
+    }
+});
 
 bratraxRouter.get(
     '/ontology/:projectUuid/catalogs/search',
@@ -443,9 +482,7 @@ bratraxRouter.get(
 
             const query = (req.query.q as string) ?? '';
             const typeFilter = req.query.type as string | undefined;
-            const limit = req.query.limit
-                ? Number(req.query.limit)
-                : 20;
+            const limit = req.query.limit ? Number(req.query.limit) : 20;
 
             const results = searchParsedCatalogs(
                 catalogs,
@@ -602,10 +639,8 @@ bratraxRouter.get(
                 ? parseSingerCatalog(sourceKey, catalogJson)
                 : null;
             const totalFields =
-                entry?.streams.reduce(
-                    (sum, s) => sum + s.fields.length,
-                    0,
-                ) ?? 0;
+                entry?.streams.reduce((sum, s) => sum + s.fields.length, 0) ??
+                0;
 
             res.json({
                 status: 'ok',
@@ -627,14 +662,18 @@ bratraxRouter.post(
     '/ontology/:projectUuid/introspect-webhook',
     async (req, res, next) => {
         try {
-            const { source, stream, payload, key_properties } = req.body;
+            const {
+                source,
+                stream,
+                payload,
+                key_properties: keyProperties,
+            } = req.body;
 
             if (!source || !stream || !payload) {
                 res.status(400).json({
                     status: 'error',
                     results: {
-                        message:
-                            'source, stream, and payload are required',
+                        message: 'source, stream, and payload are required',
                     },
                 });
                 return;
@@ -657,7 +696,7 @@ bratraxRouter.post(
                 source,
                 stream,
                 payload,
-                key_properties,
+                key_properties: keyProperties,
                 existing_catalog: existingCatalog,
             });
 
@@ -670,10 +709,8 @@ bratraxRouter.post(
 
             const entry = parseSingerCatalog(sourceKey, result.catalog);
             const totalFields =
-                entry?.streams.reduce(
-                    (sum, s) => sum + s.fields.length,
-                    0,
-                ) ?? 0;
+                entry?.streams.reduce((sum, s) => sum + s.fields.length, 0) ??
+                0;
 
             res.json({
                 status: 'ok',
