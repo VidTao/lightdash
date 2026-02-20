@@ -2,6 +2,7 @@ import {
     KnexPaginateArgs,
     KnexPaginatedData,
     LightdashProjectConfig,
+    LightdashProjectParameter,
     NotFoundError,
     ProjectParameterSummary,
 } from '@lightdash/common';
@@ -139,7 +140,7 @@ export class ProjectParametersModel {
     async upsert(
         projectUuid: string,
         name: string,
-        config: Record<string, unknown>,
+        config: LightdashProjectParameter,
     ) {
         const existing = await this.database(ProjectParametersTableName)
             .select('*')
@@ -151,12 +152,12 @@ export class ProjectParametersModel {
             await this.database(ProjectParametersTableName)
                 .where('project_uuid', projectUuid)
                 .where('name', name)
-                .update({ config: JSON.stringify(config) });
+                .update({ config });
         } else {
             await this.database(ProjectParametersTableName).insert({
                 project_uuid: projectUuid,
                 name,
-                config: JSON.stringify(config),
+                config,
             });
         }
 

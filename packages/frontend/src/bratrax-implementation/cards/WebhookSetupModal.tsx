@@ -100,7 +100,7 @@ const WebhookSetupModal = ({
     const { keys, isLoading: keysLoading } = useWebhookWriteKeys(source);
     const { discovered, fields } = useWebhookDiscovery(source, opened);
 
-    const autoCloseTimer = useRef<ReturnType<typeof setTimeout>>();
+    const autoCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Auto-close 2s after discovery
     useEffect(() => {
