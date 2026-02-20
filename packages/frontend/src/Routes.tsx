@@ -11,9 +11,11 @@ import ShopifyConnectCallback from './bratrax-implementation/callbacks/ShopifyCo
 import ShopifySuccessCallback from './bratrax-implementation/callbacks/ShopifySuccessCallback';
 import StripeCallback from './bratrax-implementation/callbacks/StripeCallback';
 import TikTokAdsCallback from './bratrax-implementation/callbacks/TikTokAdsCallback';
+import ObservatoryPage from './bratrax-implementation/pages/Observatory/ObservatoryPage';
 import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
 import StoreSettings from './bratrax-implementation/pages/Settings';
 import TermsOfService from './bratrax-implementation/pages/TermsOfService';
+import WorkshopBuilderPage from './bratrax-implementation/pages/WorkshopBuilder/WorkshopBuilderPage';
 import TrackingPlan from './bratrax-implementation/tracking-plan/TrackingPlan';
 import AppRoute from './components/AppRoute';
 import ForbiddenPanel from './components/ForbiddenPanel';
@@ -479,6 +481,28 @@ const APP_ROUTES: RouteObject[] = [
                                 <NavBar />
                                 <TrackPage name={PageName.FUNNEL_BUILDER}>
                                     <FunnelBuilder />
+                                </TrackPage>
+                            </>
+                        ),
+                    },
+                    {
+                        path: '/projects/:projectUuid/observatory',
+                        element: (
+                            <>
+                                <NavBar />
+                                <TrackPage name={PageName.OBSERVATORY}>
+                                    <ObservatoryPage />
+                                </TrackPage>
+                            </>
+                        ),
+                    },
+                    {
+                        path: '/projects/:projectUuid/workshop-builder',
+                        element: (
+                            <>
+                                <NavBar />
+                                <TrackPage name={PageName.WORKSHOP_BUILDER}>
+                                    <WorkshopBuilderPage />
                                 </TrackPage>
                             </>
                         ),

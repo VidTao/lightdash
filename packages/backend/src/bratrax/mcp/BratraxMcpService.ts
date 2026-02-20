@@ -48,6 +48,7 @@ import {
 import { wrapSentryTransaction } from '../../utils';
 import { VERSION } from '../../version';
 import { McpSchemaCompatLayer } from './mcpSchemaCompat';
+import { registerAllPrompts } from './prompts/workshops';
 import { registerAllTools } from './tools';
 import type { McpToolContext } from './toolContext';
 import {
@@ -253,12 +254,33 @@ export class BratraxMcpService extends BaseService {
             orgUuid,
         );
         const uuid = row?.context.projectUuid;
-        if (!uuid) {
-            throw new ForbiddenError(
-                'No project context set. Use set_project or provide projectUuid parameter.',
-            );
+        if (uuid) {
+            return uuid;
         }
-        return uuid;
+
+        // Auto-set project when user has exactly one
+        const projects =
+            await this.projectModel.getAllByOrganizationUuid(orgUuid);
+        if (projects.length === 1) {
+            const project = projects[0];
+            await this.mcpContextModel.setContext({
+                userUuid: user.userUuid,
+                organizationUuid: orgUuid,
+                context: {
+                    projectUuid: project.projectUuid,
+                    projectName: project.name,
+                    tags: null,
+                },
+            });
+            return project.projectUuid;
+        }
+
+        const projectList = projects
+            .map((p) => `  - ${p.name}: ${p.projectUuid}`)
+            .join('\n');
+        throw new ForbiddenError(
+            `No project context set. Use set_project with one of:\n${projectList}`,
+        );
     }
 
     private async getTagsFromContext(
@@ -532,5 +554,6 @@ export class BratraxMcpService extends BaseService {
             buildChartConfig: this.buildChartConfig.bind(this),
         };
         registerAllTools(ctx);
+        registerAllPrompts(this.mcpServer);
     }
 }

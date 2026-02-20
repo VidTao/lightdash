@@ -1,0 +1,56 @@
+-- @block_type: explore
+-- @model_type: table
+-- Ads model from bratrax-without-flattening.production_tables.ads
+{{ config(
+    materialized = 'view',
+    alias = 'ads_view'
+) }}
+
+SELECT
+    client_id,
+    platform,
+    channel,
+    channel_category,
+    account_id,
+    campaign_id,
+    adset_id,
+    ad_id,
+    campaign_name,
+    adset_name,
+    ad_name,
+    account_name,
+    campaign_type,
+    campaign_status,
+    campaign_objective,
+    optimization_goal,
+    buying_type,
+    ad_type,
+    device_type,
+    impressions,
+    clicks,
+    video_views,
+    engagements,
+    conversions,
+    conversions_value,
+    sales,
+    cost,
+    currency,
+    cost_per_click,
+    cost_per_conversion,
+    cost_per_mille,
+    ctr,
+    conversion_rate,
+    recipients,
+    opens,
+    bounced,
+    failed,
+    unsubscribes,
+    send_channel,
+    open_rate,
+    bounce_rate,
+    unsubscribe_rate,
+    event_date,
+    processed_at,
+    last_processed_at,
+    ads_processed_at
+FROM {{ source('production_tables_no_flat', 'ads') }} 

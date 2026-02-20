@@ -136,6 +136,37 @@ export class ProjectParametersModel {
         return parameter;
     }
 
+    async upsert(
+        projectUuid: string,
+        name: string,
+        config: Record<string, unknown>,
+    ) {
+        const existing = await this.database(ProjectParametersTableName)
+            .select('*')
+            .where('project_uuid', projectUuid)
+            .where('name', name)
+            .first();
+
+        if (existing) {
+            await this.database(ProjectParametersTableName)
+                .where('project_uuid', projectUuid)
+                .where('name', name)
+                .update({ config: JSON.stringify(config) });
+        } else {
+            await this.database(ProjectParametersTableName).insert({
+                project_uuid: projectUuid,
+                name,
+                config: JSON.stringify(config),
+            });
+        }
+
+        return this.database(ProjectParametersTableName)
+            .select('*')
+            .where('project_uuid', projectUuid)
+            .where('name', name)
+            .first();
+    }
+
     async replace(
         projectUuid: string,
         parameters: Required<LightdashProjectConfig>['parameters'],

@@ -3,7 +3,8 @@ name: bratrax
 version: 1.0.0
 profile: bratrax
 model-paths:
-  - models
+  - models/2
+  - models/27
 analysis-paths:
   - analyses
 test-paths:
@@ -19,6 +20,5 @@ clean-targets:
   - dbt_packages
 models:
   bratrax:
-    example:
-      +materialized: view
+    +materialized: view
 target-path: target

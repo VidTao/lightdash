@@ -11,7 +11,6 @@ import {
     LightdashError,
     MissingConfigError,
     ApiKeyAccount,
-    OauthAccount,
     ServiceAcctAccount,
     UserAttributeValueMap,
 } from '@lightdash/common';
@@ -70,60 +69,20 @@ function extractUserAttributesFromHeader(
     }
 }
 
-/*
-MCP servers MUST use the HTTP header WWW-Authenticate when returning a 401 Unauthorized to indicate
-the location of the resource server metadata URL as described in RFC9728 Section 5.1 "WWW-Authenticate Response".
-https://www.rfc-editor.org/rfc/rfc9728#section-5.1
-*/
-const returnHeaderIfUnauthenticated = (
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction,
-) => {
-    if (req.account?.isAuthenticated()) {
-        next();
-    } else {
-        res.set('WWW-Authenticate', 'ApiKey');
-        res.status(401).json({ error: 'Unauthorized' });
-    }
-};
-
-// Only these MCP methods access user data and need authentication.
-// Everything else (initialize, notifications/*, tools/list, resources/list,
-// prompts/list, ping, etc.) is protocol-level and can proceed without auth.
-const METHODS_REQUIRING_AUTH = new Set([
-    'tools/call',
-    'resources/read',
-    'resources/subscribe',
-]);
-
-const conditionalAuth = (
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction,
-) => {
-    if (req.method === 'GET') {
-        return next();
-    }
-
-    if (req.method === 'POST') {
-        const method = req.body?.method;
-        if (!method || !METHODS_REQUIRING_AUTH.has(method)) {
-            return next();
-        }
-    }
-
-    return returnHeaderIfUnauthenticated(req, res, next);
-};
-
 // MCP endpoint - supports Streamable HTTP
+// Auth is NOT enforced at the HTTP middleware level. Instead, the
+// allowApiKeyAuthentication middleware populates req.user/req.account when
+// a valid ApiKey header is present. Tool handlers that need auth call
+// resolveAuthContext() which returns a JSON-RPC error (not HTTP 401) when
+// auth is missing — Claude Code handles this gracefully without triggering
+// its OAuth re-authorization flow.
 // Keep the MCP router as raw Express because:
 // - MCP protocol requirements don't align with REST/TSOA patterns
 // - We need full control over HTTP streaming and headers
 // - It follows the same pattern as other protocol-specific endpoints (OAuth)
 bratraxMcpRouter.all(
     '/',
-    // Attempt API key authentication if header present
+    // Attempt API key authentication if header present (does NOT reject if missing)
     (req, res, next) => {
         if (req.headers.authorization?.startsWith('ApiKey ')) {
             allowApiKeyAuthentication(req, res, next);
@@ -131,8 +90,6 @@ bratraxMcpRouter.all(
             next();
         }
     },
-    // Block unauthenticated requests for tool calls; allow protocol messages through
-    conditionalAuth,
     async (req, res) => {
         try {
             const mcpService = getMcpService(req);
