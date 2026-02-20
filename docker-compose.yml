@@ -106,6 +106,7 @@ services:
       # NEW: Global GitHub installation (shared across all orgs)
       - GITHUB_INSTALLATION_ID=${GITHUB_INSTALLATION_ID}  # Add this
       - GITHUB_SHARED_MODE=${GITHUB_SHARED_MODE:-true}  # Flag to enable shared mode
+      - BRATRAX_API_URL=${BRATRAX_API_URL}
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
       - "./credentials/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
