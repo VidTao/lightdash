@@ -26,6 +26,33 @@ export function safeParseCatalogJson(raw: unknown): object | null {
     return null;
 }
 
+/**
+ * Build a source_key → raw catalog JSON map from DB rows.
+ * Project-specific rows override global rows for the same source_key.
+ */
+export function buildCatalogMap(
+    rows: ReadonlyArray<{
+        project_uuid: string | null;
+        source_key: string;
+        catalog_json: unknown;
+    }>,
+): Record<string, object> {
+    const globalRows = rows.filter(
+        (r) => r.project_uuid === null || r.project_uuid === undefined,
+    );
+    const projectRows = rows.filter(
+        (r) => r.project_uuid !== null && r.project_uuid !== undefined,
+    );
+    const catalogs: Record<string, object> = {};
+    for (const row of [...globalRows, ...projectRows]) {
+        const json = safeParseCatalogJson(row.catalog_json);
+        if (json) {
+            catalogs[row.source_key] = json;
+        }
+    }
+    return catalogs;
+}
+
 // ─── Singer to BigQuery type map ───
 
 const SINGER_TO_BQ: Record<string, string> = {

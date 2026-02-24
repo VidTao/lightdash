@@ -1,0 +1,1315 @@
+version: 2
+models:
+- name: dim_hosts
+  description: host object
+  columns:
+  - name: host_id
+    description: host host_id
+    meta:
+      metrics:
+        host_count:
+          type: count
+  - name: client_id
+    description: host client_id
+  - name: email
+    description: host email
+  - name: display_name
+    description: host display_name
+  - name: registration_date
+    description: host registration_date
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: country_of_residence
+    description: host country_of_residence
+  - name: opp_verification_status
+    description: host opp_verification_status
+  - name: bank_account_verified
+    description: host bank_account_verified
+  - name: commission_rate
+    description: host commission_rate
+    meta:
+      metrics:
+        total_commission_rate:
+          type: sum
+        avg_commission_rate:
+          type: average
+  - name: is_active
+    description: host is_active
+  - name: total_listings_count
+    description: host total_listings_count
+    meta:
+      metrics:
+        total_total_listings_count:
+          type: sum
+        avg_total_listings_count:
+          type: average
+  - name: locale
+    description: host locale
+  - name: vat_rate
+    description: host vat_rate
+    meta:
+      metrics:
+        total_vat_rate:
+          type: sum
+        avg_vat_rate:
+          type: average
+  meta:
+    sql_where: dim_hosts.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_listings
+        sql_on: ${dim_hosts.host_id} = ${dim_listings.host_id}
+      - join: dim_bookings
+        sql_on: ${dim_hosts.host_id} = ${dim_bookings.host_id}
+      - join: dim_payouts
+        sql_on: ${dim_hosts.host_id} = ${dim_payouts.host_id}
+- name: dim_guests
+  description: guest object
+  columns:
+  - name: guest_id
+    description: guest guest_id
+    meta:
+      metrics:
+        guest_count:
+          type: count
+  - name: client_id
+    description: guest client_id
+  - name: email
+    description: guest email
+  - name: display_name
+    description: guest display_name
+  - name: has_mymicazu_account
+    description: guest has_mymicazu_account
+  - name: registration_date
+    description: guest registration_date
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: locale
+    description: guest locale
+  - name: country
+    description: guest country
+  - name: total_bookings_count
+    description: guest total_bookings_count
+    meta:
+      metrics:
+        total_total_bookings_count:
+          type: sum
+        avg_total_bookings_count:
+          type: average
+  - name: first_booking_date
+    description: guest first_booking_date
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: is_repeat_guest
+    description: guest is_repeat_guest
+  - name: lifetime_spend
+    description: guest lifetime_spend
+    meta:
+      metrics:
+        total_lifetime_spend:
+          type: sum
+        avg_lifetime_spend:
+          type: average
+  meta:
+    sql_where: dim_guests.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_booking_requests
+        sql_on: ${dim_guests.guest_id} = ${dim_booking_requests.guest_id}
+      - join: dim_bookings
+        sql_on: ${dim_guests.guest_id} = ${dim_bookings.guest_id}
+      - join: dim_reviews
+        sql_on: ${dim_guests.guest_id} = ${dim_reviews.guest_id}
+- name: dim_listings
+  description: listing object
+  columns:
+  - name: listing_id
+    description: listing listing_id
+  - name: client_id
+    description: listing client_id
+  - name: host_id
+    description: listing host_id
+  - name: destination_id
+    description: listing destination_id
+  - name: title
+    description: listing title
+  - name: country
+    description: listing country
+  - name: region
+    description: listing region
+  - name: city
+    description: listing city
+  - name: property_type
+    description: listing property_type
+  - name: max_guests
+    description: listing max_guests
+    meta:
+      metrics:
+        total_max_guests:
+          type: sum
+        avg_max_guests:
+          type: average
+  - name: bedrooms
+    description: listing bedrooms
+    meta:
+      metrics:
+        total_bedrooms:
+          type: sum
+        avg_bedrooms:
+          type: average
+  - name: base_nightly_rate
+    description: listing base_nightly_rate
+    meta:
+      metrics:
+        total_base_nightly_rate:
+          type: sum
+        avg_base_nightly_rate:
+          type: average
+  - name: currency
+    description: listing currency
+  - name: is_active
+    description: listing is_active
+  - name: created_at
+    description: listing created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: average_review_score
+    description: listing average_review_score
+    meta:
+      metrics:
+        total_average_review_score:
+          type: sum
+        avg_average_review_score:
+          type: average
+  - name: total_reviews_count
+    description: listing total_reviews_count
+    meta:
+      metrics:
+        total_total_reviews_count:
+          type: sum
+        avg_total_reviews_count:
+          type: average
+  - name: total_bookings_count
+    description: listing total_bookings_count
+    meta:
+      metrics:
+        total_total_bookings_count:
+          type: sum
+        avg_total_bookings_count:
+          type: average
+  - name: cancellation_policy
+    description: listing cancellation_policy
+  meta:
+    sql_where: dim_listings.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_destinations
+        sql_on: ${dim_listings.destination_id} = ${dim_destinations.destination_id}
+      - join: dim_booking_requests
+        sql_on: ${dim_listings.listing_id} = ${dim_booking_requests.listing_id}
+      - join: dim_bookings
+        sql_on: ${dim_listings.listing_id} = ${dim_bookings.listing_id}
+      - join: dim_reviews
+        sql_on: ${dim_listings.listing_id} = ${dim_reviews.listing_id}
+      - join: dim_availability_calendars
+        sql_on: ${dim_listings.listing_id} = ${dim_availability_calendars.listing_id}
+- name: dim_booking_requests
+  description: booking_request object
+  columns:
+  - name: booking_request_id
+    description: booking_request booking_request_id
+    meta:
+      metrics:
+        request_count:
+          type: count
+  - name: client_id
+    description: booking_request client_id
+  - name: listing_id
+    description: booking_request listing_id
+  - name: guest_id
+    description: booking_request guest_id
+  - name: host_id
+    description: booking_request host_id
+  - name: check_in_date
+    description: booking_request check_in_date
+    meta:
+      dimension:
+        type: date
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+        - YEAR
+  - name: check_out_date
+    description: booking_request check_out_date
+    meta:
+      dimension:
+        type: date
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+        - YEAR
+  - name: guests_count
+    description: booking_request guests_count
+    meta:
+      metrics:
+        total_guests_count:
+          type: sum
+        avg_guests_count:
+          type: average
+  - name: request_status
+    description: booking_request request_status
+  - name: created_at
+    description: booking_request created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: responded_at
+    description: booking_request responded_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: response_time_minutes
+    description: booking_request response_time_minutes
+    meta:
+      metrics:
+        total_response_time_minutes:
+          type: sum
+        avg_response_time_minutes:
+          type: average
+  meta:
+    sql_where: dim_booking_requests.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_bookings
+        sql_on: ${dim_booking_requests.booking_request_id} = ${dim_bookings.booking_request_id}
+      - join: dim_listings
+        sql_on: ${dim_booking_requests.listing_id} = ${dim_listings.listing_id}
+      - join: dim_guests
+        sql_on: ${dim_booking_requests.guest_id} = ${dim_guests.guest_id}
+      - join: dim_hosts
+        sql_on: ${dim_booking_requests.host_id} = ${dim_hosts.host_id}
+- name: dim_bookings
+  description: booking object
+  columns:
+  - name: booking_id
+    description: booking booking_id
+    meta:
+      metrics:
+        booking_count:
+          type: count
+  - name: client_id
+    description: booking client_id
+  - name: booking_request_id
+    description: booking booking_request_id
+  - name: listing_id
+    description: booking listing_id
+  - name: host_id
+    description: booking host_id
+  - name: guest_id
+    description: booking guest_id
+  - name: check_in_date
+    description: booking check_in_date
+    meta:
+      dimension:
+        type: date
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+        - YEAR
+  - name: check_out_date
+    description: booking check_out_date
+    meta:
+      dimension:
+        type: date
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+        - YEAR
+  - name: nights
+    description: booking nights
+    meta:
+      metrics:
+        total_nights:
+          type: sum
+        avg_nights:
+          type: average
+  - name: guests_count
+    description: booking guests_count
+    meta:
+      metrics:
+        total_guests_count:
+          type: sum
+        avg_guests_count:
+          type: average
+  - name: base_rental_sum
+    description: booking base_rental_sum
+    meta:
+      metrics:
+        total_base_rental_sum:
+          type: sum
+        avg_base_rental_sum:
+          type: average
+  - name: mandatory_extras_sum
+    description: booking mandatory_extras_sum
+    meta:
+      metrics:
+        total_mandatory_extras_sum:
+          type: sum
+        avg_mandatory_extras_sum:
+          type: average
+  - name: total_rental_sum
+    description: booking total_rental_sum
+    meta:
+      metrics:
+        total_total_rental_sum:
+          type: sum
+        avg_total_rental_sum:
+          type: average
+  - name: tourist_tax
+    description: booking tourist_tax
+    meta:
+      metrics:
+        total_tourist_tax:
+          type: sum
+        avg_tourist_tax:
+          type: average
+  - name: security_deposit
+    description: booking security_deposit
+    meta:
+      metrics:
+        total_security_deposit:
+          type: sum
+        avg_security_deposit:
+          type: average
+  - name: total_guest_payment
+    description: booking total_guest_payment
+    meta:
+      metrics:
+        total_total_guest_payment:
+          type: sum
+        avg_total_guest_payment:
+          type: average
+  - name: commission_amount
+    description: booking commission_amount
+    meta:
+      metrics:
+        total_commission_amount:
+          type: sum
+        avg_commission_amount:
+          type: average
+  - name: commission_vat
+    description: booking commission_vat
+    meta:
+      metrics:
+        total_commission_vat:
+          type: sum
+        avg_commission_vat:
+          type: average
+  - name: host_payout_amount
+    description: booking host_payout_amount
+    meta:
+      metrics:
+        total_host_payout_amount:
+          type: sum
+        avg_host_payout_amount:
+          type: average
+  - name: booking_status
+    description: booking booking_status
+  - name: created_at
+    description: booking created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: currency
+    description: booking currency
+  meta:
+    sql_where: dim_bookings.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_payments
+        sql_on: ${dim_bookings.booking_id} = ${dim_payments.booking_id}
+      - join: dim_reviews
+        sql_on: ${dim_bookings.booking_id} = ${dim_reviews.booking_id}
+      - join: dim_disputes
+        sql_on: ${dim_bookings.booking_id} = ${dim_disputes.booking_id}
+      - join: dim_listings
+        sql_on: ${dim_bookings.listing_id} = ${dim_listings.listing_id}
+      - join: dim_guests
+        sql_on: ${dim_bookings.guest_id} = ${dim_guests.guest_id}
+      - join: dim_hosts
+        sql_on: ${dim_bookings.host_id} = ${dim_hosts.host_id}
+      - join: dim_commissions
+        sql_on: ${dim_bookings.booking_id} = ${dim_commissions.booking_id}
+      - join: dim_booking_requests
+        sql_on: ${dim_bookings.booking_request_id} = ${dim_booking_requests.booking_request_id}
+      - join: dim_sessions
+        sql_on: ${dim_bookings.guest_id} = ${dim_sessions.visitor_id}
+- name: dim_payments
+  description: payment object
+  columns:
+  - name: payment_id
+    description: payment payment_id
+    meta:
+      metrics:
+        payment_count:
+          type: count
+  - name: client_id
+    description: payment client_id
+  - name: booking_id
+    description: payment booking_id
+  - name: host_id
+    description: payment host_id
+  - name: guest_id
+    description: payment guest_id
+  - name: payment_type
+    description: payment payment_type
+  - name: amount
+    description: payment amount
+    meta:
+      metrics:
+        total_amount:
+          type: sum
+        avg_amount:
+          type: average
+  - name: currency
+    description: payment currency
+  - name: payment_status
+    description: payment payment_status
+  - name: payment_method
+    description: payment payment_method
+  - name: created_at
+    description: payment created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: completed_at
+    description: payment completed_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: is_down_payment
+    description: payment is_down_payment
+  - name: escrow_status
+    description: payment escrow_status
+  - name: refund_amount
+    description: payment refund_amount
+    meta:
+      metrics:
+        total_refund_amount:
+          type: sum
+        avg_refund_amount:
+          type: average
+  meta:
+    sql_where: dim_payments.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_commissions
+        sql_on: ${dim_payments.payment_id} = ${dim_commissions.payment_id}
+      - join: dim_payouts
+        sql_on: ${dim_payments.payment_id} = ${dim_payouts.payment_id}
+- name: dim_commissions
+  description: commission object
+  columns:
+  - name: commission_id
+    description: commission commission_id
+  - name: client_id
+    description: commission client_id
+  - name: booking_id
+    description: commission booking_id
+  - name: payment_id
+    description: commission payment_id
+  - name: host_id
+    description: commission host_id
+  - name: commission_rate
+    description: commission commission_rate
+    meta:
+      metrics:
+        total_commission_rate:
+          type: sum
+        avg_commission_rate:
+          type: average
+  - name: total_rental_sum
+    description: commission total_rental_sum
+    meta:
+      metrics:
+        total_total_rental_sum:
+          type: sum
+        avg_total_rental_sum:
+          type: average
+  - name: commission_amount
+    description: commission commission_amount
+    meta:
+      metrics:
+        total_commission_amount:
+          type: sum
+        avg_commission_amount:
+          type: average
+  - name: commission_vat
+    description: commission commission_vat
+    meta:
+      metrics:
+        total_commission_vat:
+          type: sum
+        avg_commission_vat:
+          type: average
+  - name: net_commission
+    description: commission net_commission
+    meta:
+      metrics:
+        total_net_commission:
+          type: sum
+        avg_net_commission:
+          type: average
+  - name: created_at
+    description: commission created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  meta:
+    sql_where: dim_commissions.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_hosts
+        sql_on: ${dim_commissions.host_id} = ${dim_hosts.host_id}
+      - join: dim_bookings
+        sql_on: ${dim_commissions.booking_id} = ${dim_bookings.booking_id}
+- name: dim_payouts
+  description: payout object
+  columns:
+  - name: payout_id
+    description: payout payout_id
+  - name: client_id
+    description: payout client_id
+  - name: host_id
+    description: payout host_id
+  - name: booking_id
+    description: payout booking_id
+  - name: payment_id
+    description: payout payment_id
+  - name: payout_amount
+    description: payout payout_amount
+    meta:
+      metrics:
+        total_payout_amount:
+          type: sum
+        avg_payout_amount:
+          type: average
+  - name: currency
+    description: payout currency
+  - name: payout_status
+    description: payout payout_status
+  - name: created_at
+    description: payout created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: completed_at
+    description: payout completed_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: is_immediate
+    description: payout is_immediate
+  meta:
+    sql_where: dim_payouts.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_bookings
+        sql_on: ${dim_payouts.booking_id} = ${dim_bookings.booking_id}
+      - join: dim_hosts
+        sql_on: ${dim_payouts.host_id} = ${dim_hosts.host_id}
+- name: dim_reviews
+  description: review object
+  columns:
+  - name: review_id
+    description: review review_id
+  - name: client_id
+    description: review client_id
+  - name: booking_id
+    description: review booking_id
+  - name: listing_id
+    description: review listing_id
+  - name: guest_id
+    description: review guest_id
+  - name: host_id
+    description: review host_id
+  - name: overall_score
+    description: review overall_score
+    meta:
+      metrics:
+        total_overall_score:
+          type: sum
+        avg_overall_score:
+          type: average
+  - name: cleanliness_score
+    description: review cleanliness_score
+    meta:
+      metrics:
+        total_cleanliness_score:
+          type: sum
+        avg_cleanliness_score:
+          type: average
+  - name: communication_score
+    description: review communication_score
+    meta:
+      metrics:
+        total_communication_score:
+          type: sum
+        avg_communication_score:
+          type: average
+  - name: location_score
+    description: review location_score
+    meta:
+      metrics:
+        total_location_score:
+          type: sum
+        avg_location_score:
+          type: average
+  - name: value_score
+    description: review value_score
+    meta:
+      metrics:
+        total_value_score:
+          type: sum
+        avg_value_score:
+          type: average
+  - name: created_at
+    description: review created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: objection_status
+    description: review objection_status
+  meta:
+    sql_where: dim_reviews.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_listings
+        sql_on: ${dim_reviews.listing_id} = ${dim_listings.listing_id}
+      - join: dim_guests
+        sql_on: ${dim_reviews.guest_id} = ${dim_guests.guest_id}
+      - join: dim_hosts
+        sql_on: ${dim_reviews.host_id} = ${dim_hosts.host_id}
+      - join: dim_bookings
+        sql_on: ${dim_reviews.booking_id} = ${dim_bookings.booking_id}
+- name: dim_messages
+  description: message object
+  columns:
+  - name: message_id
+    description: message message_id
+  - name: client_id
+    description: message client_id
+  - name: booking_request_id
+    description: message booking_request_id
+  - name: sender_type
+    description: message sender_type
+  - name: sender_id
+    description: message sender_id
+  - name: recipient_id
+    description: message recipient_id
+  - name: content_length
+    description: message content_length
+    meta:
+      metrics:
+        total_content_length:
+          type: sum
+        avg_content_length:
+          type: average
+  - name: has_attachment
+    description: message has_attachment
+  - name: created_at
+    description: message created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  meta:
+    sql_where: dim_messages.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_booking_requests
+        sql_on: ${dim_messages.booking_request_id} = ${dim_booking_requests.booking_request_id}
+- name: dim_disputes
+  description: dispute object
+  columns:
+  - name: dispute_id
+    description: dispute dispute_id
+    meta:
+      metrics:
+        dispute_count:
+          type: count
+  - name: client_id
+    description: dispute client_id
+  - name: booking_id
+    description: dispute booking_id
+  - name: guest_id
+    description: dispute guest_id
+  - name: host_id
+    description: dispute host_id
+  - name: dispute_type
+    description: dispute dispute_type
+  - name: dispute_status
+    description: dispute dispute_status
+  - name: amount_disputed
+    description: dispute amount_disputed
+    meta:
+      metrics:
+        total_amount_disputed:
+          type: sum
+        avg_amount_disputed:
+          type: average
+  - name: amount_resolved
+    description: dispute amount_resolved
+    meta:
+      metrics:
+        total_amount_resolved:
+          type: sum
+        avg_amount_resolved:
+          type: average
+  - name: created_at
+    description: dispute created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: resolved_at
+    description: dispute resolved_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: resolution_type
+    description: dispute resolution_type
+  meta:
+    sql_where: dim_disputes.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_guests
+        sql_on: ${dim_disputes.guest_id} = ${dim_guests.guest_id}
+      - join: dim_hosts
+        sql_on: ${dim_disputes.host_id} = ${dim_hosts.host_id}
+- name: dim_availability_calendars
+  description: availability_calendar object
+  columns:
+  - name: calendar_id
+    description: availability_calendar calendar_id
+  - name: client_id
+    description: availability_calendar client_id
+  - name: listing_id
+    description: availability_calendar listing_id
+  - name: host_id
+    description: availability_calendar host_id
+  - name: date
+    description: availability_calendar date
+    meta:
+      dimension:
+        type: date
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+        - YEAR
+  - name: is_available
+    description: availability_calendar is_available
+  - name: price_override
+    description: availability_calendar price_override
+    meta:
+      metrics:
+        total_price_override:
+          type: sum
+        avg_price_override:
+          type: average
+  - name: ical_sync_enabled
+    description: availability_calendar ical_sync_enabled
+  - name: last_synced_at
+    description: availability_calendar last_synced_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  meta:
+    sql_where: dim_availability_calendars.client_id = '{{ var("client_id") }}'
+- name: dim_property_sales
+  description: property_sale object
+  columns:
+  - name: property_sale_id
+    description: property_sale property_sale_id
+  - name: client_id
+    description: property_sale client_id
+  - name: listing_id
+    description: property_sale listing_id
+  - name: host_id
+    description: property_sale host_id
+  - name: asking_price
+    description: property_sale asking_price
+    meta:
+      metrics:
+        total_asking_price:
+          type: sum
+        avg_asking_price:
+          type: average
+  - name: currency
+    description: property_sale currency
+  - name: sale_status
+    description: property_sale sale_status
+  - name: created_at
+    description: property_sale created_at
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  meta:
+    sql_where: dim_property_sales.client_id = '{{ var("client_id") }}'
+- name: dim_destinations
+  description: destination object
+  columns:
+  - name: destination_id
+    description: destination destination_id
+  - name: client_id
+    description: destination client_id
+  - name: country
+    description: destination country
+  - name: country_name
+    description: destination country_name
+  - name: region
+    description: destination region
+  - name: city
+    description: destination city
+  - name: latitude
+    description: destination latitude
+    meta:
+      metrics:
+        total_latitude:
+          type: sum
+        avg_latitude:
+          type: average
+  - name: longitude
+    description: destination longitude
+    meta:
+      metrics:
+        total_longitude:
+          type: sum
+        avg_longitude:
+          type: average
+  - name: listings_count
+    description: destination listings_count
+    meta:
+      metrics:
+        total_listings_count:
+          type: sum
+        avg_listings_count:
+          type: average
+  - name: avg_nightly_rate
+    description: destination avg_nightly_rate
+    meta:
+      metrics:
+        total_avg_nightly_rate:
+          type: sum
+        avg_avg_nightly_rate:
+          type: average
+  - name: is_featured
+    description: destination is_featured
+  - name: slug
+    description: destination slug
+  meta:
+    sql_where: dim_destinations.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_listings
+        sql_on: ${dim_destinations.destination_id} = ${dim_listings.destination_id}
+- name: dim_sessions
+  description: Flattened visitor sessions from activity_stream with UTM attribution data
+  columns:
+  - name: session_id
+    description: Unique session identifier (activity_id)
+    meta:
+      metrics:
+        session_count:
+          type: count
+  - name: session_started_at
+    description: Session start timestamp
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: visitor_id
+    description: Customer who started the session
+  - name: client_id
+    description: Client identifier
+  - name: anonymous_id
+    description: Anonymous visitor identifier
+  - name: utm_source
+    description: UTM source parameter
+  - name: utm_medium
+    description: UTM medium parameter
+  - name: utm_campaign
+    description: UTM campaign parameter
+  - name: utm_content
+    description: UTM content parameter
+  - name: utm_term
+    description: UTM term parameter
+  - name: referrer
+    description: HTTP referrer URL
+  - name: landing_page
+    description: First page visited in the session
+  - name: device_type
+    description: Device type (desktop, mobile, tablet)
+  - name: locale_site
+    description: Locale site of the visitor
+  meta:
+    sql_where: dim_sessions.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_bookings
+        sql_on: ${dim_sessions.visitor_id} = ${dim_bookings.guest_id}
+      - join: dim_guests
+        sql_on: ${dim_sessions.visitor_id} = ${dim_guests.guest_id}
+- name: fact_attribution
+  description: Session-to-booking attribution with first-touch, last-touch, and linear weights
+  columns:
+  - name: session_id
+    description: Session identifier
+  - name: visitor_id
+    description: Visitor who made the booking
+  - name: client_id
+    description: Client identifier
+  - name: session_started_at
+    description: When the session started
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: booking_id
+    description: Attributed booking identifier
+  - name: booking_created_at
+    description: When the booking was created
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: utm_source
+    description: UTM source of the session
+  - name: utm_medium
+    description: UTM medium of the session
+  - name: utm_campaign
+    description: UTM campaign of the session
+  - name: referrer
+    description: Referrer URL of the session
+  - name: device_type
+    description: Device type of the session
+  - name: mapped_channel
+    description: Normalized channel name for ROAS (facebook_ads, google_ads, email, organic)
+  - name: booking_revenue
+    description: Total guest payment for the booking
+    meta:
+      metrics:
+        total_booking_revenue:
+          type: sum
+  - name: booking_commission
+    description: Commission amount for the booking
+    meta:
+      metrics:
+        total_booking_commission:
+          type: sum
+  - name: first_touch_weight
+    description: First-touch attribution weight (1.0 or 0.0)
+  - name: last_touch_weight
+    description: Last-touch attribution weight (1.0 or 0.0)
+  - name: linear_weight
+    description: Linear attribution weight (1/total_sessions)
+  - name: first_touch_revenue
+    description: Revenue attributed via first-touch model
+    meta:
+      metrics:
+        total_first_touch_revenue:
+          type: sum
+  - name: last_touch_revenue
+    description: Revenue attributed via last-touch model
+    meta:
+      metrics:
+        total_last_touch_revenue:
+          type: sum
+  - name: linear_revenue
+    description: Revenue attributed via linear model
+    meta:
+      metrics:
+        total_linear_revenue:
+          type: sum
+  - name: first_touch_commission
+    description: Commission attributed via first-touch model
+    meta:
+      metrics:
+        total_first_touch_commission:
+          type: sum
+  - name: last_touch_commission
+    description: Commission attributed via last-touch model
+    meta:
+      metrics:
+        total_last_touch_commission:
+          type: sum
+  - name: linear_commission
+    description: Commission attributed via linear model
+    meta:
+      metrics:
+        total_linear_commission:
+          type: sum
+  meta:
+    sql_where: fact_attribution.client_id = '{{ var("client_id") }}'
+- name: fact_funnel
+  description: Per-visitor funnel progression with first-touch channel attribution
+  columns:
+  - name: visitor_id
+    description: Unique visitor identifier
+    meta:
+      metrics:
+        visitor_count:
+          type: count_distinct
+  - name: client_id
+    description: Client identifier
+  - name: first_touch_source
+    description: UTM source of the first session
+  - name: first_touch_medium
+    description: UTM medium of the first session
+  - name: first_touch_referrer
+    description: Referrer of the first session
+  - name: first_touch_device
+    description: Device type of the first session
+  - name: first_session_at
+    description: Timestamp of the first session
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: created_at
+    description: Timestamp of the first session (alias for dashboard date filters)
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: reached_session
+    description: Whether visitor reached session stage (1/0)
+    meta:
+      metrics:
+        total_reached_session:
+          type: sum
+  - name: reached_search
+    description: Whether visitor reached search stage (1/0)
+    meta:
+      metrics:
+        total_reached_search:
+          type: sum
+  - name: reached_engagement
+    description: Whether visitor reached engagement stage (1/0)
+    meta:
+      metrics:
+        total_reached_engagement:
+          type: sum
+  - name: reached_request
+    description: Whether visitor reached request stage (1/0)
+    meta:
+      metrics:
+        total_reached_request:
+          type: sum
+  - name: reached_booking
+    description: Whether visitor reached booking stage (1/0)
+    meta:
+      metrics:
+        total_reached_booking:
+          type: sum
+  - name: reached_payment
+    description: Whether visitor reached payment stage (1/0)
+    meta:
+      metrics:
+        total_reached_payment:
+          type: sum
+  - name: booking_count
+    description: Number of bookings created by this visitor
+    meta:
+      metrics:
+        total_booking_count:
+          type: sum
+  - name: total_payment_amount
+    description: Total payment amount by this visitor
+    meta:
+      metrics:
+        total_total_payment_amount:
+          type: sum
+  - name: furthest_stage
+    description: Furthest funnel stage reached (1_Session through 6_Payment)
+  meta:
+    sql_where: fact_funnel.client_id = '{{ var("client_id") }}'
+- name: fact_channel_roas
+  description: Marketing ROI Intelligence - per-channel-per-month spend, attributed revenue, ROAS, CPA, CAC, LTV
+  columns:
+  - name: channel
+    description: Marketing channel (facebook_ads, google_ads, email, organic)
+  - name: campaign_name
+    description: Campaign name within the channel (e.g. "Summer Villas NL", "Retarget Guests")
+  - name: created_at
+    description: Month of the spend/attribution activity
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+  - name: client_id
+    description: Client identifier
+  - name: total_spend
+    description: Total ad spend for this channel
+    meta:
+      metrics:
+        total_total_spend:
+          type: sum
+  - name: first_touch_revenue
+    description: Revenue attributed via first-touch model
+    meta:
+      metrics:
+        total_first_touch_revenue:
+          type: sum
+  - name: last_touch_revenue
+    description: Revenue attributed via last-touch model
+    meta:
+      metrics:
+        total_last_touch_revenue:
+          type: sum
+  - name: linear_revenue
+    description: Revenue attributed via linear model
+    meta:
+      metrics:
+        total_linear_revenue:
+          type: sum
+  - name: customers_acquired
+    description: Distinct customers attributed to this channel
+    meta:
+      metrics:
+        total_customers_acquired:
+          type: sum
+  - name: bookings_attributed
+    description: Distinct bookings attributed to this channel
+    meta:
+      metrics:
+        total_bookings_attributed:
+          type: sum
+  - name: roas_linear
+    description: Return on ad spend (linear model) - greater than 1.0 means profitable
+    meta:
+      metrics:
+        avg_roas_linear:
+          type: average
+  - name: roas_first_touch
+    description: Return on ad spend (first-touch model)
+    meta:
+      metrics:
+        avg_roas_first_touch:
+          type: average
+  - name: roas_last_touch
+    description: Return on ad spend (last-touch model)
+    meta:
+      metrics:
+        avg_roas_last_touch:
+          type: average
+  - name: cost_per_booking
+    description: Cost per booking acquisition (spend / bookings)
+    meta:
+      metrics:
+        avg_cost_per_booking:
+          type: average
+  - name: cac
+    description: Customer acquisition cost (spend / customers)
+    meta:
+      metrics:
+        avg_cac:
+          type: average
+  - name: ltv
+    description: Lifetime value (linear revenue / customers)
+    meta:
+      metrics:
+        avg_ltv:
+          type: average
+  - name: ltv_cac_ratio
+    description: LTV to CAC ratio - greater than 3.0 is healthy
+    meta:
+      metrics:
+        avg_ltv_cac_ratio:
+          type: average
+  meta:
+    sql_where: fact_channel_roas.client_id = '{{ var("client_id") }}'

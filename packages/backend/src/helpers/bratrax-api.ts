@@ -25,7 +25,9 @@ type CompilerYamlPayload = {
     tracking_plan: string;
 };
 
-export const validateYaml = async (payload: CompilerYamlPayload) => {
+export const validateYaml = async (
+    payload: CompilerYamlPayload & { catalogs?: Record<string, object> },
+) => {
     const response = await axios.post(`${COMPILER_API}/validate`, payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 30000,
@@ -33,7 +35,9 @@ export const validateYaml = async (payload: CompilerYamlPayload) => {
     return response.data;
 };
 
-export const compileYaml = async (payload: CompilerYamlPayload) => {
+export const compileYaml = async (
+    payload: CompilerYamlPayload & { catalogs?: Record<string, object> },
+) => {
     const response = await axios.post(`${COMPILER_API}/compile`, payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 60000,

@@ -20,6 +20,7 @@ import {
     validateYaml,
 } from '../helpers/bratrax-api';
 import {
+    buildCatalogMap,
     parseSingerCatalog,
     safeParseCatalogJson,
     searchParsedCatalogs,
@@ -318,22 +319,7 @@ bratraxRouter.post('/ontology/:projectUuid/drift', async (req, res, next) => {
         const catalogRows = await discoveryModel.getCatalogsForProject(
             req.params.projectUuid,
         );
-        const globalRows = catalogRows.filter(
-            (r) => r.project_uuid === null || r.project_uuid === undefined,
-        );
-        const projectRows = catalogRows.filter(
-            (r) => r.project_uuid !== null && r.project_uuid !== undefined,
-        );
-        const catalogs: Record<string, object> = {};
-        for (const row of [...globalRows, ...projectRows]) {
-            const json =
-                typeof row.catalog_json === 'string'
-                    ? safeParseCatalogJson(row.catalog_json)
-                    : row.catalog_json;
-            if (json) {
-                catalogs[row.source_key] = json;
-            }
-        }
+        const catalogs = buildCatalogMap(catalogRows);
 
         const result = await driftCheckYaml({
             config: files.config ?? '',

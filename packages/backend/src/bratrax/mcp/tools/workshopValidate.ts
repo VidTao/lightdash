@@ -1,7 +1,9 @@
 import {
+    getBratraxDiscoveryModel,
     getBratraxOntologyModel,
     validateYaml,
 } from '../../../helpers/bratrax-api';
+import { buildCatalogMap } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
@@ -17,26 +19,31 @@ export function registerWorkshopValidateTool(ctx: McpToolContext): void {
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;
-            ctx.trackToolCall(
-                pctx,
-                BratraxMcpToolName.WORKSHOP_VALIDATE,
-            );
+            ctx.trackToolCall(pctx, BratraxMcpToolName.WORKSHOP_VALIDATE);
             ctx.canAccessMcp(pctx);
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
                 const model = getBratraxOntologyModel(ctx.services);
                 const files = await model.getFiles(projectUuid);
-                const data = await validateYaml({
+
+                // Fetch DB-backed catalogs (includes webhook-introspected sources)
+                // Project-specific rows override global ones for the same source_key
+                const discoveryModel = getBratraxDiscoveryModel(ctx.services);
+                const catalogRows =
+                    await discoveryModel.getCatalogsForProject(projectUuid);
+                const catalogs = buildCatalogMap(catalogRows);
+
+                const data: unknown = await validateYaml({
                     config: files.config ?? '',
                     ontology: files.ontology ?? '',
                     sources: files.sources ?? '',
                     tracking_plan: files.tracking_plan ?? '',
+                    catalogs,
                 });
                 return ctx.textResult(JSON.stringify(data, null, 2));
             } catch (e: unknown) {
-                const msg =
-                    e instanceof Error ? e.message : 'Unknown error';
+                const msg = e instanceof Error ? e.message : 'Unknown error';
                 return {
                     content: [
                         {
