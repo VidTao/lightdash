@@ -65,10 +65,6 @@ models:
         meta:
           dimension:
             type: string
-      - name: deliver_to
-        meta:
-          dimension:
-            type: string
       - name: lead_email
         meta:
           dimension:
@@ -105,10 +101,6 @@ models:
         meta:
           dimension:
             type: string
-      - name: delivery_cap
-        meta:
-          dimension:
-            type: number
       - name: lead_request
         meta:
           dimension:
@@ -149,10 +141,6 @@ models:
         meta:
           dimension:
             type: boolean
-      - name: delivery_credit
-        meta:
-          dimension:
-            type: number
       - name: delivery_status
         meta:
           dimension:
@@ -161,10 +149,6 @@ models:
         meta:
           dimension:
             type: timestamp
-      - name: supplier_status
-        meta:
-          dimension:
-            type: string
       - name: delivery_request
         meta:
           dimension:
@@ -177,34 +161,14 @@ models:
         meta:
           dimension:
             type: boolean
-      - name: campaign_currency
-        meta:
-          dimension:
-            type: string
       - name: campaign_reference
         meta:
           dimension:
             type: string
-      - name: delivery_daily_cap
-        meta:
-          dimension:
-            type: number
-      - name: delivery_total_cap
-        meta:
-          dimension:
-            type: number
       - name: processed_at_final
         meta:
           dimension:
             type: timestamp
-      - name: delivery_hourly_cap
-        meta:
-          dimension:
-            type: number
-      - name: delivery_weekly_cap
-        meta:
-          dimension:
-            type: number
       - name: supplier_commission
         meta:
           dimension:
@@ -213,39 +177,8 @@ models:
         meta:
           dimension:
             type: string
-      - name: delivery_monthly_cap
-        meta:
-          dimension:
-            type: number
       - name: supplier_payout_type
         meta:
           dimension:
             type: string
-      - name: delivery_buyer_revenue
-        meta:
-          dimension:
-            type: number
-      - name: delivery_config_status
-        meta:
-          dimension:
-            type: string
-      - name: validation_record_type
-        meta:
-          dimension:
-            type: string
-      - name: campaign_delivery_model
-        meta:
-          dimension:
-            type: string
-      - name: distribution_record_type
-        meta:
-          dimension:
-            type: string
-      - name: validation_callback_type
-        meta:
-          dimension:
-            type: string
-      - name: distribution_callback_type
-        meta:
-          dimension:
-            type: string
+
