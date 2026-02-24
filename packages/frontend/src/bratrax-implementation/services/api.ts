@@ -645,6 +645,33 @@ export class ApiService {
         }
     };
 
+    getGA4AuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/ga4/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting GA4 auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateGA4TokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/ga4/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating GA4 tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,
