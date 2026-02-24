@@ -32,6 +32,7 @@ import ShopifyConnector from '../platforms/ShopifyConnector';
 import StripeConnector from '../platforms/StripeConnector';
 import TaboolaConnector from '../platforms/TaboolaConnector';
 import { TikTokAdsConnector } from '../platforms/TikTokAdsConnector';
+import { GA4Connector } from '../platforms/GA4Connector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -335,6 +336,13 @@ const Dashboard = () => {
                         <TikTokAdsConnector
                             adConnections={adConnections.TikTokAds || []}
                             platformConnection={platformConnections.TikTokAds}
+                            isLoading={adLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <GA4Connector
+                            adConnections={adConnections.GA4 || []}
+                            platformConnection={platformConnections.GA4}
                             isLoading={adLoading || platformLoading}
                         />
                     </Box>
