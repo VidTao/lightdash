@@ -104,7 +104,7 @@ services:
       - EMBEDDING_ENABLED=true
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
-      - "./dbt/bratrax/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
+      - "../../service-accounts/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
     ports:
       - "3000:3000"  # Expose Lightdash directly
     restart: unless-stopped

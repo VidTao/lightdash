@@ -109,7 +109,7 @@ services:
       - BRATRAX_API_URL=${BRATRAX_API_URL}
     volumes:
       - "${DBT_PROJECT_DIR:-./dbt}:/usr/app/dbt"
-      - "./credentials/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
+      - "../service-accounts/bratrax-78c5b6786fc2.json:/usr/app/bigquery-credentials.json"
       - "/data/postgres-ssl:/usr/app/ssl:ro"  # This mounts all certificates including postgres.crt
       - "./startup.sh:/usr/app/startup.sh:ro"
     ports:

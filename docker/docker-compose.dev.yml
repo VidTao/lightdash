@@ -203,7 +203,7 @@ services:
         - "../:/usr/app"
         - "../dbt/bratrax:/usr/app/dbt/bratrax"
         - "node_modules:/usr/app/node_modules/" # clears the node_modules directory so it doesn't sync (v.slow on MacOS)
-        - "../dbt/bratrax/bratrax-78c5b6786fc2.json:/usr/app/dbt/bratrax/bratrax-78c5b6786fc2.json"
+        - "../../service-accounts/bratrax-78c5b6786fc2.json:/usr/app/dbt/bratrax/bratrax-78c5b6786fc2.json"
       ports:
         - "8080:8080"
         - "9090:9090"
