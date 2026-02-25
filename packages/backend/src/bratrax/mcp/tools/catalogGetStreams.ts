@@ -37,6 +37,7 @@ export function registerCatalogGetStreamsTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const discoveryModel = getBratraxDiscoveryModel(ctx.services);
                 const row = await discoveryModel.getCatalog(projectUuid, tap);
 

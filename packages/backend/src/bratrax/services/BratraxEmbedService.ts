@@ -153,8 +153,8 @@ export class BratraxEmbedService extends BaseService {
                 encoded_secret: encodedSecret,
                 dashboard_uuids: '{}',
                 chart_uuids: '{}',
-                allow_all_dashboards: true,
-                allow_all_charts: true,
+                allow_all_dashboards: false,
+                allow_all_charts: false,
                 created_by: userUuid ?? null,
             })
             .onConflict('project_uuid')
@@ -178,6 +178,8 @@ export class BratraxEmbedService extends BaseService {
                 'embedding.project_uuid',
                 'embedding.encoded_secret',
                 'embedding.dashboard_uuids',
+                'embedding.allow_all_dashboards',
+                'embedding.allow_all_charts',
                 'embedding.created_at',
                 'embedding.created_by',
                 'users.user_uuid',
@@ -216,9 +218,9 @@ export class BratraxEmbedService extends BaseService {
             },
             encodedSecret: row.encoded_secret,
             dashboardUuids: row.dashboard_uuids ?? [],
-            allowAllDashboards: true, // JWT is our permission boundary
+            allowAllDashboards: row.allow_all_dashboards ?? false, // JWT is the primary permission boundary
             chartUuids: row.chart_uuids ?? [],
-            allowAllCharts: true, // JWT is our permission boundary
+            allowAllCharts: row.allow_all_charts ?? false, // JWT is the primary permission boundary
             createdAt: row.created_at,
             user: row.user_uuid
                 ? {

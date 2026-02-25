@@ -3,7 +3,14 @@ import type { BratraxOntologyModel } from '../models/BratraxOntologyModel';
 import type { ModelRepository } from '../models/ModelRepository';
 import type { ServiceRepository } from '../services/ServiceRepository';
 
-const BRATRAX_API_URL = process.env.BRATRAX_API_URL || 'http://localhost:8081';
+const envBratraxApiUrl = process.env.BRATRAX_API_URL;
+if (!envBratraxApiUrl && process.env.NODE_ENV === 'production') {
+    throw new Error(
+        'BRATRAX_API_URL must be set in production. ' +
+            'Set it to the URL of your Bratrax API instance.',
+    );
+}
+const BRATRAX_API_URL = envBratraxApiUrl || 'http://localhost:8081';
 
 // ─── Dedicated axios instance with retry logic ───
 

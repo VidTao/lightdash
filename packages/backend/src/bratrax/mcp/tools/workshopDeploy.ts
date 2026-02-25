@@ -44,6 +44,7 @@ export function registerWorkshopDeployTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const model = getBratraxOntologyModel(ctx.services);
                 const files = await model.getFiles(projectUuid);
                 const data = await deployYaml({

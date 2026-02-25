@@ -150,6 +150,21 @@ bratraxMcpRouter.all(
             }
 
             if (req.method === 'POST') {
+                // Reject unauthenticated POST requests with JSON-RPC error
+                // (not HTTP 401) for MCP protocol compatibility with Claude Code
+                if (!req.user) {
+                    res.status(200).json({
+                        jsonrpc: '2.0',
+                        error: {
+                            code: -32001,
+                            message:
+                                'Authentication required. Provide ApiKey header.',
+                        },
+                        id: req.body?.id ?? null,
+                    });
+                    return;
+                }
+
                 // Create a fresh McpServer per request — stateless Streamable
                 // HTTP requires this because the MCP SDK's Protocol class
                 // throws "Already connected" on a reused server instance.
