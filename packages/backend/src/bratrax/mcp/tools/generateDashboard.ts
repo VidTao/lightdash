@@ -7,6 +7,8 @@ import {
     type ToolDashboardV2ArgsTransformed,
 } from '@lightdash/common';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 import { ExploreContext } from '../utils/exploreContext';
 
@@ -14,8 +16,10 @@ export function registerGenerateDashboardTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.GENERATE_DASHBOARD,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.GENERATE_DASHBOARD],
             description: toolDashboardV2ArgsSchema.description,
             inputSchema: ctx.compatSchema(toolDashboardV2ArgsSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.GENERATE_DASHBOARD],
         },
         async (_args: AnyType, extra: AnyType) => {
             const pctx = extra as McpProtocolContext;

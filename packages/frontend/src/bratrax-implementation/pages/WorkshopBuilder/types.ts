@@ -14,6 +14,7 @@ export type SourceField = {
     name: string;
     type: FieldType;
     selected: boolean;
+    stale?: boolean; // true = exists in YAML but not in current DB catalog
     behavior?: 'METRIC' | 'SEGMENT' | 'ATTRIBUTE' | 'PRIMARY KEY';
     field_exclusions?: string[];
     polymorphic?: boolean;

@@ -419,8 +419,22 @@ export class BratraxMcpService extends BaseService {
         }
     }
 
+    private static readonly MAX_RESULT_SIZE = 1024 * 1024; // 1MB
+
     // eslint-disable-next-line class-methods-use-this
     private textResult(text: string) {
+        if (text.length > BratraxMcpService.MAX_RESULT_SIZE) {
+            const sizeMb = (text.length / 1024 / 1024).toFixed(1);
+            return {
+                content: [
+                    {
+                        type: 'text' as const,
+                        text: `Result truncated (${sizeMb}MB exceeds 1MB limit). Use more specific filters to reduce result size.`,
+                    },
+                ],
+                isError: true,
+            };
+        }
         return { content: [{ type: 'text' as const, text }] };
     }
 

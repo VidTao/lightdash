@@ -5,17 +5,19 @@ import {
     type CatalogEntry,
 } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerWorkshopGetCatalogsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_GET_CATALOGS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WORKSHOP_GET_CATALOGS],
             description:
-                'Get Meltano Singer source catalog discovery data. ' +
-                'Returns available taps with their streams and field schemas. ' +
-                'Use this during ontology workshops to discover available data sources.',
+                'Get all discovered data source catalogs (Meltano taps and webhook sources) for the current project. Returns taps with their streams and field schemas. Use during ontology workshops to discover available data for mapping.',
             inputSchema: {},
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WORKSHOP_GET_CATALOGS],
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;
@@ -27,6 +29,7 @@ export function registerWorkshopGetCatalogsTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const discoveryModel = getBratraxDiscoveryModel(
                     ctx.services,
                 );

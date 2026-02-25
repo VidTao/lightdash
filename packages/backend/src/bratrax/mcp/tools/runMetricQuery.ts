@@ -24,6 +24,8 @@ import {
     RESOURCE_MIME_TYPE,
 } from '../mcpAppHelpers';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 import { ExploreContext } from '../utils/exploreContext';
 import { populateCustomMetricsSQL } from '../utils/customMetrics';
@@ -66,8 +68,10 @@ export function registerRunMetricQueryTool(ctx: McpToolContext): void {
         ctx.server,
         BratraxMcpToolName.RUN_METRIC_QUERY,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.RUN_METRIC_QUERY],
             description: toolRunQueryArgsSchema.description,
             inputSchema: ctx.compatSchema(toolRunQueryArgsSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.RUN_METRIC_QUERY],
             _meta: { ui: { resourceUri: chartResourceUri } },
         },
         async (

@@ -8,12 +8,15 @@ import {
     safeParseCatalogJson,
 } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerWebhookIntrospectTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WEBHOOK_INTROSPECT,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WEBHOOK_INTROSPECT],
             description:
                 'Send a sample webhook payload to trigger schema discovery. ' +
                 'The payload is introspected, merged with any existing catalog, and persisted. ' +
@@ -42,6 +45,7 @@ export function registerWebhookIntrospectTool(ctx: McpToolContext): void {
                         ),
                 }),
             ),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WEBHOOK_INTROSPECT],
         },
         async (rawArgs: Record<string, unknown>, extra) => {
             const {
@@ -61,6 +65,7 @@ export function registerWebhookIntrospectTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const discoveryModel = getBratraxDiscoveryModel(ctx.services);
                 const sourceKey = `webhook-${source}`;
 

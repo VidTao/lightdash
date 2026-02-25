@@ -31,6 +31,7 @@ import type { SourceConnector } from './types';
 
 type Props = {
     sources: SourceConnector[];
+    projectUuid?: string;
     setSources: (sources: SourceConnector[]) => void;
     toggleStream: (tap: string, stream: string) => void;
     toggleField: (tap: string, stream: string, field: string) => void;
@@ -47,6 +48,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const SourcesBuilder: FC<Props> = ({
     sources,
+    projectUuid,
     setSources,
     toggleStream,
     toggleField,
@@ -54,7 +56,7 @@ const SourcesBuilder: FC<Props> = ({
     const [search, setSearch] = useState('');
     const [selectedTap, setSelectedTap] = useState<string | null>(null);
     const { data: catalogsData, isLoading: catalogLoading } =
-        useBratraxCatalogs();
+        useBratraxCatalogs(projectUuid);
 
     // Initialize sources from real catalog data on first render
     useEffect(() => {
@@ -265,6 +267,9 @@ const SourcesBuilder: FC<Props> = ({
                                                 <Stack spacing={2} pl={28}>
                                                     {stream.fields.map(
                                                         (field) => {
+                                                            const isStale =
+                                                                field.stale ===
+                                                                true;
                                                             const warnings =
                                                                 fieldWarningsMap.get(
                                                                     `${stream.name}:${field.name}`,
@@ -295,6 +300,9 @@ const SourcesBuilder: FC<Props> = ({
                                                                         checked={
                                                                             field.selected
                                                                         }
+                                                                        disabled={
+                                                                            isStale
+                                                                        }
                                                                         onChange={() =>
                                                                             toggleField(
                                                                                 selectedSource.tap,
@@ -305,8 +313,16 @@ const SourcesBuilder: FC<Props> = ({
                                                                     />
                                                                     <Text
                                                                         size="xs"
-                                                                        weight={
-                                                                            500
+                                                                        fw={500}
+                                                                        c={
+                                                                            isStale
+                                                                                ? 'dimmed'
+                                                                                : undefined
+                                                                        }
+                                                                        td={
+                                                                            isStale
+                                                                                ? 'line-through'
+                                                                                : undefined
                                                                         }
                                                                     >
                                                                         {
@@ -322,40 +338,58 @@ const SourcesBuilder: FC<Props> = ({
                                                                             field.type
                                                                         }
                                                                     </Badge>
-                                                                    {hasError && (
+                                                                    {isStale && (
                                                                         <Tooltip
-                                                                            label={warnings
-                                                                                .filter(
-                                                                                    (
-                                                                                        w,
-                                                                                    ) =>
-                                                                                        w.severity ===
-                                                                                        'error',
-                                                                                )
-                                                                                .map(
-                                                                                    (
-                                                                                        w,
-                                                                                    ) =>
-                                                                                        w.message,
-                                                                                )
-                                                                                .join(
-                                                                                    '; ',
-                                                                                )}
+                                                                            label="Not found in current catalog — exists only in saved YAML"
                                                                             multiline
-                                                                            width={
+                                                                            w={
                                                                                 300
                                                                             }
                                                                         >
-                                                                            <IconAlertCircle
+                                                                            <IconAlertTriangle
                                                                                 size={
                                                                                     14
                                                                                 }
-                                                                                color="var(--mantine-color-red-6)"
+                                                                                color="var(--mantine-color-orange-6)"
                                                                             />
                                                                         </Tooltip>
                                                                     )}
+                                                                    {hasError &&
+                                                                        !isStale && (
+                                                                            <Tooltip
+                                                                                label={warnings
+                                                                                    .filter(
+                                                                                        (
+                                                                                            w,
+                                                                                        ) =>
+                                                                                            w.severity ===
+                                                                                            'error',
+                                                                                    )
+                                                                                    .map(
+                                                                                        (
+                                                                                            w,
+                                                                                        ) =>
+                                                                                            w.message,
+                                                                                    )
+                                                                                    .join(
+                                                                                        '; ',
+                                                                                    )}
+                                                                                multiline
+                                                                                w={
+                                                                                    300
+                                                                                }
+                                                                            >
+                                                                                <IconAlertCircle
+                                                                                    size={
+                                                                                        14
+                                                                                    }
+                                                                                    color="var(--mantine-color-red-6)"
+                                                                                />
+                                                                            </Tooltip>
+                                                                        )}
                                                                     {hasWarning &&
-                                                                        !hasError && (
+                                                                        !hasError &&
+                                                                        !isStale && (
                                                                             <Tooltip
                                                                                 label={warnings
                                                                                     .filter(
@@ -375,7 +409,7 @@ const SourcesBuilder: FC<Props> = ({
                                                                                         '; ',
                                                                                     )}
                                                                                 multiline
-                                                                                width={
+                                                                                w={
                                                                                     300
                                                                                 }
                                                                             >

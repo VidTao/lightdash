@@ -56,8 +56,16 @@ export function registerAppTool(
     server: Pick<McpServer, 'registerTool'>,
     name: string,
     config: {
+        title?: string;
         description?: string;
         inputSchema?: AnyType;
+        outputSchema?: AnyType;
+        annotations?: {
+            readOnlyHint?: boolean;
+            destructiveHint?: boolean;
+            idempotentHint?: boolean;
+            openWorldHint?: boolean;
+        };
         _meta?: Record<string, unknown> & {
             ui?: { resourceUri?: string; [k: string]: unknown };
         };

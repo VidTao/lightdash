@@ -1,42 +1,34 @@
-import {
-    getBratraxOntologyModel,
-    validateYaml,
-} from '../../../helpers/bratrax-api';
+import { validateProject } from '../../bratraxShared';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerWorkshopValidateTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_VALIDATE,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WORKSHOP_VALIDATE],
             description:
-                'Validate the ontology for the current project. ' +
-                'Reads YAML from DB, parses, resolves $ref references, ' +
-                'and runs all validation rules. Returns errors and warnings.',
+                'Validate the ontology for the current project. Reads YAML from DB, resolves $ref references, and runs all validation rules. Must pass before compilation. Returns errors, warnings, and a summary.',
             inputSchema: {},
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WORKSHOP_VALIDATE],
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;
-            ctx.trackToolCall(
-                pctx,
-                BratraxMcpToolName.WORKSHOP_VALIDATE,
-            );
+            ctx.trackToolCall(pctx, BratraxMcpToolName.WORKSHOP_VALIDATE);
             ctx.canAccessMcp(pctx);
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
-                const model = getBratraxOntologyModel(ctx.services);
-                const files = await model.getFiles(projectUuid);
-                const data = await validateYaml({
-                    config: files.config ?? '',
-                    ontology: files.ontology ?? '',
-                    sources: files.sources ?? '',
-                    tracking_plan: files.tracking_plan ?? '',
-                });
+                await ctx.requireProjectAccess(pctx, projectUuid);
+                const data = await validateProject(
+                    projectUuid,
+                    ctx.services,
+                );
                 return ctx.textResult(JSON.stringify(data, null, 2));
             } catch (e: unknown) {
-                const msg =
-                    e instanceof Error ? e.message : 'Unknown error';
+                const msg = e instanceof Error ? e.message : 'Unknown error';
                 return {
                     content: [
                         {

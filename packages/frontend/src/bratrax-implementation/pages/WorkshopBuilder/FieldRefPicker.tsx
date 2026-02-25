@@ -28,22 +28,21 @@ import {
     type CatalogField,
     type CatalogStream,
 } from '../../hooks/useBratraxCatalogs';
-import type { FieldType, PropertyKind, TrackingEvent } from './types';
+import type {
+    FieldType,
+    OntologyObject,
+    PropertyKind,
+    TrackingEvent,
+} from './types';
 
 type FieldRefPickerProps = {
     opened: boolean;
     onClose: () => void;
     onSelect: (ref: string, fieldType: FieldType) => void;
     kind: PropertyKind;
+    projectUuid?: string;
     events?: TrackingEvent[];
-};
-
-const BQ_TYPE_MAP: Record<string, FieldType> = {
-    STRING: 'STRING',
-    INT64: 'INT64',
-    FLOAT64: 'FLOAT64',
-    BOOLEAN: 'BOOLEAN',
-    JSON: 'JSON',
+    objects?: OntologyObject[];
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -73,9 +72,11 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
     onClose,
     onSelect,
     kind,
+    projectUuid,
     events = [],
+    objects = [],
 }) => {
-    const { data: catalogsData, isLoading } = useBratraxCatalogs();
+    const { data: catalogsData, isLoading } = useBratraxCatalogs(projectUuid);
     const isOffline = catalogsData?.isOffline ?? false;
     const [selectedTap, setSelectedTap] = useState<CatalogEntry | null>(null);
     const [selectedStream, setSelectedStream] = useState<CatalogStream | null>(
@@ -153,27 +154,114 @@ const FieldRefPicker: FC<FieldRefPickerProps> = ({
         );
     }
 
-    // Computed kind: show formula textarea
+    // Computed kind: show formula textarea with syntax help
     if (kind === 'computed') {
         return (
             <Modal
                 opened={opened}
                 onClose={onClose}
                 title="Computed Property Formula"
-                size="md"
+                size="lg"
             >
                 <Stack spacing="md">
                     <Text size="sm" color="dimmed">
-                        Enter a SQL formula that references other properties on
-                        this object.
+                        Enter a formula that references properties on this or
+                        related objects.
                     </Text>
+
+                    <div
+                        style={{
+                            backgroundColor: 'var(--mantine-color-gray-0)',
+                            borderRadius: 6,
+                            padding: '10px 12px',
+                        }}
+                    >
+                        <Text size="xs" weight={600} mb={4}>
+                            Syntax Reference
+                        </Text>
+                        <Text
+                            size="xs"
+                            color="dimmed"
+                            style={{ lineHeight: 1.6 }}
+                        >
+                            Aggregations: SUM(object.property),
+                            COUNT(object.property), AVG(object.property)
+                        </Text>
+                        <Text
+                            size="xs"
+                            color="dimmed"
+                            style={{ lineHeight: 1.6 }}
+                        >
+                            Inline math: property_a - property_b, property /
+                            NULLIF(other, 0)
+                        </Text>
+                        <Text
+                            size="xs"
+                            color="dimmed"
+                            style={{ lineHeight: 1.6 }}
+                        >
+                            Conditional: CASE WHEN status = &apos;active&apos;
+                            THEN 1 ELSE 0 END
+                        </Text>
+                    </div>
+
                     <TextInput
-                        placeholder="e.g. lifetime_value / NULLIF(orders_count, 0)"
+                        placeholder="e.g. SUM(payment_allocation.amount)"
                         value={formulaText}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setFormulaText(e.currentTarget.value)
                         }
+                        onKeyDown={(e: React.KeyboardEvent) => {
+                            if (e.key === 'Enter' && formulaText.trim()) {
+                                handleFormulaSubmit();
+                            }
+                        }}
                     />
+
+                    {objects.length > 0 && (
+                        <div>
+                            <Text size="xs" weight={600} mb={4}>
+                                Available Objects &amp; Properties
+                            </Text>
+                            <ScrollArea h={150}>
+                                <Stack spacing={2}>
+                                    {objects.map((obj) => (
+                                        <div key={obj.id}>
+                                            <Text
+                                                size="xs"
+                                                weight={500}
+                                                color="dimmed"
+                                            >
+                                                {obj.name}
+                                            </Text>
+                                            <Group spacing={4} ml={8}>
+                                                {obj.properties.map((p) => (
+                                                    <Badge
+                                                        key={p.id}
+                                                        size="xs"
+                                                        variant="outline"
+                                                        color="gray"
+                                                        style={{
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        onClick={() =>
+                                                            setFormulaText(
+                                                                (prev) =>
+                                                                    `${prev}${obj.name}.${p.name}`,
+                                                            )
+                                                        }
+                                                    >
+                                                        {p.name}
+                                                    </Badge>
+                                                ))}
+                                            </Group>
+                                        </div>
+                                    ))}
+                                </Stack>
+                            </ScrollArea>
+                        </div>
+                    )}
+
                     <Button
                         onClick={handleFormulaSubmit}
                         disabled={!formulaText.trim()}

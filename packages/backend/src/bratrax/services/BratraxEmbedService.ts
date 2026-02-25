@@ -135,35 +135,25 @@ export class BratraxEmbedService extends BaseService {
         projectUuid: string,
         userUuid?: string,
     ): Promise<Buffer> {
-        const existing = await this.database('embedding')
-            .select('encoded_secret')
-            .where('project_uuid', projectUuid)
-            .first();
-
-        if (existing) {
-            return existing.encoded_secret;
-        }
-
         const secret = randomBytes(32).toString('base64url');
         const encodedSecret = this.encryptionUtil.encrypt(secret);
 
+        // Atomic: insert only if not exists — DO NOT merge/overwrite
+        // to avoid TOCTOU race that could replace an existing secret.
         await this.database('embedding')
             .insert({
                 project_uuid: projectUuid,
                 encoded_secret: encodedSecret,
                 dashboard_uuids: '{}',
                 chart_uuids: '{}',
-                allow_all_dashboards: true,
-                allow_all_charts: true,
+                allow_all_dashboards: false,
+                allow_all_charts: false,
                 created_by: userUuid ?? null,
             })
             .onConflict('project_uuid')
-            .merge();
+            .ignore();
 
-        Logger.info(
-            `Auto-provisioned embed config for project ${projectUuid}`,
-        );
-
+        // Always read back (either pre-existing or just-inserted)
         const row = await this.database('embedding')
             .select('encoded_secret')
             .where('project_uuid', projectUuid)
@@ -178,6 +168,8 @@ export class BratraxEmbedService extends BaseService {
                 'embedding.project_uuid',
                 'embedding.encoded_secret',
                 'embedding.dashboard_uuids',
+                'embedding.allow_all_dashboards',
+                'embedding.allow_all_charts',
                 'embedding.created_at',
                 'embedding.created_by',
                 'users.user_uuid',
@@ -216,9 +208,9 @@ export class BratraxEmbedService extends BaseService {
             },
             encodedSecret: row.encoded_secret,
             dashboardUuids: row.dashboard_uuids ?? [],
-            allowAllDashboards: true, // JWT is our permission boundary
+            allowAllDashboards: row.allow_all_dashboards ?? false, // JWT is the primary permission boundary
             chartUuids: row.chart_uuids ?? [],
-            allowAllCharts: true, // JWT is our permission boundary
+            allowAllCharts: row.allow_all_charts ?? false, // JWT is the primary permission boundary
             createdAt: row.created_at,
             user: row.user_uuid
                 ? {
@@ -398,7 +390,7 @@ export class BratraxEmbedService extends BaseService {
                 projectUuid,
             );
 
-        return this.asyncQueryService._getWarehouseClient(
+        return this.asyncQueryService.getWarehouseClientForProject(
             projectUuid,
             credentials,
             {
@@ -1067,7 +1059,7 @@ export class BratraxEmbedService extends BaseService {
 
         try {
             const { totalQuery: totalMetricQuery } =
-                await this.asyncQueryService._getCalculateTotalQuery(
+                await this.asyncQueryService.getCalculateTotalQuery(
                     userAttributes,
                     intrinsicUserAttributes,
                     explore,
@@ -1299,7 +1291,7 @@ export class BratraxEmbedService extends BaseService {
 
         try {
             const { totalQuery: totalMetricQuery } =
-                await this.asyncQueryService._getCalculateTotalQuery(
+                await this.asyncQueryService.getCalculateTotalQuery(
                     userAttributes,
                     intrinsicUserAttributes,
                     explore,
@@ -1424,7 +1416,7 @@ export class BratraxEmbedService extends BaseService {
 
         const initialFieldId = filter.target.fieldId;
         const { metricQuery, explore, field } =
-            await this.asyncQueryService._getFieldValuesMetricQuery({
+            await this.asyncQueryService.getFieldValuesMetricQuery({
                 projectUuid,
                 table: filter.target.tableName,
                 initialFieldId,

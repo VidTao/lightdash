@@ -2,6 +2,7 @@ import { Knex } from 'knex';
 import {
     BratraxDiscoveryCatalogTableName,
     type BratraxDiscoveryCatalogSourceType,
+    type CatalogSourceMetadata,
     type DbBratraxDiscoveryCatalog,
 } from '../database/entities/bratraxDiscoveryCatalog';
 
@@ -15,10 +16,14 @@ export class BratraxDiscoveryModel {
     async getCatalogsForProject(
         projectUuid: string,
     ): Promise<DbBratraxDiscoveryCatalog[]> {
+        // Order so global rows (project_uuid IS NULL) come first and
+        // project-specific rows come last.  When buildCatalogMap() iterates,
+        // the project rows overwrite the global ones for the same source_key.
         return this.database(BratraxDiscoveryCatalogTableName)
             .select('*')
             .where('project_uuid', projectUuid)
             .orWhereNull('project_uuid')
+            .orderByRaw('project_uuid IS NULL DESC')
             .orderBy('source_key');
     }
 
@@ -54,6 +59,7 @@ export class BratraxDiscoveryModel {
         sourceKey: string,
         catalogJson: object,
         sourceType: BratraxDiscoveryCatalogSourceType = 'meltano',
+        metadata?: CatalogSourceMetadata,
     ): Promise<void> {
         const existing = await this.database(
             BratraxDiscoveryCatalogTableName,
@@ -63,6 +69,20 @@ export class BratraxDiscoveryModel {
             .where('source_key', sourceKey)
             .first();
 
+        const metadataFields = metadata
+            ? {
+                  ...(metadata.source_label !== undefined
+                      ? { source_label: metadata.source_label }
+                      : {}),
+                  ...(metadata.source_category !== undefined
+                      ? { source_category: metadata.source_category }
+                      : {}),
+                  ...(metadata.raw_table_override !== undefined
+                      ? { raw_table_override: metadata.raw_table_override }
+                      : {}),
+              }
+            : {};
+
         if (existing) {
             await this.database(BratraxDiscoveryCatalogTableName)
                 .where('id', existing.id)
@@ -70,6 +90,7 @@ export class BratraxDiscoveryModel {
                     catalog_json: JSON.stringify(catalogJson),
                     source_type: sourceType,
                     updated_at: this.database.fn.now(),
+                    ...metadataFields,
                 });
         } else {
             await this.database(BratraxDiscoveryCatalogTableName).insert({
@@ -77,6 +98,7 @@ export class BratraxDiscoveryModel {
                 source_key: sourceKey,
                 catalog_json: JSON.stringify(catalogJson),
                 source_type: sourceType,
+                ...metadataFields,
             });
         }
     }
@@ -85,6 +107,8 @@ export class BratraxDiscoveryModel {
         projectUuid: string,
         sourceKey: string,
         catalogJson: object,
+        sourceType: BratraxDiscoveryCatalogSourceType = 'webhook',
+        metadata?: CatalogSourceMetadata,
     ): Promise<void> {
         const existing = await this.database(
             BratraxDiscoveryCatalogTableName,
@@ -94,19 +118,36 @@ export class BratraxDiscoveryModel {
             .where('source_key', sourceKey)
             .first();
 
+        const metadataFields = metadata
+            ? {
+                  ...(metadata.source_label !== undefined
+                      ? { source_label: metadata.source_label }
+                      : {}),
+                  ...(metadata.source_category !== undefined
+                      ? { source_category: metadata.source_category }
+                      : {}),
+                  ...(metadata.raw_table_override !== undefined
+                      ? { raw_table_override: metadata.raw_table_override }
+                      : {}),
+              }
+            : {};
+
         if (existing) {
             await this.database(BratraxDiscoveryCatalogTableName)
                 .where('id', existing.id)
                 .update({
                     catalog_json: JSON.stringify(catalogJson),
+                    source_type: sourceType,
                     updated_at: this.database.fn.now(),
+                    ...metadataFields,
                 });
         } else {
             await this.database(BratraxDiscoveryCatalogTableName).insert({
                 project_uuid: projectUuid,
                 source_key: sourceKey,
                 catalog_json: JSON.stringify(catalogJson),
-                source_type: 'webhook',
+                source_type: sourceType,
+                ...metadataFields,
             });
         }
     }
@@ -124,5 +165,52 @@ export class BratraxDiscoveryModel {
         await this.database(BratraxDiscoveryCatalogTableName)
             .where('project_uuid', projectUuid)
             .del();
+    }
+
+    async updateCatalogMetadata(
+        projectUuid: string,
+        sourceKey: string,
+        metadata: CatalogSourceMetadata,
+    ): Promise<boolean> {
+        // Try project-specific row first, then fall back to global
+        const row = await this.database(BratraxDiscoveryCatalogTableName)
+            .select('id')
+            .where('source_key', sourceKey)
+            .where(function () {
+                this.where('project_uuid', projectUuid).orWhereNull(
+                    'project_uuid',
+                );
+            })
+            .orderByRaw('project_uuid IS NOT NULL DESC')
+            .first();
+
+        if (!row) {
+            return false;
+        }
+
+        const updateFields: Record<string, string | null> = {};
+        if (metadata.source_label !== undefined) {
+            updateFields.source_label = metadata.source_label ?? null;
+        }
+        if (metadata.source_category !== undefined) {
+            updateFields.source_category = metadata.source_category ?? null;
+        }
+        if (metadata.raw_table_override !== undefined) {
+            updateFields.raw_table_override =
+                metadata.raw_table_override ?? null;
+        }
+
+        if (Object.keys(updateFields).length === 0) {
+            return true;
+        }
+
+        await this.database(BratraxDiscoveryCatalogTableName)
+            .where('id', row.id)
+            .update({
+                ...updateFields,
+                updated_at: this.database.fn.now(),
+            });
+
+        return true;
     }
 }

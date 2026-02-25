@@ -1311,6 +1311,21 @@ export class ProjectService extends BaseService {
         return { warehouseClient: client, sshTunnel };
     }
 
+    /**
+     * Public API for creating warehouse clients.
+     * Use this instead of `_getWarehouseClient` from external services.
+     */
+    async getWarehouseClientForProject(
+        projectUuid: string,
+        credentials: CreateWarehouseCredentials,
+        overrides?: {
+            snowflakeVirtualWarehouse?: string;
+            databricksCompute?: string;
+        },
+    ) {
+        return this._getWarehouseClient(projectUuid, credentials, overrides);
+    }
+
     private async saveExploresToCacheAndIndexCatalog(
         userUuid: string,
         projectUuid: string,
@@ -3957,6 +3972,21 @@ export class ProjectService extends BaseService {
         return { metricQuery, explore, field };
     }
 
+    /**
+     * Public API for building field-values metric queries.
+     * Use this instead of `_getFieldValuesMetricQuery` from external services.
+     */
+    async getFieldValuesMetricQuery(params: {
+        projectUuid: string;
+        table: string;
+        initialFieldId: string;
+        search: string;
+        limit: number;
+        filters: AndFilterGroup | undefined;
+    }) {
+        return this._getFieldValuesMetricQuery(params);
+    }
+
     async searchFieldUniqueValues(
         user: SessionUser,
         projectUuid: string,
@@ -5962,6 +5992,30 @@ export class ProjectService extends BaseService {
         });
 
         return { query, totalQuery };
+    }
+
+    /**
+     * Public API for building calculate-total queries.
+     * Use this instead of `_getCalculateTotalQuery` from external services.
+     */
+    async getCalculateTotalQuery(
+        userAttributes: UserAttributeValueMap,
+        intrinsicUserAttributes: IntrinsicUserAttributes,
+        explore: Explore,
+        metricQuery: MetricQuery,
+        warehouseClient: WarehouseClient,
+        availableParameterDefinitions: ParameterDefinitions,
+        parameters?: ParametersValuesMap,
+    ) {
+        return this._getCalculateTotalQuery(
+            userAttributes,
+            intrinsicUserAttributes,
+            explore,
+            metricQuery,
+            warehouseClient,
+            availableParameterDefinitions,
+            parameters,
+        );
     }
 
     async _calculateTotal(

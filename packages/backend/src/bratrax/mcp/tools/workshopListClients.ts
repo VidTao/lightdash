@@ -1,15 +1,18 @@
 import { getBratraxOntologyModel } from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerWorkshopListClientsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_LIST_CLIENTS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WORKSHOP_LIST_CLIENTS],
             description:
-                'Check if the current project has an ontology set up. ' +
-                'Returns whether an ontology exists and which YAML files are present.',
+                'Check the ontology status for the current project. Returns whether an ontology exists and which YAML files (config, ontology, sources, tracking_plan) are present.',
             inputSchema: {},
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WORKSHOP_LIST_CLIENTS],
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;
@@ -21,6 +24,7 @@ export function registerWorkshopListClientsTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const model = getBratraxOntologyModel(ctx.services);
                 const files = await model.getFiles(projectUuid);
                 const fileKeys = Object.keys(files);

@@ -5,6 +5,8 @@ import {
     getTemplate,
 } from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 const inputSchema = z
@@ -33,8 +35,10 @@ export function registerWorkshopCreateClientTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_CREATE_CLIENT,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WORKSHOP_CREATE_CLIENT],
             description: inputSchema.description!,
             inputSchema: ctx.compatSchema(inputSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WORKSHOP_CREATE_CLIENT],
         },
         async (args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;
@@ -46,6 +50,7 @@ export function registerWorkshopCreateClientTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const model = getBratraxOntologyModel(ctx.services);
 
                 let files: Record<string, string>;

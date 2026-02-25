@@ -6,13 +6,17 @@ import {
     searchParsedCatalogs,
     type CatalogEntry,
 } from '../../../helpers/bratrax-catalog-parser';
+import { buildPaginationMeta } from '../paginationTypes';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerCatalogSearchFieldsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.CATALOG_SEARCH_FIELDS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.CATALOG_SEARCH_FIELDS],
             description:
                 'Search for fields by name across all data sources (Meltano taps and webhook sources). ' +
                 'Returns matching fields with their tap, stream, type, source_type, and $sources.* ref. ' +
@@ -30,20 +34,34 @@ export function registerCatalogSearchFieldsTool(ctx: McpToolContext): void {
                         .describe(
                             'Optional BQ type filter, e.g. "STRING", "FLOAT64"',
                         ),
+                    page: z
+                        .number()
+                        .optional()
+                        .describe('Page number (1-based, default 1)'),
+                    pageSize: z
+                        .number()
+                        .optional()
+                        .describe('Results per page (default 20, max 100)'),
                 }),
             ),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.CATALOG_SEARCH_FIELDS],
         },
         async (rawArgs: Record<string, unknown>, extra) => {
-            const { query, type: typeFilter } = rawArgs as {
+            const { query, type: typeFilter, page: rawPage, pageSize: rawPageSize } = rawArgs as {
                 query: string;
                 type?: string;
+                page?: number;
+                pageSize?: number;
             };
+            const page = rawPage ?? 1;
+            const pageSize = Math.min(rawPageSize ?? 20, 100);
             const pctx = extra as McpProtocolContext;
             ctx.trackToolCall(pctx, BratraxMcpToolName.CATALOG_SEARCH_FIELDS);
             ctx.canAccessMcp(pctx);
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const discoveryModel = getBratraxDiscoveryModel(ctx.services);
                 const rows =
                     await discoveryModel.getCatalogsForProject(projectUuid);
@@ -66,7 +84,7 @@ export function registerCatalogSearchFieldsTool(ctx: McpToolContext): void {
                     catalogs,
                     query,
                     typeFilter,
-                    20,
+                    pageSize,
                 );
 
                 return ctx.textResult(
@@ -74,7 +92,7 @@ export function registerCatalogSearchFieldsTool(ctx: McpToolContext): void {
                         {
                             query,
                             results,
-                            count: results.length,
+                            pagination: buildPaginationMeta(page, pageSize, results.length),
                         },
                         null,
                         2,

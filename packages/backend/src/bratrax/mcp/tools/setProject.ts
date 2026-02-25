@@ -1,19 +1,25 @@
 import { subject } from '@casl/ability';
 import { AnyType, ForbiddenError, ParameterError } from '@lightdash/common';
-import type { McpToolContext } from '../toolContext';
-import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 import { z } from 'zod';
+import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
+import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerSetProjectTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.SET_PROJECT,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.SET_PROJECT],
             description:
                 'Set the active project for subsequent MCP operations',
-            inputSchema: {
-                projectUuid: z.string(),
-                tags: z.array(z.string()).optional(),
-            },
+            inputSchema: ctx.compatSchema(
+                z.object({
+                    projectUuid: z.string(),
+                    tags: z.array(z.string()).optional(),
+                }),
+            ),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.SET_PROJECT],
         },
         async (_args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;

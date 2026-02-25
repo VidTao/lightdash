@@ -1,13 +1,17 @@
 import { AnyType, mcpToolListExploresArgsSchema } from '@lightdash/common';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerListExploresTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.LIST_EXPLORES,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.LIST_EXPLORES],
             description: mcpToolListExploresArgsSchema.description,
             inputSchema: ctx.compatSchema(mcpToolListExploresArgsSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.LIST_EXPLORES],
         },
         async (_args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;

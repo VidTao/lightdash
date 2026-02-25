@@ -5,12 +5,15 @@ import {
     safeParseCatalogJson,
 } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerCatalogGetFieldsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.CATALOG_GET_FIELDS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.CATALOG_GET_FIELDS],
             description:
                 'Get the field schema for a specific stream within a data source (Meltano tap or webhook source). ' +
                 'Returns field names, BigQuery types, nullable flags, source_type, and raw_table. ' +
@@ -27,6 +30,7 @@ export function registerCatalogGetFieldsTool(ctx: McpToolContext): void {
                         .describe('Stream name, e.g. "orders", "campaigns"'),
                 }),
             ),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.CATALOG_GET_FIELDS],
         },
         async (rawArgs: Record<string, unknown>, extra) => {
             const { tap, stream: streamName } = rawArgs as {
@@ -39,6 +43,7 @@ export function registerCatalogGetFieldsTool(ctx: McpToolContext): void {
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);
+                await ctx.requireProjectAccess(pctx, projectUuid);
                 const discoveryModel = getBratraxDiscoveryModel(ctx.services);
                 const row = await discoveryModel.getCatalog(projectUuid, tap);
 

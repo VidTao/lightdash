@@ -11,6 +11,8 @@ import {
 import { fromSession } from '../../../auth/account';
 import { BratraxEmbedService } from '../../services/BratraxEmbedService';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 async function generateEmbedUrl(
@@ -232,10 +234,12 @@ export function registerGetEmbedUrlTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.GET_EMBED_URL,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.GET_EMBED_URL],
             description: toolGetEmbedUrlArgsSchema.description,
             inputSchema: ctx.compatSchema(
                 toolGetEmbedUrlArgsSchema,
             ) as AnyType,
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.GET_EMBED_URL],
         },
         async (_args: AnyType, extra: AnyType) => {
             const pctx = extra as McpProtocolContext;
