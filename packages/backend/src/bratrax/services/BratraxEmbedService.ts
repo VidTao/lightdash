@@ -390,7 +390,7 @@ export class BratraxEmbedService extends BaseService {
                 projectUuid,
             );
 
-        return this.asyncQueryService._getWarehouseClient(
+        return this.asyncQueryService.getWarehouseClientForProject(
             projectUuid,
             credentials,
             {
@@ -1059,7 +1059,7 @@ export class BratraxEmbedService extends BaseService {
 
         try {
             const { totalQuery: totalMetricQuery } =
-                await this.asyncQueryService._getCalculateTotalQuery(
+                await this.asyncQueryService.getCalculateTotalQuery(
                     userAttributes,
                     intrinsicUserAttributes,
                     explore,
@@ -1291,7 +1291,7 @@ export class BratraxEmbedService extends BaseService {
 
         try {
             const { totalQuery: totalMetricQuery } =
-                await this.asyncQueryService._getCalculateTotalQuery(
+                await this.asyncQueryService.getCalculateTotalQuery(
                     userAttributes,
                     intrinsicUserAttributes,
                     explore,
@@ -1416,7 +1416,7 @@ export class BratraxEmbedService extends BaseService {
 
         const initialFieldId = filter.target.fieldId;
         const { metricQuery, explore, field } =
-            await this.asyncQueryService._getFieldValuesMetricQuery({
+            await this.asyncQueryService.getFieldValuesMetricQuery({
                 projectUuid,
                 table: filter.target.tableName,
                 initialFieldId,
