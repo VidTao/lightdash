@@ -4,14 +4,18 @@ import {
     type ToolSearchFieldValuesArgs,
 } from '@lightdash/common';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerSearchFieldValuesTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.SEARCH_FIELD_VALUES,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.SEARCH_FIELD_VALUES],
             description: toolSearchFieldValuesArgsSchema.description,
             inputSchema: ctx.compatSchema(toolSearchFieldValuesArgsSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.SEARCH_FIELD_VALUES],
         },
         async (_args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;

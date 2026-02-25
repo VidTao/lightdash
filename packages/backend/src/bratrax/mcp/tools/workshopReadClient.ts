@@ -1,15 +1,19 @@
 import { getBratraxOntologyModel } from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerWorkshopReadClientTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_READ_CLIENT,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WORKSHOP_READ_CLIENT],
             description:
                 'Read all ontology YAML files (config, ontology, sources, tracking_plan) ' +
                 'for the current project.',
             inputSchema: {},
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WORKSHOP_READ_CLIENT],
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;

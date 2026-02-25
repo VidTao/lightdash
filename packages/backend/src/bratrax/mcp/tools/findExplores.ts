@@ -6,14 +6,18 @@ import {
 } from '@lightdash/common';
 import { CatalogSearchContext } from '../../../models/CatalogModel/CatalogModel';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerFindExploresTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.FIND_EXPLORES,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.FIND_EXPLORES],
             description: toolFindExploresArgsSchemaV3.description,
             inputSchema: ctx.compatSchema(toolFindExploresArgsSchemaV3),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.FIND_EXPLORES],
         },
         async (_args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;
@@ -80,6 +84,12 @@ export function registerFindExploresTool(ctx: McpToolContext): void {
             const output = {
                 exploreSearchResults: exploreResults,
                 topMatchingFields: topFields,
+                pagination: {
+                    page: 1,
+                    pageSize: 15,
+                    totalResults: exploreResults.length,
+                    hasMore: false,
+                },
             };
 
             return ctx.textResult(JSON.stringify(output, null, 2));

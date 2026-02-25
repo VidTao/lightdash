@@ -6,15 +6,20 @@ import {
     type ToolFindFieldsArgs,
 } from '@lightdash/common';
 import { CatalogSearchContext } from '../../../models/CatalogModel/CatalogModel';
+import { buildPaginationMeta } from '../paginationTypes';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerFindFieldsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.FIND_FIELDS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.FIND_FIELDS],
             description: toolFindFieldsArgsSchema.description,
             inputSchema: ctx.compatSchema(toolFindFieldsArgsSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.FIND_FIELDS],
         },
         async (_args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;
@@ -66,8 +71,12 @@ export function registerFindFieldsTool(ctx: McpToolContext): void {
                 (item) => item.type === CatalogType.Field,
             );
 
+            const paginationMeta = pagination
+                ? buildPaginationMeta(pagination.page, pagination.pageSize, pagination.totalResults)
+                : undefined;
+
             return ctx.textResult(
-                JSON.stringify({ fields, pagination }, null, 2),
+                JSON.stringify({ fields, pagination: paginationMeta }, null, 2),
             );
         },
     );

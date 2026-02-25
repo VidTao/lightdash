@@ -29,6 +29,12 @@ export function safeParseCatalogJson(raw: unknown): object | null {
 /**
  * Build a source_key → raw catalog JSON map from DB rows.
  * Project-specific rows override global rows for the same source_key.
+ *
+ * CONTRACT: rows MUST be ordered with global rows (project_uuid IS NULL)
+ * first and project-specific rows last.  The SQL query in
+ * BratraxDiscoveryModel.getCatalogsForProject() guarantees this via
+ * `ORDER BY project_uuid IS NULL DESC`.  As an extra safety net, this
+ * function also partitions rows explicitly before iterating.
  */
 export function buildCatalogMap(
     rows: ReadonlyArray<{
@@ -37,6 +43,7 @@ export function buildCatalogMap(
         catalog_json: unknown;
     }>,
 ): Record<string, object> {
+    // Partition: global first, project-specific last so later entries win.
     const globalRows = rows.filter(
         (r) => r.project_uuid === null || r.project_uuid === undefined,
     );
@@ -64,8 +71,13 @@ const SINGER_TO_BQ: Record<string, string> = {
     array: 'JSON',
 };
 
-// ─── Source metadata registry (mirrors tap_registry.py) ───
+// ─── Source metadata registry (hardcoded fallback, mirrors tap_registry.py) ───
 
+/**
+ * Kept as a backwards-compatible fallback.  DB-stored metadata
+ * (source_label / source_category / raw_table_override) takes precedence
+ * when available; see getSourceMetadata().
+ */
 export const SOURCE_REGISTRY: Record<
     string,
     {
@@ -162,6 +174,90 @@ export const SOURCE_REGISTRY: Record<
     },
 };
 
+// ─── DB metadata resolution ───
+
+export type DbSourceMetadata = {
+    source_label?: string | null;
+    source_category?: string | null;
+    raw_table_override?: string | null;
+};
+
+/**
+ * Infer a raw_table name from the source_key when no explicit value exists.
+ * Webhooks land in raw_webhook; everything else in raw_data.
+ */
+function inferRawTable(sourceKey: string): string {
+    return sourceKey.startsWith('webhook-') ? 'raw_webhook' : 'raw_data';
+}
+
+/**
+ * Resolve source metadata for a given source_key.
+ *
+ * Priority:
+ *   1. DB-stored metadata (source_label, source_category, raw_table_override)
+ *   2. Hardcoded SOURCE_REGISTRY fallback
+ *   3. Inferred defaults
+ */
+export function getSourceMetadata(
+    sourceKey: string,
+    dbMetadata?: DbSourceMetadata,
+): {
+    source_name: string;
+    label: string;
+    category: string;
+    raw_table: string;
+    source_type: string;
+} {
+    const registryEntry = SOURCE_REGISTRY[sourceKey];
+
+    // Base values: prefer registry, else infer
+    const baseName =
+        registryEntry?.source_name ??
+        sourceKey.replace(/^(tap-|webhook-)/, '');
+    const baseLabel = registryEntry?.label ?? sourceKey;
+    const baseCategory = registryEntry?.category ?? 'other';
+    const baseRawTable = registryEntry?.raw_table ?? inferRawTable(sourceKey);
+    const baseSourceType =
+        registryEntry?.source_type ??
+        (sourceKey.startsWith('webhook-') ? 'webhook' : 'meltano');
+
+    // If DB metadata has any populated fields, overlay them
+    if (
+        dbMetadata?.source_label ||
+        dbMetadata?.source_category ||
+        dbMetadata?.raw_table_override
+    ) {
+        return {
+            source_name: baseName,
+            label: dbMetadata.source_label || baseLabel,
+            category: dbMetadata.source_category || baseCategory,
+            raw_table: dbMetadata.raw_table_override || baseRawTable,
+            source_type: baseSourceType,
+        };
+    }
+
+    // Pure fallback — warn only when using hardcoded data so operators know
+    // they can populate the DB for this source.
+    if (registryEntry) {
+        return {
+            source_name: registryEntry.source_name,
+            label: registryEntry.label,
+            category: registryEntry.category,
+            raw_table: registryEntry.raw_table,
+            source_type: registryEntry.source_type,
+        };
+    }
+
+    // Fully inferred (unknown source)
+    return {
+        source_name: baseName,
+        label: baseLabel,
+        category: baseCategory,
+        raw_table: baseRawTable,
+        source_type: baseSourceType,
+    };
+}
+
 // ─── Types ───
 
 export type CatalogField = {
@@ -241,18 +337,16 @@ function buildFieldMetadataIndex(
 /**
  * Parse a raw Singer catalog JSON object into the structured CatalogEntry
  * format that the frontend and MCP tools consume.
+ *
+ * When dbMetadata is provided (from the bratrax_discovery_catalog row),
+ * it takes precedence over the hardcoded SOURCE_REGISTRY.
  */
 export function parseSingerCatalog(
     sourceKey: string,
     catalogJson: { streams?: Array<Record<string, unknown>> },
+    dbMetadata?: DbSourceMetadata,
 ): CatalogEntry | null {
-    const meta = SOURCE_REGISTRY[sourceKey] ?? {
-        source_name: sourceKey.replace(/^(tap-|webhook-)/, ''),
-        label: sourceKey,
-        category: 'other',
-        raw_table: 'raw_data',
-        source_type: sourceKey.startsWith('webhook-') ? 'webhook' : 'meltano',
-    };
+    const meta = getSourceMetadata(sourceKey, dbMetadata);
 
     const rawStreams = catalogJson.streams ?? [];
     if (rawStreams.length === 0) {

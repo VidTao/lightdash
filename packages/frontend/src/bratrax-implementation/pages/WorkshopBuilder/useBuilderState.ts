@@ -11,7 +11,11 @@ import {
     useBratraxSaveOntologyYaml,
 } from '../../hooks/useBratraxClients';
 import { toCompilerPayload } from './compilerYamlTransformer';
-import { computeExclusionConflicts } from './fieldWarnings';
+import {
+    collectParsedFieldRefs,
+    computeExclusionConflicts,
+    validateFieldRefs,
+} from './fieldWarnings';
 import type {
     BuilderState,
     CollectionMethod,
@@ -993,6 +997,36 @@ export function useBuilderState(projectUuid?: string) {
             }
         }
 
+        // Field ref validation: check ontology backing refs against loaded catalogs
+        if (catalogs && catalogs.length > 0) {
+            // Collect all $sources refs from object properties
+            const allRefs: string[] = [];
+            for (const obj of state.objects) {
+                for (const prop of obj.properties) {
+                    if (prop.kind === 'backing' && prop.ref) {
+                        allRefs.push(prop.ref);
+                    }
+                    if (prop.additionalMappings) {
+                        for (const m of prop.additionalMappings) {
+                            if (m.ref) allRefs.push(m.ref);
+                        }
+                    }
+                }
+            }
+
+            // Parse and validate refs against catalog
+            const refString = allRefs.join('\n');
+            const parsedRefs = collectParsedFieldRefs(refString);
+            const refWarnings = validateFieldRefs(parsedRefs, catalogs);
+            for (const w of refWarnings) {
+                messages.push({
+                    severity: 'warning',
+                    tab: 'ontology',
+                    message: `[Field Ref] ${w.ref}: ${w.warning}`,
+                });
+            }
+        }
+
         // Merge compiler validation issues
         if (compilerValidation?.issues) {
             for (const issue of compilerValidation.issues) {
@@ -1005,7 +1039,36 @@ export function useBuilderState(projectUuid?: string) {
         }
 
         return messages;
-    }, [state, compilerValidation]);
+    }, [state, compilerValidation, catalogs]);
+
+    // Per-property field ref warnings for inline display in OntologyBuilder
+    const fieldRefWarnings = useMemo(() => {
+        if (!catalogs || catalogs.length === 0) return new Map<string, string>();
+
+        const warningsByRef = new Map<string, string>();
+        const allRefs: string[] = [];
+        for (const obj of state.objects) {
+            for (const prop of obj.properties) {
+                if (prop.kind === 'backing' && prop.ref) {
+                    allRefs.push(prop.ref);
+                }
+                if (prop.additionalMappings) {
+                    for (const m of prop.additionalMappings) {
+                        if (m.ref) allRefs.push(m.ref);
+                    }
+                }
+            }
+        }
+
+        const refString = allRefs.join('\n');
+        const parsedRefs = collectParsedFieldRefs(refString);
+        const warnings = validateFieldRefs(parsedRefs, catalogs);
+        for (const w of warnings) {
+            warningsByRef.set(w.ref, w.warning);
+        }
+
+        return warningsByRef;
+    }, [state.objects, catalogs]);
 
     // Auto-sync sources from ontology refs
     useAutoSourceSync(state, setSources, catalogs);
@@ -1029,6 +1092,7 @@ export function useBuilderState(projectUuid?: string) {
         addEventProperty,
         addEnrichment,
         validationMessages,
+        fieldRefWarnings,
         compilerValidation,
         setCompilerValidation,
         isValidating,

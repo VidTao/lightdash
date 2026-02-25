@@ -2,8 +2,13 @@
  * Poll the ontology API to check if a webhook source has been discovered.
  * Only polls when `enabled` is true (modal open + not yet discovered).
  * Stops polling automatically once discovered=true.
+ *
+ * When discovery completes, invalidates the catalog query cache so that
+ * SourcesBuilder and other consumers pick up the new schema immediately
+ * rather than waiting for the default staleTime to expire.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 
 const BRATRAX_API_BASE = '/api/v1/bratrax';
 
@@ -20,6 +25,9 @@ export function useWebhookDiscovery(
     enabled: boolean,
     projectUuid?: string,
 ) {
+    const queryClient = useQueryClient();
+    const hasInvalidated = useRef(false);
+
     const query = useQuery({
         queryKey: ['webhook-discovery-status', source, projectUuid],
         queryFn: async (): Promise<DiscoveryStatus> => {
@@ -54,7 +62,25 @@ export function useWebhookDiscovery(
             return 5000;
         },
         staleTime: 0,
+        onSuccess: (data) => {
+            if (data.discovered && !hasInvalidated.current) {
+                hasInvalidated.current = true;
+                // Invalidate all catalog-related queries so the builder
+                // picks up the newly discovered schema immediately.
+                void queryClient.invalidateQueries({
+                    queryKey: ['bratrax-catalogs'],
+                });
+                void queryClient.invalidateQueries({
+                    queryKey: ['bratrax-catalog-search'],
+                });
+            }
+        },
     });
+
+    // Reset the invalidation guard when source changes or polling restarts
+    if (!enabled || !query.data?.discovered) {
+        hasInvalidated.current = false;
+    }
 
     return {
         discovered: query.data?.discovered ?? false,

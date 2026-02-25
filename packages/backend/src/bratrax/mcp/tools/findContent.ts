@@ -4,14 +4,18 @@ import {
     type ToolFindContentArgs,
 } from '@lightdash/common';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerFindContentTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.FIND_CONTENT,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.FIND_CONTENT],
             description: toolFindContentArgsSchema.description,
             inputSchema: ctx.compatSchema(toolFindContentArgsSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.FIND_CONTENT],
         },
         async (_args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;

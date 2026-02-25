@@ -4,17 +4,21 @@ import {
     safeParseCatalogJson,
 } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerCatalogListTapsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.CATALOG_LIST_TAPS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.CATALOG_LIST_TAPS],
             description:
                 'List all available data sources (Meltano Singer taps and webhook-discovered sources) with stream counts and categories. ' +
                 'Each entry includes a source_type ("meltano" or "webhook") so you can distinguish how data is ingested. ' +
                 'Use this to discover what data sources are available before drilling into streams or fields.',
             inputSchema: {},
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.CATALOG_LIST_TAPS],
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;

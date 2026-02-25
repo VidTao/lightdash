@@ -303,6 +303,7 @@ const WorkshopBuilderPage: FC = () => {
                                 events={builder.state.events}
                                 sources={builder.state.sources}
                                 projectUuid={projectUuid}
+                                fieldRefWarnings={builder.fieldRefWarnings}
                                 addObject={builder.addObject}
                                 updateObject={builder.updateObject}
                                 removeObject={builder.removeObject}

@@ -1313,3 +1313,87 @@ models:
           type: average
   meta:
     sql_where: fact_channel_roas.client_id = '{{ var("client_id") }}'
+- name: fact_events
+  description: Raw activity stream events with category classification and parsed JSON features
+  columns:
+  - name: event_id
+    description: Unique event identifier (activity_id)
+    meta:
+      metrics:
+        event_count:
+          type: count
+  - name: client_id
+    description: Client identifier
+  - name: event_at
+    description: Event timestamp
+    meta:
+      dimension:
+        type: timestamp
+        time_intervals:
+        - DAY
+        - WEEK
+        - MONTH
+        - YEAR
+  - name: event_name
+    description: Activity type name (e.g. visitor_session_started, booking_created)
+  - name: event_category
+    description: Business category (demand, engagement, booking, finance, operations, trust, communication, marketing)
+  - name: actor_id
+    description: Actor who triggered the event (customer ID)
+    meta:
+      metrics:
+        unique_actors:
+          type: count_distinct
+  - name: anonymous_id
+    description: Anonymous visitor identifier
+  - name: actor_type
+    description: Type of actor (visitor, guest, host, platform, marketing)
+  - name: revenue_impact
+    description: Revenue impact of the event
+    meta:
+      metrics:
+        total_revenue_impact:
+          type: sum
+        avg_revenue_impact:
+          type: average
+  - name: booking_id
+    description: Associated booking ID (parsed from features JSON)
+  - name: listing_id
+    description: Associated listing ID (parsed from features JSON)
+  - name: host_id
+    description: Associated host ID (parsed from features JSON)
+  - name: utm_source
+    description: UTM source parameter
+  - name: utm_medium
+    description: UTM medium parameter
+  - name: device_type
+    description: Device type (desktop, mobile, tablet)
+  - name: event_amount
+    description: Monetary amount associated with the event
+    meta:
+      metrics:
+        total_event_amount:
+          type: sum
+        avg_event_amount:
+          type: average
+  - name: marketing_channel
+    description: Marketing channel (for campaign events)
+  - name: campaign_name
+    description: Campaign name (for campaign events)
+  - name: spend_amount
+    description: Ad spend amount (for campaign_spend_recorded events)
+    meta:
+      metrics:
+        total_spend:
+          type: sum
+  - name: event_source
+    description: Source system of the event
+  meta:
+    sql_where: fact_events.client_id = '{{ var("client_id") }}'
+    joins:
+      - join: dim_bookings
+        sql_on: ${fact_events.booking_id} = ${dim_bookings.booking_id}
+      - join: dim_listings
+        sql_on: ${fact_events.listing_id} = ${dim_listings.listing_id}
+      - join: dim_hosts
+        sql_on: ${fact_events.host_id} = ${dim_hosts.host_id}

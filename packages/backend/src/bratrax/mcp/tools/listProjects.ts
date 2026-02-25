@@ -1,13 +1,17 @@
 import { wrapSentryTransaction } from '../../../utils';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerListProjectsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.LIST_PROJECTS,
         {
-            description: 'List all accessible projects in the organization',
+            title: TOOL_TITLES[BratraxMcpToolName.LIST_PROJECTS],
+            description: 'List all projects the authenticated user can access. Returns project names and UUIDs. Call set_project to select one for subsequent operations.',
             inputSchema: {},
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.LIST_PROJECTS],
         },
         async (_args: Record<string, never>, extra) => {
             const pctx = extra as McpProtocolContext;

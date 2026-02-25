@@ -1,8 +1,11 @@
 import { AnyType } from '@lightdash/common';
+import { load as loadYaml } from 'js-yaml';
 import { z } from 'zod';
 import type { BratraxOntologyFileKey } from '../../../database/entities/bratraxOntology';
 import { getBratraxOntologyModel } from '../../../helpers/bratrax-api';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 const inputSchema = z
@@ -25,8 +28,10 @@ export function registerWorkshopWriteYamlTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WORKSHOP_WRITE_YAML,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WORKSHOP_WRITE_YAML],
             description: inputSchema.description!,
             inputSchema: ctx.compatSchema(inputSchema),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WORKSHOP_WRITE_YAML],
         },
         async (args: AnyType, extra) => {
             const pctx = extra as McpProtocolContext;
@@ -35,6 +40,25 @@ export function registerWorkshopWriteYamlTool(ctx: McpToolContext): void {
                 BratraxMcpToolName.WORKSHOP_WRITE_YAML,
             );
             ctx.canAccessMcp(pctx);
+
+            // Validate YAML syntax before persisting to the database.
+            try {
+                loadYaml(args.content);
+            } catch (yamlError: unknown) {
+                const yamlMsg =
+                    yamlError instanceof Error
+                        ? yamlError.message
+                        : 'parse error';
+                return {
+                    content: [
+                        {
+                            type: 'text' as const,
+                            text: `Invalid YAML syntax: ${yamlMsg}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
 
             try {
                 const projectUuid = await ctx.resolveProjectUuid(pctx);

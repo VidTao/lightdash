@@ -5,12 +5,15 @@ import {
     safeParseCatalogJson,
 } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerWebhookDiscoveryStatusTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.WEBHOOK_DISCOVERY_STATUS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.WEBHOOK_DISCOVERY_STATUS],
             description:
                 'Check if a webhook source has been discovered for this project. ' +
                 'Returns whether the source exists in the catalog, plus stream and field counts. ' +
@@ -24,6 +27,7 @@ export function registerWebhookDiscoveryStatusTool(ctx: McpToolContext): void {
                         ),
                 }),
             ),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.WEBHOOK_DISCOVERY_STATUS],
         },
         async (rawArgs: Record<string, unknown>, extra) => {
             const { source } = rawArgs as { source: string };

@@ -24,6 +24,8 @@ import { userAttributeOverridesSchema } from '../../services/UserAttributesServi
 
 const bratraxMcpRouter: Router = express.Router({ mergeParams: true });
 
+const MAX_USER_ATTRIBUTES_HEADER_SIZE = 8192; // 8KB
+
 function getMcpService(req: express.Request): BratraxMcpService {
     try {
         return req.services.getMcpServiceMain();
@@ -92,6 +94,24 @@ bratraxMcpRouter.all(
     },
     async (req, res) => {
         try {
+            // Reject oversized user-attributes header early
+            const userAttributesRaw =
+                req.headers[MCP_USER_ATTRIBUTE_HEADER.toLowerCase()];
+            if (
+                userAttributesRaw &&
+                typeof userAttributesRaw === 'string' &&
+                userAttributesRaw.length > MAX_USER_ATTRIBUTES_HEADER_SIZE
+            ) {
+                res.status(413).json({
+                    status: 'error',
+                    results: {
+                        message:
+                            'X-Lightdash-User-Attributes header exceeds maximum size of 8KB',
+                    },
+                });
+                return;
+            }
+
             const mcpService = getMcpService(req);
 
             // Check if MCP is enabled

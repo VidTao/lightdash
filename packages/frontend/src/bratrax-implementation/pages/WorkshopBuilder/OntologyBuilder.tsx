@@ -13,7 +13,8 @@ import {
     Title,
 } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
-import { useCallback, useState, type FC } from 'react';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import { FieldRefIndicator, FieldRefSummary } from './FieldRefWarnings';
 import FieldRefPicker from './FieldRefPicker';
 import PropertyRefInput from './PropertyRefInput';
 // eslint-disable-next-line css-modules/no-unused-class
@@ -35,6 +36,7 @@ type Props = {
     events: TrackingEvent[];
     sources: SourceConnector[];
     projectUuid?: string;
+    fieldRefWarnings: Map<string, string>;
     addObject: (obj: OntologyObject) => void;
     updateObject: (id: string, updates: Partial<OntologyObject>) => void;
     removeObject: (id: string) => void;
@@ -110,6 +112,7 @@ const OntologyBuilder: FC<Props> = ({
     events,
     sources,
     projectUuid,
+    fieldRefWarnings,
     addObject,
     updateObject,
     removeObject,
@@ -147,6 +150,23 @@ const OntologyBuilder: FC<Props> = ({
         useState<ObjectLink['cardinality']>('one-to-many');
 
     const selectedObject = objects.find((o) => o.id === selectedObjectId);
+
+    // Collect all backing refs for the selected object (for FieldRefSummary)
+    const selectedObjectRefs = useMemo(() => {
+        if (!selectedObject) return [];
+        const refs: string[] = [];
+        for (const prop of selectedObject.properties) {
+            if (prop.kind === 'backing' && prop.ref) {
+                refs.push(prop.ref);
+            }
+            if (prop.additionalMappings) {
+                for (const m of prop.additionalMappings) {
+                    if (m.ref) refs.push(m.ref);
+                }
+            }
+        }
+        return refs;
+    }, [selectedObject]);
 
     const handleAddObject = useCallback(() => {
         if (!newObjectName.trim()) return;
@@ -490,6 +510,12 @@ const OntologyBuilder: FC<Props> = ({
                             />
                         </Group>
 
+                        {/* Field ref warnings summary */}
+                        <FieldRefSummary
+                            warningsByRef={fieldRefWarnings}
+                            objectRefs={selectedObjectRefs}
+                        />
+
                         {/* Properties */}
                         <Stack spacing={8}>
                             <Title order={6}>Properties</Title>
@@ -582,6 +608,15 @@ const OntologyBuilder: FC<Props> = ({
                                                 projectUuid={projectUuid}
                                             />
                                         )}
+                                        {prop.kind === 'backing' &&
+                                            prop.ref && (
+                                                <FieldRefIndicator
+                                                    warningsByRef={
+                                                        fieldRefWarnings
+                                                    }
+                                                    refValue={prop.ref}
+                                                />
+                                            )}
                                         <ActionIcon
                                             size="xs"
                                             color="red"

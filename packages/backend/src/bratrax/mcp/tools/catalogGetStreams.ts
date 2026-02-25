@@ -5,12 +5,15 @@ import {
     safeParseCatalogJson,
 } from '../../../helpers/bratrax-catalog-parser';
 import type { McpToolContext } from '../toolContext';
+import { TOOL_ANNOTATIONS } from '../toolAnnotations';
+import { TOOL_TITLES } from '../toolTitles';
 import { BratraxMcpToolName, type McpProtocolContext } from '../types';
 
 export function registerCatalogGetStreamsTool(ctx: McpToolContext): void {
     ctx.server.registerTool(
         BratraxMcpToolName.CATALOG_GET_STREAMS,
         {
+            title: TOOL_TITLES[BratraxMcpToolName.CATALOG_GET_STREAMS],
             description:
                 'Get the list of streams (tables) available in a data source (Meltano tap or webhook source). ' +
                 'Returns stream names, field counts, key properties, replication method, and source_type. ' +
@@ -24,6 +27,7 @@ export function registerCatalogGetStreamsTool(ctx: McpToolContext): void {
                         ),
                 }),
             ),
+            annotations: TOOL_ANNOTATIONS[BratraxMcpToolName.CATALOG_GET_STREAMS],
         },
         async (rawArgs: Record<string, unknown>, extra) => {
             const { tap } = rawArgs as { tap: string };
