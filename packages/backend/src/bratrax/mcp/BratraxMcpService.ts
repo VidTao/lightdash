@@ -425,14 +425,15 @@ export class BratraxMcpService extends BaseService {
     private textResult(text: string) {
         if (text.length > BratraxMcpService.MAX_RESULT_SIZE) {
             const sizeMb = (text.length / 1024 / 1024).toFixed(1);
-            const truncated =
-                `Result truncated (${sizeMb}MB exceeds 1MB limit). ` +
-                text.substring(
-                    0,
-                    BratraxMcpService.MAX_RESULT_SIZE - 200,
-                ) +
-                '\n... [truncated]';
-            return { content: [{ type: 'text' as const, text: truncated }] };
+            return {
+                content: [
+                    {
+                        type: 'text' as const,
+                        text: `Result truncated (${sizeMb}MB exceeds 1MB limit). Use more specific filters to reduce result size.`,
+                    },
+                ],
+                isError: true,
+            };
         }
         return { content: [{ type: 'text' as const, text }] };
     }

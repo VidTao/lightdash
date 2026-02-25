@@ -135,18 +135,11 @@ export class BratraxEmbedService extends BaseService {
         projectUuid: string,
         userUuid?: string,
     ): Promise<Buffer> {
-        const existing = await this.database('embedding')
-            .select('encoded_secret')
-            .where('project_uuid', projectUuid)
-            .first();
-
-        if (existing) {
-            return existing.encoded_secret;
-        }
-
         const secret = randomBytes(32).toString('base64url');
         const encodedSecret = this.encryptionUtil.encrypt(secret);
 
+        // Atomic: insert only if not exists — DO NOT merge/overwrite
+        // to avoid TOCTOU race that could replace an existing secret.
         await this.database('embedding')
             .insert({
                 project_uuid: projectUuid,
@@ -158,12 +151,9 @@ export class BratraxEmbedService extends BaseService {
                 created_by: userUuid ?? null,
             })
             .onConflict('project_uuid')
-            .merge();
+            .ignore();
 
-        Logger.info(
-            `Auto-provisioned embed config for project ${projectUuid}`,
-        );
-
+        // Always read back (either pre-existing or just-inserted)
         const row = await this.database('embedding')
             .select('encoded_secret')
             .where('project_uuid', projectUuid)
