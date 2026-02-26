@@ -699,6 +699,36 @@ export class ApiService {
         }
     };
 
+    getSnapchatAdsAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/snapchat-ads/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting Snapchat Ads auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateSnapchatAdsTokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/snapchat-ads/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error(
+                'Error generating Snapchat Ads tokens data:',
+                error,
+            );
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

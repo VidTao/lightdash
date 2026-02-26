@@ -34,6 +34,7 @@ import TaboolaConnector from '../platforms/TaboolaConnector';
 import { TikTokAdsConnector } from '../platforms/TikTokAdsConnector';
 import { GA4Connector } from '../platforms/GA4Connector';
 import { BingAdsConnector } from '../platforms/BingAdsConnector';
+import { SnapchatAdsConnector } from '../platforms/SnapchatAdsConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -352,6 +353,13 @@ const Dashboard = () => {
                         <BingAdsConnector
                             adConnections={adConnections.BingAds || []}
                             platformConnection={platformConnections.BingAds}
+                            isLoading={adLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <SnapchatAdsConnector
+                            adConnections={adConnections.SnapchatAds || []}
+                            platformConnection={platformConnections.SnapchatAds}
                             isLoading={adLoading || platformLoading}
                         />
                     </Box>
