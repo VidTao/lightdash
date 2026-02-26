@@ -228,8 +228,9 @@ const Dashboard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                         <PinterestConnector
+                            adConnections={adConnections.Pinterest || []}
                             platformConnection={platformConnections.Pinterest}
-                            isLoading={platformLoading}
+                            isLoading={adLoading || platformLoading}
                         />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
