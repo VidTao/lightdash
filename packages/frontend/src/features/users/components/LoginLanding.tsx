@@ -317,6 +317,15 @@ const Login: FC<{}> = () => {
                     </Stack>
                 </form>
             </Card>
+            <Text ta="center" mt="md" size="xs" c="dimmed">
+                <Anchor href="/privacy-policy" size="xs" c="dimmed">
+                    Privacy Policy
+                </Anchor>
+                {' · '}
+                <Anchor href="/terms-of-service" size="xs" c="dimmed">
+                    Terms of Service
+                </Anchor>
+            </Text>
         </>
     );
 };

@@ -36,8 +36,12 @@ const PrivacyPolicy = () => {
           </Text>
           <List>
             <List.Item>User profile information (name, email)</List.Item>
-            <List.Item>Google ads data (campaigns, ads, performance metrics) required for reporting and analytics</List.Item>
+            <List.Item>Google Ads data (campaigns, ads, performance metrics) required for reporting and analytics</List.Item>
+            <List.Item>Google Analytics 4 data (website traffic, user behavior, acquisition channels, conversions, and audience demographics) accessed via the Analytics Data API and Admin API for read-only reporting and dashboard creation</List.Item>
           </List>
+          <Text mt="md" size="sm">
+            Google Ads data is accessed using the Google Ads API scope. Google Analytics 4 data is accessed using the Google Analytics readonly scope. Both are used solely for generating reports and dashboards within the Bratrax platform. We do not modify, delete, or write any data back to your Google accounts.
+          </Text>
         </Box>
 
         <Box component="section">
