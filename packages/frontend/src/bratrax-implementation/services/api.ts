@@ -672,6 +672,33 @@ export class ApiService {
         }
     };
 
+    getBingAdsAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/bing-ads/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting Bing Ads auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateBingAdsTokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/bing-ads/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating Bing Ads tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

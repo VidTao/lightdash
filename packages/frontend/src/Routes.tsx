@@ -12,6 +12,7 @@ import ShopifySuccessCallback from './bratrax-implementation/callbacks/ShopifySu
 import StripeCallback from './bratrax-implementation/callbacks/StripeCallback';
 import TikTokAdsCallback from './bratrax-implementation/callbacks/TikTokAdsCallback';
 import GA4Callback from './bratrax-implementation/callbacks/GA4Callback';
+import BingAdsCallback from './bratrax-implementation/callbacks/BingAdsCallback';
 import ObservatoryPage from './bratrax-implementation/pages/Observatory/ObservatoryPage';
 import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
 import StoreSettings from './bratrax-implementation/pages/Settings';
@@ -404,6 +405,10 @@ const CALLBACK_ROUTES: RouteObject[] = [
     {
         path: '/ga4/callback',
         element: <GA4Callback />,
+    },
+    {
+        path: '/bing-ads/callback',
+        element: <BingAdsCallback />,
     },
 ];
 
