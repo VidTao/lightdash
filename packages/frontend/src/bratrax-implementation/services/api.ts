@@ -759,6 +759,39 @@ export class ApiService {
         }
     };
 
+    getRechargeShopAuthUrl = async (shop: string): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/recharge/shop-auth-url`,
+                {
+                    params: {
+                        shop: shop,
+                    },
+                },
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting Recharge auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateRechargeTokensDataAndSaveinBQ = async (
+        code: string,
+        shop: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/recharge/insertTokensData`,
+                { code: code, shop: shop },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating Recharge tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

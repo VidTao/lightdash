@@ -36,6 +36,7 @@ import { GA4Connector } from '../platforms/GA4Connector';
 import { BingAdsConnector } from '../platforms/BingAdsConnector';
 import { SnapchatAdsConnector } from '../platforms/SnapchatAdsConnector';
 import { LinkedInAdsConnector } from '../platforms/LinkedInAdsConnector';
+import RechargeConnector from '../platforms/RechargeConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -369,6 +370,13 @@ const Dashboard = () => {
                             adConnections={adConnections.LinkedInAds || []}
                             platformConnection={platformConnections.LinkedInAds}
                             isLoading={adLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <RechargeConnector
+                            crmConnections={crmConnections.Recharge || []}
+                            platformConnection={platformConnections.Recharge}
+                            isLoading={crmLoading || platformLoading}
                         />
                     </Box>
                 </SimpleGrid>
