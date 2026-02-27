@@ -729,6 +729,36 @@ export class ApiService {
         }
     };
 
+    getLinkedInAdsAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/linkedin-ads/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting LinkedIn Ads auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateLinkedInAdsTokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/linkedin-ads/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error(
+                'Error generating LinkedIn Ads tokens data:',
+                error,
+            );
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

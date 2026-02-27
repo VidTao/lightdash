@@ -35,6 +35,7 @@ import { TikTokAdsConnector } from '../platforms/TikTokAdsConnector';
 import { GA4Connector } from '../platforms/GA4Connector';
 import { BingAdsConnector } from '../platforms/BingAdsConnector';
 import { SnapchatAdsConnector } from '../platforms/SnapchatAdsConnector';
+import { LinkedInAdsConnector } from '../platforms/LinkedInAdsConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -360,6 +361,13 @@ const Dashboard = () => {
                         <SnapchatAdsConnector
                             adConnections={adConnections.SnapchatAds || []}
                             platformConnection={platformConnections.SnapchatAds}
+                            isLoading={adLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <LinkedInAdsConnector
+                            adConnections={adConnections.LinkedInAds || []}
+                            platformConnection={platformConnections.LinkedInAds}
                             isLoading={adLoading || platformLoading}
                         />
                     </Box>
