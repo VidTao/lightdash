@@ -21,10 +21,6 @@ models:
         meta:
           dimension:
             type: number
-      - name: payment_id
-        meta:
-          dimension:
-            type: string
       - name: company_name
         meta:
           dimension:
@@ -38,10 +34,6 @@ models:
           dimension:
             type: string
       - name: invoice_number
-        meta:
-          dimension:
-            type: string
-      - name: payment_method
         meta:
           dimension:
             type: string
