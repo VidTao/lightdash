@@ -18,7 +18,7 @@ SELECT
     payments.invoice_number,
     TIMESTAMP_TRUNC(payments.payment_date, DAY) AS payment_date_day,
     payments.payment_method,
-    payments.payment_type,
+    payments.payment_type as allocation_type,
     payments.gross_amount,
     payments.fee_amount,
     payments.net_amount,
