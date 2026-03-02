@@ -33,7 +33,7 @@ models:
         meta:
           dimension:
             type: number
-      - name: payment_type
+      - name: allocation_type
         meta:
           dimension:
             type: string
