@@ -792,6 +792,33 @@ export class ApiService {
         }
     };
 
+    getHubSpotAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/hubspot/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting HubSpot auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateHubSpotTokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/hubspot/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating HubSpot tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

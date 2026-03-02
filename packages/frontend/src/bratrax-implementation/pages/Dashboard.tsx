@@ -37,6 +37,7 @@ import { BingAdsConnector } from '../platforms/BingAdsConnector';
 import { SnapchatAdsConnector } from '../platforms/SnapchatAdsConnector';
 import { LinkedInAdsConnector } from '../platforms/LinkedInAdsConnector';
 import RechargeConnector from '../platforms/RechargeConnector';
+import { HubSpotConnector } from '../platforms/HubSpotConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -376,6 +377,13 @@ const Dashboard = () => {
                         <RechargeConnector
                             crmConnections={crmConnections.Recharge || []}
                             platformConnection={platformConnections.Recharge}
+                            isLoading={crmLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <HubSpotConnector
+                            crmConnections={crmConnections.HubSpot || []}
+                            platformConnection={platformConnections.HubSpot}
                             isLoading={crmLoading || platformLoading}
                         />
                     </Box>
