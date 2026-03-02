@@ -5,8 +5,6 @@
   )
 }}
   
-
-
 SELECT
     c.client_id,
     c.campaign_id,
@@ -47,9 +45,7 @@ FROM (
     FROM `bratrax-without-flattening.cod.facebook_campaigns` fb
     WHERE fb.id IS NOT NULL
         AND fb.name IS NOT NULL
-
     UNION DISTINCT
-
     -- Google Campaigns
     SELECT
         g.client_id,
@@ -82,7 +78,6 @@ LEFT JOIN (
     FROM `bratrax-without-flattening.cod.slack_payment_allocation`
     GROUP BY allocation_id
 ) b ON c.allocation_id = b.allocation_id
-
 LEFT JOIN (
     -- Campaign limit from Facebook ad rules (most recent rule wins)
     SELECT 
@@ -111,14 +106,13 @@ LEFT JOIN (
     )
     WHERE rn = 1
 ) rules ON c.campaign_id = rules.campaign_id
-
 LEFT JOIN (
     -- Total spend: all-time spend per campaign
     SELECT
         campaign_id,
         SUM(spend) AS total_spend
     FROM (
-        -- Facebook spend
+        -- Facebook spend (no dedup needed — no duplicates)
         SELECT
             campaign_id,
             spend
@@ -127,15 +121,22 @@ LEFT JOIN (
         
         UNION ALL
         
-        -- Google spend (convert micros to dollars)
+        -- Google spend (DEDUP REQUIRED — 25 duplicate batches)
         SELECT
             CAST(campaign_id AS STRING) AS campaign_id,
             cost_micros / 1000000.0 AS spend
-        FROM `bratrax-without-flattening.cod.google_campaign_performance_report`
-        WHERE campaign_id IS NOT NULL
+        FROM (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY campaign_id, date, hour, device, ad_network_type, click_type
+                    ORDER BY processed_at DESC
+                ) AS rn
+            FROM `bratrax-without-flattening.cod.google_campaign_performance_report`
+            WHERE campaign_id IS NOT NULL
+        )
+        WHERE rn = 1
     )
     GROUP BY campaign_id
 ) spend ON c.campaign_id = spend.campaign_id
-
 WHERE c.client_id = '95d31546-a5e4-47a8-bc89-741538113978'
 ORDER BY c.created_at DESC
