@@ -1,0 +1,59 @@
+version: 2
+models:
+  - name: allocation_summary
+    description: Pre-aggregated allocation facts (one row per allocation) with budget, payment, and spend data
+    meta:
+      label: Allocation summary
+    columns:
+      - name: client_id
+        meta:
+          dimension:
+            type: string
+      - name: allocation_id
+        meta:
+          dimension:
+            type: string
+      - name: buyer_id
+        meta:
+          dimension:
+            type: string
+      - name: bid
+        meta:
+          dimension:
+            type: string
+      - name: geos
+        meta:
+          dimension:
+            type: string
+      - name: channel
+        meta:
+          dimension:
+            type: string
+      - name: status
+        meta:
+          dimension:
+            type: string
+      - name: allocation_type
+        meta:
+          dimension:
+            type: string
+      - name: last_payment_date
+        meta:
+          dimension:
+            type: timestamp
+      - name: active_budget
+        meta:
+          dimension:
+            type: number
+      - name: lifetime_budget
+        meta:
+          dimension:
+            type: number
+      - name: campaign_limit
+        meta:
+          dimension:
+            type: number
+      - name: maximum_spent
+        meta:
+          dimension:
+            type: number

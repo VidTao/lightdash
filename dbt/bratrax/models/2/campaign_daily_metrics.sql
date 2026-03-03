@@ -1,13 +1,21 @@
 
 {{
   config(
+    materialized='materialized_view',
+    enable_refresh=true,
+    refresh_interval_minutes=90,
+    max_staleness='INTERVAL "2:0:0" HOUR TO SECOND',
+    allow_non_incremental_definition=true,
+    on_configuration_change='apply',
     tags=['created-by-lightdash']
   )
 }}
-  
 
 
 -- CAMPAIGN_DAILY_METRICS: Daily performance metrics by campaign
+-- Materialized view with auto-refresh (every 90 min, max staleness 2h).
+-- BigQuery handles refresh automatically — no scheduler needed.
+--
 -- What this does:
 -- 1. Aggregate Facebook hourly data to daily (core + actions tables)
 -- 2. Extract leads from Facebook actions table (multiple action_types)
@@ -20,7 +28,7 @@
 WITH facebook_core AS (
     -- Facebook core metrics: spend, impressions, clicks
     -- No dedup needed — verified no duplicate rows across batches
-    SELECT 
+    SELECT
         campaign_id,
         date_start AS date,
         SUM(spend) AS spend,
@@ -34,7 +42,7 @@ WITH facebook_core AS (
 facebook_leads AS (
     -- Facebook leads from actions table
     -- No dedup needed — verified no duplicate rows across batches
-    SELECT 
+    SELECT
         campaign_id,
         date_start AS date,
         SUM(action_value) AS leads
@@ -50,7 +58,7 @@ facebook_leads AS (
     GROUP BY campaign_id, date_start
 ),
 facebook_metrics AS (
-    SELECT 
+    SELECT
         'facebook' AS channel,
         c.campaign_id,
         c.date,
@@ -59,8 +67,8 @@ facebook_metrics AS (
         c.clicks,
         COALESCE(l.leads, 0) AS leads
     FROM facebook_core c
-    LEFT JOIN facebook_leads l 
-        ON c.campaign_id = l.campaign_id 
+    LEFT JOIN facebook_leads l
+        ON c.campaign_id = l.campaign_id
         AND c.date = l.date
 ),
 google_deduped AS (
@@ -81,7 +89,7 @@ google_deduped AS (
     WHERE rn = 1
 ),
 google_metrics AS (
-    SELECT 
+    SELECT
         'google' AS channel,
         CAST(campaign_id AS STRING) AS campaign_id,
         date,
@@ -93,7 +101,7 @@ google_metrics AS (
     GROUP BY campaign_id, date
 ),
 unified_metrics AS (
-    SELECT 
+    SELECT
         channel,
         campaign_id,
         date,
@@ -101,7 +109,7 @@ unified_metrics AS (
         impressions,
         clicks,
         leads,
-        CASE 
+        CASE
             WHEN leads > 0 THEN spend / leads
             ELSE NULL
         END AS cpl
@@ -111,7 +119,7 @@ unified_metrics AS (
         SELECT * FROM google_metrics
     )
 )
-SELECT 
+SELECT
     pc.client_id,
     m.campaign_id,
     m.date,
@@ -122,5 +130,5 @@ SELECT
     m.leads,
     m.cpl
 FROM unified_metrics m
-INNER JOIN `bratrax-without-flattening.cod.platform_campaigns` pc 
+INNER JOIN `bratrax-without-flattening.cod.platform_campaigns` pc
     ON m.campaign_id = pc.campaign_id
