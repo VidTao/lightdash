@@ -6,8 +6,8 @@
 }}
 
 -- ALLOCATION_SUMMARY: One row per allocation with static budget/payment attributes.
--- Regular view that reads from the campaign_daily_metrics materialized view
--- (auto-refreshed by BigQuery) + small dimension tables. Always fresh, no scheduler needed.
+-- Regular view that reads from the campaign_daily_metrics incremental table
+-- (refreshed daily by dbt-cron) + small dimension tables.
 
 WITH alloc_base AS (
     SELECT DISTINCT

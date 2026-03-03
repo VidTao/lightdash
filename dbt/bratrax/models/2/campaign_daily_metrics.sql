@@ -1,29 +1,24 @@
 
 {{
   config(
-    materialized='materialized_view',
-    enable_refresh=true,
-    refresh_interval_minutes=90,
-    max_staleness='INTERVAL "2:0:0" HOUR TO SECOND',
-    allow_non_incremental_definition=true,
-    on_configuration_change='apply',
+    materialized='incremental',
+    unique_key=['campaign_id', 'date'],
+    partition_by={
+      'field': 'date',
+      'data_type': 'date',
+      'granularity': 'day'
+    },
+    cluster_by=['campaign_id', 'channel'],
+    incremental_strategy='merge',
     tags=['created-by-lightdash']
   )
 }}
 
 
 -- CAMPAIGN_DAILY_METRICS: Daily performance metrics by campaign
--- Materialized view with auto-refresh (every 90 min, max staleness 2h).
--- BigQuery handles refresh automatically — no scheduler needed.
---
--- What this does:
--- 1. Aggregate Facebook hourly data to daily (core + actions tables)
--- 2. Extract leads from Facebook actions table (multiple action_types)
--- 3. Aggregate Google campaign performance to daily
--- 4. Convert Google cost_micros to dollars and cast campaign_id to STRING
--- 5. UNION Facebook + Google metrics
--- 6. Calculate CPL (cost per lead)
--- 7. Join to PLATFORM_CAMPAIGN to add client_id (universal join key)
+-- Materialized as incremental table (7-day lookback merge).
+-- Run daily: dbt run --select campaign_daily_metrics --target dev
+-- First time: dbt run --select campaign_daily_metrics --full-refresh --target dev
 
 WITH facebook_core AS (
     -- Facebook core metrics: spend, impressions, clicks
@@ -37,6 +32,9 @@ WITH facebook_core AS (
     FROM `bratrax-without-flattening.cod.facebook_adsinsights_hourly_core`
     WHERE campaign_id IS NOT NULL
         AND date_start IS NOT NULL
+        {% if is_incremental() %}
+        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        {% endif %}
     GROUP BY campaign_id, date_start
 ),
 facebook_leads AS (
@@ -55,6 +53,9 @@ facebook_leads AS (
             'onsite_conversion.lead_grouped',
             'offsite_conversion.fb_pixel_lead'
         )
+        {% if is_incremental() %}
+        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        {% endif %}
     GROUP BY campaign_id, date_start
 ),
 facebook_metrics AS (
@@ -85,6 +86,9 @@ google_deduped AS (
         FROM `bratrax-without-flattening.cod.google_campaign_performance_report`
         WHERE campaign_id IS NOT NULL
             AND date IS NOT NULL
+            {% if is_incremental() %}
+            AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            {% endif %}
     )
     WHERE rn = 1
 ),
