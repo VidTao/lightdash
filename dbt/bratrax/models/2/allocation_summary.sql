@@ -52,13 +52,21 @@ budget AS (
     GROUP BY allocation_id
 ),
 
--- Campaign limit from active campaigns (with NULL protection)
+
+-- Campaign limit from active campaigns
 active_camp AS (
     SELECT
         allocation_id,
-        COALESCE(MAX(campaign_limit), 0) + 10 AS campaign_limit
-    FROM `bratrax-without-flattening`.`cod`.`platform_campaigns`
-    WHERE LOWER(status) = 'active'
+        SUM(campaign_limit + 10) AS campaign_limit
+    FROM (
+        SELECT
+            allocation_id,
+            campaign_id,
+            MAX(campaign_limit) AS campaign_limit
+        FROM `bratrax-without-flattening`.`cod`.`platform_campaigns`
+        WHERE LOWER(status) = 'active'
+        GROUP BY allocation_id, campaign_id
+    )
     GROUP BY allocation_id
 ),
 
