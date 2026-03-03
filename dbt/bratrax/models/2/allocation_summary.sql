@@ -52,14 +52,35 @@ budget AS (
     GROUP BY allocation_id
 ),
 
--- Campaign limit from active campaigns only
+-- Campaign limit from active campaigns (with NULL protection)
 active_camp AS (
     SELECT
         allocation_id,
-        MAX(campaign_limit) + 10 AS campaign_limit
+        COALESCE(MAX(campaign_limit), 0) + 10 AS campaign_limit
     FROM `bratrax-without-flattening`.`cod`.`platform_campaigns`
     WHERE LOWER(status) = 'active'
     GROUP BY allocation_id
+),
+
+-- Fallback: most recent campaign's limit for inactive allocations
+last_camp AS (
+    SELECT allocation_id, campaign_limit
+    FROM (
+        SELECT
+            pc.allocation_id,
+            pc.campaign_limit,
+            ROW_NUMBER() OVER (
+                PARTITION BY pc.allocation_id
+                ORDER BY dm.max_date DESC
+            ) AS rn
+        FROM `bratrax-without-flattening`.`cod`.`platform_campaigns` pc
+        INNER JOIN (
+            SELECT campaign_id, MAX(date) AS max_date
+            FROM `bratrax-without-flattening`.`cod`.`campaign_daily_metrics`
+            GROUP BY campaign_id
+        ) dm ON pc.campaign_id = dm.campaign_id
+    )
+    WHERE rn = 1
 ),
 
 -- Maximum spent (all-time total from materialized campaign_daily_metrics)
@@ -88,10 +109,11 @@ SELECT
     alloc_type.last_payment_date,
     alloc_type.active_budget,
     COALESCE(budget.lifetime_budget, 0) AS lifetime_budget,
-    active_camp.campaign_limit,
+    COALESCE(active_camp.campaign_limit, last_camp.campaign_limit) AS campaign_limit,
     COALESCE(total_spend.maximum_spent, 0) AS maximum_spent
 FROM alloc_base alloc
 LEFT JOIN alloc_type ON alloc.allocation_id = alloc_type.allocation_id
 LEFT JOIN budget ON alloc.allocation_id = budget.allocation_id
 LEFT JOIN active_camp ON alloc.allocation_id = active_camp.allocation_id
+LEFT JOIN last_camp ON alloc.allocation_id = last_camp.allocation_id
 LEFT JOIN total_spend ON alloc.allocation_id = total_spend.allocation_id
