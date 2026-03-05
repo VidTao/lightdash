@@ -846,6 +846,20 @@ export class ApiService {
         }
     };
 
+
+    connectIterable = async (apiKey: string): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/iterable/connect`,
+                { api_key: apiKey },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error connecting Iterable:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

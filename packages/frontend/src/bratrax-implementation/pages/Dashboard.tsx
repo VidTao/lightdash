@@ -39,6 +39,7 @@ import { LinkedInAdsConnector } from '../platforms/LinkedInAdsConnector';
 import RechargeConnector from '../platforms/RechargeConnector';
 import { HubSpotConnector } from '../platforms/HubSpotConnector';
 import { MailchimpConnector } from '../platforms/MailchimpConnector';
+import { IterableConnector } from '../platforms/IterableConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -392,6 +393,13 @@ const Dashboard = () => {
                         <MailchimpConnector
                             crmConnections={crmConnections.Mailchimp || []}
                             platformConnection={platformConnections.Mailchimp}
+                            isLoading={crmLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <IterableConnector
+                            crmConnections={crmConnections.Iterable || []}
+                            platformConnection={platformConnections.Iterable}
                             isLoading={crmLoading || platformLoading}
                         />
                     </Box>
