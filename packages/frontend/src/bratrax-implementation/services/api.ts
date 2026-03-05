@@ -819,6 +819,33 @@ export class ApiService {
         }
     };
 
+    getMailchimpAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/mailchimp/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting Mailchimp auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateMailchimpTokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/mailchimp/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating Mailchimp tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

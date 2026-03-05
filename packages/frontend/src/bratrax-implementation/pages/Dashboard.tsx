@@ -38,6 +38,7 @@ import { SnapchatAdsConnector } from '../platforms/SnapchatAdsConnector';
 import { LinkedInAdsConnector } from '../platforms/LinkedInAdsConnector';
 import RechargeConnector from '../platforms/RechargeConnector';
 import { HubSpotConnector } from '../platforms/HubSpotConnector';
+import { MailchimpConnector } from '../platforms/MailchimpConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -384,6 +385,13 @@ const Dashboard = () => {
                         <HubSpotConnector
                             crmConnections={crmConnections.HubSpot || []}
                             platformConnection={platformConnections.HubSpot}
+                            isLoading={crmLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <MailchimpConnector
+                            crmConnections={crmConnections.Mailchimp || []}
+                            platformConnection={platformConnections.Mailchimp}
                             isLoading={crmLoading || platformLoading}
                         />
                     </Box>

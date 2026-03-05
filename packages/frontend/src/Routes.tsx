@@ -17,6 +17,7 @@ import SnapchatAdsCallback from './bratrax-implementation/callbacks/SnapchatAdsC
 import LinkedInAdsCallback from './bratrax-implementation/callbacks/LinkedInAdsCallback';
 import RechargeCallback from './bratrax-implementation/callbacks/RechargeCallback';
 import HubSpotCallback from './bratrax-implementation/callbacks/HubSpotCallback';
+import MailchimpCallback from './bratrax-implementation/callbacks/MailchimpCallback';
 import ObservatoryPage from './bratrax-implementation/pages/Observatory/ObservatoryPage';
 import PrivacyPolicy from './bratrax-implementation/pages/PrivacyPolicy';
 import StoreSettings from './bratrax-implementation/pages/Settings';
@@ -429,6 +430,10 @@ const CALLBACK_ROUTES: RouteObject[] = [
     {
         path: '/hubspot/callback',
         element: <HubSpotCallback />,
+    },
+    {
+        path: '/mailchimp/callback',
+        element: <MailchimpCallback />,
     },
 ];
 
