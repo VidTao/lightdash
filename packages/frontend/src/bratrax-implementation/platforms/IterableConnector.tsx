@@ -49,7 +49,7 @@ export const IterableConnector = ({
                 isConnected={!!platformConnection}
                 platformName="Iterable"
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
-                logoPath="iterable-logo.png"
+                logoPath="iterable-logo.webp"
                 description="Connect your Iterable account to import email marketing data"
             />
 

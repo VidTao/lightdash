@@ -80,7 +80,7 @@ const IterableApiKeyModal: React.FC<IterableApiKeyModalProps> = ({
             <Stack spacing="lg">
                 <div style={{ textAlign: 'center' }}>
                     <img
-                        src="/images/iterable-logo.png"
+                        src="/images/iterable-logo.webp"
                         alt="Iterable Logo"
                         style={{ maxHeight: 40, marginBottom: 20 }}
                     />
