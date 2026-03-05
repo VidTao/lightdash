@@ -185,6 +185,18 @@ services:
       retries: 3
       start_period: 60s
 
+  dbt-cron:
+    build:
+      context: .
+      dockerfile: docker/dbt-cron/Dockerfile
+    volumes:
+      - ./dbt/bratrax:/opt/dbt/bratrax
+      - ./dbt/bratrax/profiles_docker.yml:/opt/dbt/profiles/profiles.yml:ro
+      - ../service-accounts/bratrax-78c5b6786fc2.json:/opt/credentials/serviceAccount.json:ro
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/credentials/serviceAccount.json
+    restart: unless-stopped
+
 volumes:
   db-data:
   minio-data:

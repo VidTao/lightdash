@@ -1,0 +1,14 @@
+bratrax:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: bratrax-without-flattening
+      dataset: cod
+      keyfile: /opt/credentials/serviceAccount.json
+      location: US
+      threads: 1
+      job_execution_timeout_seconds: 300
+      priority: interactive
+      job_retries: 1
