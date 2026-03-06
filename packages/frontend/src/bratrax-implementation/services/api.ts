@@ -888,6 +888,29 @@ export class ApiService {
         }
     };
 
+    connectAppleSearchAds = async (
+        clientId: string,
+        teamId: string,
+        keyId: string,
+        privateKey: string,
+    ): Promise<any> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/apple-search-ads/connect`,
+                {
+                    client_id: clientId,
+                    team_id: teamId,
+                    key_id: keyId,
+                    private_key: privateKey,
+                },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error connecting Apple Search Ads:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,

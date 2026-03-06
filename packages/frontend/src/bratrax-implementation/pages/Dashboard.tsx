@@ -41,6 +41,7 @@ import { HubSpotConnector } from '../platforms/HubSpotConnector';
 import { MailchimpConnector } from '../platforms/MailchimpConnector';
 import { IterableConnector } from '../platforms/IterableConnector';
 import { RedditAdsConnector } from '../platforms/RedditAdsConnector';
+import { AppleSearchAdsConnector } from '../platforms/AppleSearchAdsConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -380,6 +381,13 @@ const Dashboard = () => {
                         <RedditAdsConnector
                             adConnections={adConnections.RedditAds || []}
                             platformConnection={platformConnections.RedditAds}
+                            isLoading={adLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <AppleSearchAdsConnector
+                            adConnections={adConnections.AppleSearchAds || []}
+                            platformConnection={platformConnections.AppleSearchAds}
                             isLoading={adLoading || platformLoading}
                         />
                     </Box>
