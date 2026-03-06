@@ -2,6 +2,7 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
 import OutbrainLoginModal from '../modals/OutbrainLoginModal';
 import { CrmConnection, PlatformConnection } from '../models/interfaces';
@@ -21,6 +22,17 @@ const OutbrainConnector = ({
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('Outbrain');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleOpenModal = () => {
         setIsModalOpen(true);
@@ -61,6 +73,7 @@ const OutbrainConnector = ({
                 platformName="Outbrain"
                 logoPath="outbrain-logo.png"
                 description="Connect your Outbrain account to get started"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
 
             <OutbrainLoginModal
@@ -74,6 +87,13 @@ const OutbrainConnector = ({
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
                 crmConnections={crmConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Outbrain"
+                isLoading={false}
             />
         </>
     );

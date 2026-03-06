@@ -3,6 +3,7 @@ import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import AppleSearchAdsModal from '../modals/AppleSearchAdsModal';
 import { AdvertisingConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
@@ -21,6 +22,17 @@ export const AppleSearchAdsConnector = ({
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('AppleSearchAds');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleConnect = async (
         clientId: string,
@@ -56,6 +68,7 @@ export const AppleSearchAdsConnector = ({
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
                 logoPath="apple-search-ads-logo.png"
                 description="Connect your Apple Search Ads account to import campaign data"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
 
             <AppleSearchAdsModal
@@ -69,6 +82,13 @@ export const AppleSearchAdsConnector = ({
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
                 advertisingConnections={adConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Apple Search Ads"
+                isLoading={false}
             />
         </>
     );

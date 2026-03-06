@@ -1,6 +1,8 @@
+import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
 import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
@@ -18,6 +20,17 @@ const TaboolaConnector = ({
 }: TaboolaConnectorProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('Taboola');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleConnect = async () => {
         try {
@@ -44,11 +57,19 @@ const TaboolaConnector = ({
                 platformName="Taboola"
                 logoPath="taboola-logo.png"
                 description="Connect your Taboola account to get started"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
                 crmConnections={crmConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Taboola"
+                isLoading={false}
             />
         </>
     );

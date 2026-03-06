@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
@@ -18,6 +19,17 @@ export const HubSpotConnector = ({
 }: HubSpotConnectorProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('HubSpot');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleLogin = async () => {
         try {
@@ -43,11 +55,19 @@ export const HubSpotConnector = ({
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
                 logoPath="hubspot-logo.png"
                 description="Connect your HubSpot account to import CRM data"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
                 crmConnections={crmConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="HubSpot"
+                isLoading={false}
             />
         </>
     );

@@ -1,3 +1,4 @@
+import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -5,6 +6,7 @@ import { useRefetchUser } from '../../hooks/user/useRefetchUser';
 import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
 import SelectAccountModal from '../modals/SelectAccountModal';
 import { AdPlatformAccountInfo, AdvertisingConnection, PlatformConnection } from '../models/interfaces';
@@ -34,6 +36,17 @@ const FacebookAdsConnector = ({
     const [userInfo, setUserInfo] = useState<any>(null);
     const [accessToken, setAccessToken] = useState('');
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('Facebook');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     useEffect(() => {
         if (selectedAccounts.length > 0) {
@@ -105,6 +118,7 @@ const FacebookAdsConnector = ({
                 platformName="Facebook"
                 logoPath="fb-logo.webp"
                 description="Connect your Facebook account to get started"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
             <SelectAccountModal
                 modalTitle="Select facebook accounts:"
@@ -118,6 +132,13 @@ const FacebookAdsConnector = ({
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
                 advertisingConnections={adConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Facebook Ads"
+                isLoading={false}
             />
         </>
     );

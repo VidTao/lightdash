@@ -3,6 +3,7 @@ import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import IterableApiKeyModal from '../modals/IterableApiKeyModal';
 import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
@@ -21,6 +22,17 @@ export const IterableConnector = ({
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('Iterable');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleConnect = async (apiKey: string) => {
         try {
@@ -51,6 +63,7 @@ export const IterableConnector = ({
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
                 logoPath="iterable-logo.webp"
                 description="Connect your Iterable account to import email marketing data"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
 
             <IterableApiKeyModal
@@ -64,6 +77,13 @@ export const IterableConnector = ({
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
                 crmConnections={crmConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Iterable"
+                isLoading={false}
             />
         </>
     );

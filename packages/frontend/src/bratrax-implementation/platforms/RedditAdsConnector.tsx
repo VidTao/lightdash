@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { AdvertisingConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
 
@@ -18,6 +19,17 @@ export const RedditAdsConnector = ({
 }: RedditAdsConnectorProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('RedditAds');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleLogin = async () => {
         try {
@@ -43,11 +55,19 @@ export const RedditAdsConnector = ({
                 connectedOn={formatDate(platformConnection?.created_at ?? '')}
                 logoPath="reddit-ads-logo.webp"
                 description="Connect your Reddit Ads account to import campaign data"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
             <DisplayAdConnectionsData
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
                 advertisingConnections={adConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Reddit Ads"
+                isLoading={false}
             />
         </>
     );

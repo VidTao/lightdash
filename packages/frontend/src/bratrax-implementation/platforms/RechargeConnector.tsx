@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
 import { DisplayCrmConnectionsData } from '../modals/DisplayCrmConnectionsData';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { EnterRechargeShopUrl } from '../modals/EnterRechargeShopUrl';
 import { CrmConnection, PlatformConnection } from '../models/interfaces';
 import { apiService } from '../services/api';
@@ -20,6 +21,17 @@ const RechargeConnector = ({
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isCrmConnectionsOpen, setIsCrmConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('Recharge');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     const handleLogin = async () => {
         setIsLoading(true);
@@ -62,11 +74,19 @@ const RechargeConnector = ({
                 platformName="Recharge"
                 logoPath="recharge-logo.png"
                 description="Connect your Recharge account to import subscription data"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
             <DisplayCrmConnectionsData
                 isOpen={isCrmConnectionsOpen}
                 onClose={() => setIsCrmConnectionsOpen(false)}
                 crmConnections={crmConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Recharge"
+                isLoading={false}
             />
         </>
     );

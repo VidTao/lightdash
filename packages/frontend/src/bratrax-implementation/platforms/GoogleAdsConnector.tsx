@@ -1,9 +1,11 @@
+import { notifications } from '@mantine/notifications';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useEffect, useState } from 'react';
 import { useRefetchUser } from '../../hooks/user/useRefetchUser';
 import useApp from '../../providers/App/useApp';
 import PlatformCard from '../cards/PlatformCard';
 import { formatDate } from '../helpers/date';
+import DisconnectConfirmModal from '../modals/DisconnectConfirmModal';
 import { DisplayAdConnectionsData } from '../modals/DisplayAdConnectionsData';
 import SelectAccountModal from '../modals/SelectAccountModal';
 import { AdPlatformAccountInfo, AdvertisingConnection, PlatformConnection } from '../models/interfaces';
@@ -32,6 +34,17 @@ const GoogleAdsConnector = ({
     >([]);
 
     const [isAdConnectionsOpen, setIsAdConnectionsOpen] = useState(false);
+    const [isDisconnectOpen, setIsDisconnectOpen] = useState(false);
+
+    const handleDisconnect = async () => {
+        try {
+            await apiService.disconnectPlatform('Google');
+            setIsDisconnectOpen(false);
+            window.location.reload();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    };
 
     useEffect(() => {
         if (googleUser) {
@@ -137,6 +150,7 @@ const GoogleAdsConnector = ({
                 platformName="Google ads"
                 logoPath="google-ads-logo.svg"
                 description="Connect your Google ads account to get started"
+                onDisconnect={() => setIsDisconnectOpen(true)}
             />
             <SelectAccountModal
                 modalTitle="Select google ads accounts:"
@@ -150,6 +164,13 @@ const GoogleAdsConnector = ({
                 isOpen={isAdConnectionsOpen}
                 onClose={() => setIsAdConnectionsOpen(false)}
                 advertisingConnections={adConnections}
+            />
+            <DisconnectConfirmModal
+                isOpen={isDisconnectOpen}
+                onClose={() => setIsDisconnectOpen(false)}
+                onConfirm={handleDisconnect}
+                platformName="Google Ads"
+                isLoading={false}
             />
         </>
     );

@@ -4,6 +4,7 @@ import {
     IconCheck,
     IconInfoCircle,
     IconLoader,
+    IconUnlink,
 } from '@tabler/icons-react';
 
 interface PlatformCardProps {
@@ -15,6 +16,7 @@ interface PlatformCardProps {
     isConnected?: boolean;
     handleNavigate?: () => void;
     connectedOn?: string;
+    onDisconnect?: () => void;
 }
 
 const PlatformCard = ({
@@ -26,6 +28,7 @@ const PlatformCard = ({
     isConnected,
     handleNavigate,
     connectedOn,
+    onDisconnect,
 }: PlatformCardProps) => {
     return (
         <Paper
@@ -110,6 +113,30 @@ const PlatformCard = ({
                             </Text>
                             <IconInfoCircle size={16} color="green" />
                         </Group>
+                        {onDisconnect && (
+                            <Group
+                                spacing={4}
+                                mt={8}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDisconnect();
+                                }}
+                                sx={(theme) => ({
+                                    display: 'inline-flex',
+                                    cursor: 'pointer',
+                                    padding: '4px 8px',
+                                    borderRadius: theme.radius.sm,
+                                    '&:hover': {
+                                        backgroundColor: theme.colors.red[0],
+                                    },
+                                })}
+                            >
+                                <IconUnlink size={14} color="red" />
+                                <Text size="xs" color="red.6">
+                                    Disconnect
+                                </Text>
+                            </Group>
+                        )}
                     </Box>
                 ) : (
                     <Text size="sm" color="gray.6">
