@@ -40,6 +40,7 @@ import RechargeConnector from '../platforms/RechargeConnector';
 import { HubSpotConnector } from '../platforms/HubSpotConnector';
 import { MailchimpConnector } from '../platforms/MailchimpConnector';
 import { IterableConnector } from '../platforms/IterableConnector';
+import { RedditAdsConnector } from '../platforms/RedditAdsConnector';
 import { apiService } from '../services/api';
 
 type WebhookSource = {
@@ -372,6 +373,13 @@ const Dashboard = () => {
                         <LinkedInAdsConnector
                             adConnections={adConnections.LinkedInAds || []}
                             platformConnection={platformConnections.LinkedInAds}
+                            isLoading={adLoading || platformLoading}
+                        />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <RedditAdsConnector
+                            adConnections={adConnections.RedditAds || []}
+                            platformConnection={platformConnections.RedditAds}
                             isLoading={adLoading || platformLoading}
                         />
                     </Box>

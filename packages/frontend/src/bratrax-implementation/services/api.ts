@@ -860,6 +860,34 @@ export class ApiService {
         }
     };
 
+
+    getRedditAdsAuthUrl = async (): Promise<string> => {
+        try {
+            const response = await axios.get(
+                `${apiUrl}/connectors/reddit-ads/auth-url`,
+            );
+            return response.data.url;
+        } catch (error) {
+            console.error('Error getting Reddit Ads auth URL:', error);
+            throw error;
+        }
+    };
+
+    generateRedditAdsTokensDataAndSaveinBQ = async (
+        code: string,
+    ): Promise<string> => {
+        try {
+            const response = await axios.post(
+                `${apiUrl}/connectors/reddit-ads/insertTokensData`,
+                { code: code },
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Error generating Reddit Ads tokens data:', error);
+            throw error;
+        }
+    };
+
     updateUserRole = async (userId: string, role: string) => {
         const response = await axios.put(`${apiUrl}/users/${userId}/role`, {
             role: role,
