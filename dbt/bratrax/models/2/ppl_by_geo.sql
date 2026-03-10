@@ -81,4 +81,3 @@ FULL OUTER JOIN (
     AND revenue > 0
   GROUP BY date, state_code, state_name
 ) l ON s.date = l.date AND s.state_code = l.state_code
-ORDER BY date DESC, state_code

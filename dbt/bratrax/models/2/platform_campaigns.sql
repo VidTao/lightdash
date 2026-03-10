@@ -141,4 +141,3 @@ LEFT JOIN (
     GROUP BY campaign_id
 ) spend ON c.campaign_id = spend.campaign_id
 WHERE c.client_id = '95d31546-a5e4-47a8-bc89-741538113978'
-ORDER BY c.created_at DESC
