@@ -20,30 +20,29 @@ WITH alloc_base AS (
     FROM `bratrax-without-flattening`.`cod`.`slack_allocation`
 ),
 
--- Most recent payment info per allocation
 alloc_type AS (
     SELECT
-        pa.allocation_id,
-        p.payment_type AS allocation_type,
-        p.payment_date AS last_payment_date,
-        pa.amount AS active_budget
-    FROM `bratrax-without-flattening`.`cod`.`slack_payment_allocation` pa
-    INNER JOIN `bratrax-without-flattening`.`cod`.`slack_payments` p
-        ON pa.payment_id = p.payment_id
-    INNER JOIN (
+        allocation_id,
+        allocation_type,
+        last_payment_date,
+        active_budget
+    FROM (
         SELECT
-            pa2.allocation_id,
-            MAX(p2.payment_date) AS max_payment_date
-        FROM `bratrax-without-flattening`.`cod`.`slack_payment_allocation` pa2
-        INNER JOIN `bratrax-without-flattening`.`cod`.`slack_payments` p2
-            ON pa2.payment_id = p2.payment_id
-        GROUP BY pa2.allocation_id
-    ) latest
-        ON pa.allocation_id = latest.allocation_id
-        AND p.payment_date = latest.max_payment_date
+            pa.allocation_id,
+            p.payment_type AS allocation_type,
+            p.payment_date AS last_payment_date,
+            pa.amount AS active_budget,
+            ROW_NUMBER() OVER (
+                PARTITION BY pa.allocation_id
+                ORDER BY p.payment_date DESC, pa.created_at DESC, pa.payment_id DESC
+            ) AS rn
+        FROM `bratrax-without-flattening`.`cod`.`slack_payment_allocation` pa
+        INNER JOIN `bratrax-without-flattening`.`cod`.`slack_payments` p
+            ON pa.payment_id = p.payment_id
+    )
+    WHERE rn = 1
 ),
 
--- Lifetime budget per allocation
 budget AS (
     SELECT
         allocation_id,
@@ -52,8 +51,6 @@ budget AS (
     GROUP BY allocation_id
 ),
 
-
--- Campaign limit from active campaigns
 active_camp AS (
     SELECT
         allocation_id,
@@ -70,7 +67,6 @@ active_camp AS (
     GROUP BY allocation_id
 ),
 
--- Fallback: most recent campaign's limit for inactive allocations
 last_camp AS (
     SELECT allocation_id, campaign_limit
     FROM (
@@ -91,7 +87,6 @@ last_camp AS (
     WHERE rn = 1
 ),
 
--- Maximum spent (all-time total from materialized campaign_daily_metrics)
 total_spend AS (
     SELECT
         pc.allocation_id,
