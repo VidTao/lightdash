@@ -7,4 +7,4 @@ RUN mkdir -p /opt/scripts
 COPY docker/dbt-cron/run_dbt.sh /opt/scripts/run_dbt.sh
 RUN chmod +x /opt/scripts/run_dbt.sh
 
-CMD ["sh", "-c", "echo '[dbt-cron] Started. Running every 12 hours.' && while true; do /opt/scripts/run_dbt.sh; echo '[dbt-cron] Sleeping 12 hours...'; sleep 43200; done"]
+CMD ["sh", "-c", "echo '[dbt-cron] Started. Running every 12 hours.' && while true; do /opt/scripts/run_dbt.sh; echo '[dbt-cron] Sleeping 12 hours...'; sleep 14400; done"]
