@@ -1,6 +1,8 @@
 
 {{
   config(
+    materialized='table',
+    cluster_by=['client_id', 'date'],
     tags=['created-by-lightdash']
   )
 }}

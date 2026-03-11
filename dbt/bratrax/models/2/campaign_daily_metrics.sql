@@ -16,7 +16,7 @@
 
 
 -- CAMPAIGN_DAILY_METRICS: Daily performance metrics by campaign
--- Materialized as incremental table (7-day lookback merge).
+-- Materialized as incremental table (30-day lookback merge).
 -- Run daily: dbt run --select campaign_daily_metrics --target dev
 -- First time: dbt run --select campaign_daily_metrics --full-refresh --target dev
 
