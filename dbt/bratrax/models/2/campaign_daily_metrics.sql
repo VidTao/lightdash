@@ -33,7 +33,7 @@ WITH facebook_core AS (
     WHERE campaign_id IS NOT NULL
         AND date_start IS NOT NULL
         {% if is_incremental() %}
-        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         {% endif %}
     GROUP BY campaign_id, date_start
 ),
@@ -54,7 +54,7 @@ facebook_leads AS (
             'offsite_conversion.fb_pixel_lead'
         )
         {% if is_incremental() %}
-        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         {% endif %}
     GROUP BY campaign_id, date_start
 ),
@@ -87,7 +87,7 @@ google_deduped AS (
         WHERE campaign_id IS NOT NULL
             AND date IS NOT NULL
             {% if is_incremental() %}
-            AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
             {% endif %}
     )
     WHERE rn = 1
