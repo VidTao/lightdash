@@ -38,8 +38,6 @@ WITH facebook_core AS (
     GROUP BY campaign_id, date_start
 ),
 facebook_leads AS (
-    -- Facebook leads from actions table
-    -- No dedup needed — verified no duplicate rows across batches
     SELECT
         campaign_id,
         date_start AS date,
@@ -47,14 +45,9 @@ facebook_leads AS (
     FROM `bratrax-without-flattening.cod.facebook_adsinsights_hourly_actions`
     WHERE campaign_id IS NOT NULL
         AND date_start IS NOT NULL
-        AND action_type IN (
-            'lead',
-            'leadgen.other',
-            'onsite_conversion.lead_grouped',
-            'offsite_conversion.fb_pixel_lead'
-        )
+        AND action_type = 'lead'
         {% if is_incremental() %}
-        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         {% endif %}
     GROUP BY campaign_id, date_start
 ),
