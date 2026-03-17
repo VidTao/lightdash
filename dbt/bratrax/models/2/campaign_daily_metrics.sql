@@ -1,24 +1,15 @@
 
 {{
   config(
-    materialized='incremental',
-    unique_key=['campaign_id', 'date'],
-    partition_by={
-      'field': 'date',
-      'data_type': 'date',
-      'granularity': 'day'
-    },
+    materialized='table',
     cluster_by=['campaign_id', 'channel'],
-    incremental_strategy='merge',
     tags=['created-by-lightdash']
   )
 }}
 
 
 -- CAMPAIGN_DAILY_METRICS: Daily performance metrics by campaign
--- Materialized as incremental table (30-day lookback merge).
--- Run daily: dbt run --select campaign_daily_metrics --target dev
--- First time: dbt run --select campaign_daily_metrics --full-refresh --target dev
+-- Materialized as table (full rebuild on each run).
 
 WITH facebook_core AS (
     -- Facebook core metrics: spend, impressions, clicks
@@ -32,9 +23,6 @@ WITH facebook_core AS (
     FROM `bratrax-without-flattening.cod.facebook_adsinsights_hourly_core`
     WHERE campaign_id IS NOT NULL
         AND date_start IS NOT NULL
-        {% if is_incremental() %}
-        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-        {% endif %}
     GROUP BY campaign_id, date_start
 ),
 facebook_leads AS (
@@ -46,9 +34,6 @@ facebook_leads AS (
     WHERE campaign_id IS NOT NULL
         AND date_start IS NOT NULL
         AND action_type = 'lead'
-        {% if is_incremental() %}
-        AND date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-        {% endif %}
     GROUP BY campaign_id, date_start
 ),
 facebook_metrics AS (
@@ -79,9 +64,6 @@ google_deduped AS (
         FROM `bratrax-without-flattening.cod.google_campaign_performance_report`
         WHERE campaign_id IS NOT NULL
             AND date IS NOT NULL
-            {% if is_incremental() %}
-            AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-            {% endif %}
     )
     WHERE rn = 1
 ),
