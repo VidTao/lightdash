@@ -29,7 +29,7 @@ function extractColor(
 ): string {
     const marker = (param as { marker?: string }).marker ?? '';
     const match = marker.match(/background-color:([^;"]+)/);
-    return match ? match[1] : (param.color as string) ?? '#999';
+    return match ? match[1] : ((param.color as string) ?? '#999');
 }
 
 function formatValue(v: unknown): string {
@@ -101,10 +101,10 @@ function itemTooltipFormatter(
         Array.isArray(p.value)
             ? p.value[1]
             : typeof p.value === 'object' && p.value !== null
-                ? (p.value as Record<string, unknown>)[
-                      Object.keys(p.value)[1] ?? ''
-                  ] ?? p.value
-                : p.value,
+              ? ((p.value as Record<string, unknown>)[
+                    Object.keys(p.value)[1] ?? ''
+                ] ?? p.value)
+              : p.value,
     );
     const percent = (p as { percent?: number }).percent;
     const display =
@@ -239,10 +239,13 @@ app.ontoolresult = (result) => {
     }
 };
 
+let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 const resizeObserver = new ResizeObserver(() => {
     if (chart) {
-        // Important to call resize method to ensure the chart is responsive
-        chart.resize();
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            chart?.resize();
+        }, 100);
     }
 });
 resizeObserver.observe(chartContainer);

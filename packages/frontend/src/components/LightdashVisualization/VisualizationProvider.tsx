@@ -42,17 +42,18 @@ import {
 } from '../../hooks/useServerOrClientFeatureFlag';
 import { type EChartsReact } from '../EChartsReactWrapper';
 import { type EchartsSeriesClickEvent } from '../SimpleChart';
+import Context from './context';
+import { type useVisualizationContext } from './useVisualizationContext';
 import VisualizationBigNumberConfig from './VisualizationBigNumberConfig';
 import VisualizationCartesianConfig from './VisualizationConfigCartesian';
 import VisualizationConfigFunnel from './VisualizationConfigFunnel';
 import VisualizationGaugeConfig from './VisualizationConfigGauge';
 import VisualizationMapConfig from './VisualizationConfigMap';
 import VisualizationPieConfig from './VisualizationConfigPie';
+import VisualizationConfigSankey from './VisualizationConfigSankey';
 import VisualizationTableConfig from './VisualizationConfigTable';
 import VisualizationTreemapConfig from './VisualizationConfigTreemap';
 import VisualizationCustomConfig from './VisualizationCustomConfig';
-import Context from './context';
-import { type useVisualizationContext } from './useVisualizationContext';
 
 export type VisualizationProviderProps = {
     minimal?: boolean;
@@ -85,6 +86,7 @@ export type VisualizationProviderProps = {
     containerWidth?: number;
     containerHeight?: number;
     isDashboard?: boolean;
+    isEditMode?: boolean;
     dateZoom?: DateZoom;
 };
 
@@ -116,6 +118,7 @@ const VisualizationProvider: FC<
     containerWidth,
     containerHeight,
     isDashboard,
+    isEditMode,
     dateZoom,
 }) => {
     const itemsMap = useMemo(() => {
@@ -359,6 +362,7 @@ const VisualizationProvider: FC<
         containerWidth,
         containerHeight,
         isDashboard,
+        isEditMode,
         isTouchDevice,
     };
 
@@ -542,6 +546,26 @@ const VisualizationProvider: FC<
                         </Context.Provider>
                     )}
                 </VisualizationCustomConfig>
+            );
+        case ChartType.SANKEY:
+            return (
+                <VisualizationConfigSankey
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    colorPalette={colorPalette}
+                    tableCalculationsMetadata={tableCalculationsMetadata}
+                    parameters={parameters}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationConfigSankey>
             );
         default:
             return assertUnreachable(chartConfig, 'Unknown chart type');

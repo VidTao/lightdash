@@ -1,14 +1,15 @@
 import { Box, MantineProvider, type MantineThemeOverride } from '@mantine/core';
 import { IconUnlink } from '@tabler/icons-react';
 import { memo, useMemo, type FC } from 'react';
+import SuboptimalState from '../../../../../components/common/SuboptimalState/SuboptimalState';
 import LightdashVisualization from '../../../../../components/LightdashVisualization';
 import VisualizationProvider from '../../../../../components/LightdashVisualization/VisualizationProvider';
-import SuboptimalState from '../../../../../components/common/SuboptimalState/SuboptimalState';
 import {
     selectSavedChart,
     useExplorerSelector,
 } from '../../../../../features/explorer/store';
 import { useExplorerQuery } from '../../../../../hooks/useExplorerQuery';
+import { useProjectUuid } from '../../../../../hooks/useProjectUuid';
 import { useSavedQuery } from '../../../../../hooks/useSavedQuery';
 import MinimalSavedExplorer from '../../../../../pages/MinimalSavedExplorer';
 import useApp from '../../../../../providers/App/useApp';
@@ -79,8 +80,10 @@ type Props = {
 };
 
 const EmbedChart: FC<Props> = ({ containerStyles, savedQueryUuid }) => {
+    const projectUuid = useProjectUuid();
     const { data, isInitialLoading, isError, error } = useSavedQuery({
-        id: savedQueryUuid,
+        uuidOrSlug: savedQueryUuid,
+        projectUuid,
     });
 
     if (isInitialLoading) {

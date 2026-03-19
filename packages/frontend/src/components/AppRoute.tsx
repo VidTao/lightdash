@@ -3,8 +3,8 @@ import { Navigate, useLocation } from 'react-router';
 import { setupAxiosInterceptor } from '../bratrax-implementation/interceptors';
 import { useOrganization } from '../hooks/organization/useOrganization';
 import useApp from '../providers/App/useApp';
-import PageSpinner from './PageSpinner';
 import ErrorState from './common/ErrorState';
+import PageSpinner from './PageSpinner';
 
 const AppRoute: FC<React.PropsWithChildren> = ({ children }) => {
     const { health } = useApp();

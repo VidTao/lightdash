@@ -47,7 +47,7 @@ type TileWithTargetFields = {
     tileChartKind?: ChartKind | undefined;
     sortedFilters: Field[] | undefined;
     selectedField: Field | undefined;
-    tabUuid?: string;
+    tabUuid?: string | null;
     hasExactMatch: boolean;
 };
 
@@ -61,7 +61,7 @@ type TileWithTargetColumns = {
     tileChartKind?: ChartKind | undefined;
     sortedFilters: string[];
     selectedField: string | undefined;
-    tabUuid?: string;
+    tabUuid?: string | null;
     hasExactMatch: boolean;
 };
 
@@ -527,9 +527,10 @@ const TileFilterConfiguration: FC<Props> = ({
                                             items={
                                                 value.sortedFilters as Field[]
                                             }
-                                            withinPortal={
-                                                popoverProps?.withinPortal
-                                            }
+                                            comboboxProps={{
+                                                withinPortal:
+                                                    popoverProps?.withinPortal,
+                                            }}
                                             onDropdownOpen={
                                                 popoverProps?.onOpen
                                             }

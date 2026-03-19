@@ -101,13 +101,28 @@ See [Metrics Reference](./resources/metrics-reference.md) and [Dimensions Refere
 
 1. **Download**: `lightdash download --charts chart-slug`
 2. **Edit** the YAML file in `lightdash/` directory
-3. **Upload**: `lightdash upload --charts chart-slug`
+3. **Update dashboard tiles**: If you changed the chart's name or purpose, download any dashboards that reference it and update their tile `title` and `chartName` properties to match
+4. **Lint**: `lightdash lint` to validate before uploading
+5. **Upload**: `lightdash upload --charts chart-slug` (and any modified dashboards)
+
+**Dashboard tiles have their own titles.** A `saved_chart` tile's `title` and `chartName` properties are independent overrides — they do NOT auto-update when you rename the chart. If you change a chart from "Total Revenue" to "Gross Profit" but don't update the dashboard tile, the dashboard will still display "Total Revenue". Always download the dashboard, find tiles with matching `chartSlug`, and update their `title` and `chartName` to match.
+
+```yaml
+# Dashboard tile — title and chartName must be updated manually when chart changes
+tiles:
+  - type: saved_chart
+    properties:
+      chartSlug: total-revenue-kpi
+      title: "Gross Profit"        # ← Update this when chart name/purpose changes
+      chartName: "Gross Profit"    # ← Update this too
+```
 
 ### Editing Dashboards
 
 1. **Download**: `lightdash download --dashboards dashboard-slug`
 2. **Edit** the YAML file in `lightdash/` directory
-3. **Upload**: `lightdash upload --dashboards dashboard-slug`
+3. **Lint**: `lightdash lint` to validate before uploading
+4. **Upload**: `lightdash upload --dashboards dashboard-slug`
 
 ### Creating New Content
 
@@ -116,7 +131,8 @@ Charts and dashboards are typically created in the UI first, then managed as cod
 1. Create in UI
 2. `lightdash download` to pull as YAML
 3. Edit and version control
-4. `lightdash upload` to sync changes
+4. `lightdash lint` to validate before uploading
+5. `lightdash upload` to sync changes
 
 ### Testing with Preview
 
@@ -138,6 +154,7 @@ lightdash stop-preview --name "my-feature"
 | `lightdash lint` | Validate YAML locally |
 | `lightdash preview` | Create temporary test project |
 | `lightdash sql "..." -o file.csv` | Run SQL queries against warehouse |
+| `lightdash run-chart -p chart.yml` | Execute chart YAML query against warehouse |
 
 See [CLI Reference](./resources/cli-reference.md) for full command documentation.
 

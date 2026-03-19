@@ -98,6 +98,11 @@ export const warehouseClientMock: WarehouseClient = {
         `EXTRACT(EPOCH FROM (${endTimestampSql} - ${startTimestampSql}))`,
     getMedianSql: (valueSql) =>
         `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${valueSql})`,
+    buildArray: (elements) => `ARRAY[${elements.join(', ')}]`,
+    buildArrayAgg: (expression, orderBy) =>
+        orderBy
+            ? `ARRAY_AGG(${expression} ORDER BY ${orderBy})`
+            : `ARRAY_AGG(${expression})`,
 };
 
 const sourceMock: Source = {
@@ -671,6 +676,7 @@ export const exploreComplexReferenceCompiled: Explore = {
                     tableLabel: 'a',
                     sql: '${dim3}',
                     compiledSql: 'AVG(("a".dim3 + (("a".dim1)) + ("a".dim1)))',
+                    compiledValueSql: '("a".dim3 + (("a".dim1)) + ("a".dim1))',
                     tablesReferences: ['a'],
                     source: sourceMock,
                     hidden: false,
@@ -1260,6 +1266,7 @@ export const compiledJoinedExploreWithTwoJoinsToTheSameTable: Explore = {
                     tableLabel: 'a',
                     sql: '${custom_alias.dim1}',
                     compiledSql: 'SUM(("custom_alias".dim1))',
+                    compiledValueSql: '("custom_alias".dim1)',
                     tablesReferences: ['a', 'custom_alias'],
                     source: sourceMock,
                     hidden: false,
@@ -1555,13 +1562,14 @@ export const exploreWithMetricNumberCompiled: Explore = {
                 m1: {
                     ...exploreWithMetricNumber.tables.a.metrics.m1,
                     compiledSql: 'SUM(("a".dim1))',
+                    compiledValueSql: '("a".dim1)',
                     tablesReferences: ['a'],
                     showUnderlyingValues: undefined,
                 },
                 m2: {
                     ...exploreWithMetricNumber.tables.a.metrics.m2,
                     compiledSql: '2 + (SUM(("a".dim1)))',
-
+                    compiledValueSql: '2 + (SUM(("a".dim1)))',
                     tablesReferences: ['a'],
                     showUnderlyingValues: undefined,
                 },
@@ -1738,6 +1746,7 @@ export const exploreWithNonAggregateMetricWithAggregationInSqlCompiled: Explore 
                         ...exploreWithNonAggregateMetricWithAggregationInSql
                             .tables.events.metrics.user_count,
                         compiledSql: 'count(distinct ("events".user_id))',
+                        compiledValueSql: 'count(distinct ("events".user_id))',
                         tablesReferences: ['events'],
                         showUnderlyingValues: undefined,
                     },
@@ -1745,6 +1754,7 @@ export const exploreWithNonAggregateMetricWithAggregationInSqlCompiled: Explore 
                         ...exploreWithNonAggregateMetricWithAggregationInSql
                             .tables.events.metrics.amount_stddev,
                         compiledSql: 'stddev(("events".amount))',
+                        compiledValueSql: 'stddev(("events".amount))',
                         tablesReferences: ['events'],
                         showUnderlyingValues: undefined,
                     },
@@ -1752,6 +1762,7 @@ export const exploreWithNonAggregateMetricWithAggregationInSqlCompiled: Explore 
                         ...exploreWithNonAggregateMetricWithAggregationInSql
                             .tables.events.metrics.conditional_count,
                         compiledSql: `CASE WHEN ("events".status) = 'active' THEN count(distinct ("events".user_id)) ELSE 0 END`,
+                        compiledValueSql: `CASE WHEN ("events".status) = 'active' THEN count(distinct ("events".user_id)) ELSE 0 END`,
                         tablesReferences: ['events'],
                         showUnderlyingValues: undefined,
                     },
@@ -1759,6 +1770,7 @@ export const exploreWithNonAggregateMetricWithAggregationInSqlCompiled: Explore 
                         ...exploreWithNonAggregateMetricWithAggregationInSql
                             .tables.events.metrics.safe_avg,
                         compiledSql: 'COALESCE(avg(("events".amount)), 0)',
+                        compiledValueSql: 'COALESCE(avg(("events".amount)), 0)',
                         tablesReferences: ['events'],
                         showUnderlyingValues: undefined,
                     },
@@ -2059,6 +2071,7 @@ export const exploreWithRequiredAttributesCompiled: Explore = {
                     tableLabel: 'a',
                     sql: '100 - ${b.met1}',
                     compiledSql: '100 - (SUM(("b".dim1)))',
+                    compiledValueSql: '100 - (SUM(("b".dim1)))',
                     source: sourceMock,
                     hidden: false,
                     tablesReferences: ['a', 'b'],
@@ -2117,6 +2130,7 @@ export const exploreWithRequiredAttributesCompiled: Explore = {
                     tableLabel: 'b',
                     sql: '${b.dim1}',
                     compiledSql: 'SUM(("b".dim1))',
+                    compiledValueSql: '("b".dim1)',
                     source: sourceMock,
                     hidden: false,
                     tablesReferences: ['b'],
@@ -2477,6 +2491,7 @@ export const exploreWithMixedDimensionAndMetricReferencesCompiled: Explore = {
                     ...exploreWithMixedDimensionAndMetricReferences.tables
                         .events.metrics.user_count,
                     compiledSql: 'count(distinct ("events".user_id))',
+                    compiledValueSql: 'count(distinct ("events".user_id))',
                     tablesReferences: ['events'],
                     showUnderlyingValues: undefined,
                 },
@@ -2485,6 +2500,8 @@ export const exploreWithMixedDimensionAndMetricReferencesCompiled: Explore = {
                         .events.metrics.amount_per_user,
                     // amount is a dimension, user_count is a metric
                     compiledSql:
+                        'sum(("events".amount)) / NULLIF((count(distinct ("events".user_id))), 0)',
+                    compiledValueSql:
                         'sum(("events".amount)) / NULLIF((count(distinct ("events".user_id))), 0)',
                     tablesReferences: ['events'],
                     showUnderlyingValues: undefined,

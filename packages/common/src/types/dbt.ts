@@ -35,6 +35,7 @@ export enum SupportedDbtAdapter {
     SNOWFLAKE = 'snowflake',
     REDSHIFT = 'redshift',
     POSTGRES = 'postgres',
+    DUCKDB = 'duckdb',
     TRINO = 'trino',
     CLICKHOUSE = 'clickhouse',
     ATHENA = 'athena',
@@ -95,6 +96,7 @@ type ExploreConfig = {
     description?: string;
     group_label?: string;
     joins?: DbtModelJoin[];
+    case_sensitive?: boolean; // When false, all string filters in this explore will be case insensitive. Default is true
     /**
      * Explore-scoped custom dimensions.
      * These dimensions are only available within this specific explore
@@ -104,6 +106,17 @@ type ExploreConfig = {
         string,
         DbtExploreLightdashAdditionalDimension
     >;
+};
+
+export type DbtPreAggregateDef = {
+    name: string;
+    dimensions: string[];
+    metrics: string[];
+    time_dimension?: string;
+    granularity?: string;
+    refresh?: {
+        cron?: string;
+    };
 };
 
 export type SharedDbtModelLightdashConfig = {
@@ -123,11 +136,11 @@ export type DbtModelLightdashConfig = ExploreConfig &
         metrics?: Record<string, DbtModelLightdashMetric>;
         sets?: Record<string, FieldSetDefinition>;
         order_fields_by?: OrderFieldsByStrategy;
-        group_label?: string;
         sql_filter?: string;
         sql_where?: string; // alias for sql_filter
         sql_from?: string; // overrides dbt model relation_name
         required_attributes?: Record<string, string | string[]>;
+        any_attributes?: Record<string, string | string[]>;
         group_details?: Record<string, DbtModelGroup>;
         default_time_dimension?: {
             field: string;
@@ -149,6 +162,7 @@ export type DbtModelLightdashConfig = ExploreConfig &
         parameters?: LightdashProjectConfig['parameters'];
         primary_key?: string | string[];
         owner?: string; // model owner email
+        pre_aggregates?: DbtPreAggregateDef[];
     };
 
 export type DbtModelGroup = {
@@ -185,25 +199,29 @@ export type DbtColumnLightdashDimension = {
     type?: DimensionType;
     description?: string;
     sql?: string;
-    time_intervals?: boolean | 'default' | 'OFF' | TimeFrames[];
+    time_intervals?: boolean | 'default' | 'OFF' | (TimeFrames | string)[];
     hidden?: boolean;
     // @deprecated Use format expression instead
     round?: number;
     // @deprecated Use format expression instead
     compact?: CompactOrAlias;
     format?: Format | string; // Format type is deprecated, use format expression(string) instead
+    /** @deprecated Use groups instead */
     group_label?: string;
     groups?: string[] | string;
     colors?: Record<string, string>;
     urls?: FieldUrl[];
     required_attributes?: Record<string, string | string[]>;
+    any_attributes?: Record<string, string | string[]>;
     ai_hint?: string | string[];
+    case_sensitive?: boolean; // When false, string filters on this dimension will be case insensitive. Default is true
     image?: {
         url: string;
         width?: number;
         height?: number;
         fit?: string;
     };
+    richText?: string;
     spotlight?: {
         filter_by?: boolean;
         segment_by?: boolean;
@@ -226,12 +244,14 @@ export type DbtColumnLightdashMetric = {
     // @deprecated Use format expression instead
     round?: number;
     format?: Format | string; // Format type is deprecated, use format expression(string) instead
+    /** @deprecated Use groups instead */
     group_label?: string;
     groups?: string[];
     urls?: FieldUrl[];
     show_underlying_values?: string[];
     filters?: { [key: string]: AnyType }[];
     percentile?: number;
+    distinct_keys?: string | string[]; // dimension references for sum_distinct deduplication key
     default_time_dimension?: DefaultTimeDimension;
     spotlight?: {
         visibility?: NonNullable<
@@ -244,6 +264,7 @@ export type DbtColumnLightdashMetric = {
     };
     drivers?: string[]; // metrics that drive this metric (same-table: 'name', cross-table: 'table.name')
     ai_hint?: string | string[];
+    richText?: string;
 } & DbtLightdashFieldTags;
 
 export type DbtModelLightdashMetric = DbtColumnLightdashMetric &
@@ -260,6 +281,7 @@ export const normaliseModelDatabase = (
         case SupportedDbtAdapter.TRINO:
         case SupportedDbtAdapter.ATHENA:
         case SupportedDbtAdapter.REDSHIFT:
+        case SupportedDbtAdapter.DUCKDB:
             if (model.database === null) {
                 throw new ParseError(
                     `Cannot parse dbt model '${model.unique_id}' because the database field has null value.`,
@@ -392,6 +414,7 @@ export type DbtMetric = Omit<ParsedMetric, 'refs'> & {
 
 export type DbtMetricLightdashMetadata = {
     hidden?: boolean;
+    /** @deprecated Use groups instead */
     group_label?: string;
     groups?: string[];
     show_underlying_values?: string[];
@@ -440,6 +463,7 @@ export const isSupportedDbtAdapterType = (
 
 export interface DbtRpcGetManifestResults {
     manifest: DbtManifest;
+    selectedModelIds?: string[];
 }
 
 export const isDbtRpcManifestResults = (
@@ -535,6 +559,7 @@ type ConvertModelMetricArgs = {
     tableLabel: string;
     dimensionReference?: string;
     requiredAttributes?: Record<string, string | string[]>;
+    anyAttributes?: Record<string, string | string[]>;
     spotlightConfig?: LightdashProjectConfig['spotlight'];
     modelCategories?: string[];
     modelOwner?: string;
@@ -548,6 +573,7 @@ export const convertModelMetric = ({
     tableLabel,
     dimensionReference,
     requiredAttributes,
+    anyAttributes,
     spotlightConfig,
     modelCategories = [],
     modelOwner,
@@ -589,8 +615,16 @@ export const convertModelMetric = ({
             metric.show_underlying_values ?? defaultShowUnderlyingValues,
         filters: parseFilters(metric.filters),
         percentile: metric.percentile,
+        ...(metric.distinct_keys
+            ? {
+                  distinctKeys: Array.isArray(metric.distinct_keys)
+                      ? metric.distinct_keys
+                      : [metric.distinct_keys],
+              }
+            : {}),
         dimensionReference,
         requiredAttributes,
+        anyAttributes,
         ...(metric.urls ? { urls: metric.urls } : null),
         ...(metric.tags
             ? {
@@ -616,6 +650,7 @@ export const convertModelMetric = ({
         }),
         ...(metric.drivers ? { drivers: metric.drivers } : {}),
         ...(metric.ai_hint ? { aiHint: convertToAiHints(metric.ai_hint) } : {}),
+        ...(metric.richText ? { richText: metric.richText } : {}),
     };
 };
 
@@ -624,6 +659,7 @@ type ConvertColumnMetricArgs = Omit<ConvertModelMetricArgs, 'metric'> & {
     dimensionName?: string;
     dimensionSql: string;
     requiredAttributes?: Record<string, string | string[]>;
+    anyAttributes?: Record<string, string | string[]>;
     modelCategories?: string[];
 };
 
@@ -636,6 +672,7 @@ export const convertColumnMetric = ({
     source,
     tableLabel,
     requiredAttributes,
+    anyAttributes,
     spotlightConfig,
     modelCategories = [],
     modelOwner,
@@ -661,6 +698,7 @@ export const convertColumnMetric = ({
             ? getItemId({ table: modelName, name: dimensionName })
             : undefined,
         requiredAttributes,
+        anyAttributes,
         ...(metric.default_time_dimension
             ? {
                   defaultTimeDimension: {
@@ -749,13 +787,7 @@ export const getModelsFromManifest = (
         );
     }
     const adapterType = manifest.metadata.adapter_type;
-    return models
-        .filter(
-            (model) =>
-                model.config?.materialized &&
-                model.config.materialized !== 'ephemeral',
-        )
-        .map((model) => normaliseModelDatabase(model, adapterType));
+    return models.map((model) => normaliseModelDatabase(model, adapterType));
 };
 
 export function getCompiledModels(

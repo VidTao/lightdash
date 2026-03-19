@@ -5,20 +5,18 @@ import {
     AlreadyExistsError,
     AlreadyProcessingError,
     AndFilterGroup,
-    AnonymousAccount,
     AnyType,
     ApiChartAndResults,
     ApiCreatePreviewResults,
-    type ApiCreateProjectResults,
     ApiQueryResults,
     ApiSqlQueryResults,
     assertEmbeddedAuth,
     assertIsAccountWithOrg,
     assertUnreachable,
+    AthenaAuthenticationType,
     BigqueryAuthenticationType,
     CacheMetadata,
     calculateCompilationReport,
-    type CalculateSubtotalsFromQuery,
     CalculateTotalFromQuery,
     ChartSourceType,
     ChartSummary,
@@ -28,7 +26,6 @@ import {
     convertExplores,
     countCustomDimensionsInMetricQuery,
     countTotalFilterRules,
-    type CreateDatabricksCredentials,
     createDimensionWithGranularity,
     CreateJob,
     CreateProject,
@@ -42,9 +39,9 @@ import {
     CustomSqlQueryForbiddenError,
     DashboardAvailableFilters,
     DashboardBasicDetails,
-    type DashboardDAO,
     DashboardFilters,
     DatabricksAuthenticationType,
+    DatabricksTokenError,
     DateZoom,
     DbtExposure,
     DbtExposureType,
@@ -69,20 +66,19 @@ import {
     ForbiddenError,
     formatRawRows,
     formatRows,
-    getAggregatedField,
+    getAllDimensionsMap,
     getAvailableParametersFromTables,
     getDashboardFilterRulesForTables,
-    getDateDimension,
     getDimensions,
     getErrorMessage,
-    getFieldQuoteChar,
     getFields,
     getIntrinsicUserAttributes,
     getItemId,
     getMetrics,
-    getSubtotalKey,
+    getPreAggregateExploreName,
+    getTimeDimensionsMap,
     getTimezoneLabel,
-    GroupByColumn,
+    hasConnectionChanges,
     hasIntersection,
     hasWarehouseCredentials,
     IntrinsicUserAttributes,
@@ -95,7 +91,10 @@ import {
     isFilterRule,
     isJwtUser,
     isNotNull,
+    isStandardDateGranularity,
+    isSubDayGranularity,
     isUserWithOrg,
+    isValidTimezone,
     ItemsMap,
     Job,
     JobStatusType,
@@ -114,14 +113,13 @@ import {
     NotFoundError,
     NotSupportedError,
     OpenIdIdentityIssuerType,
-    type ParameterDefinitions,
     ParameterError,
-    type ParametersValuesMap,
     PivotChartData,
     PivotConfiguration,
     PivotValuesColumn,
     Project,
     ProjectCatalog,
+    ProjectDefaults,
     ProjectGroupAccess,
     ProjectMemberProfile,
     ProjectMemberRole,
@@ -132,15 +130,15 @@ import {
     ReplaceCustomFieldsPayload,
     replaceDimensionInExplore,
     RequestMethod,
+    resolveBaseDimension,
+    resolveToBaseTimeDimension,
     ResultRow,
-    type RunQueryTags,
     SavedChartDAO,
     SavedChartsInfoForDashboardAvailableFilters,
     SessionUser,
     snakeCaseName,
     SnowflakeAuthenticationType,
     SnowflakeTokenError,
-    SortByDirection,
     SortField,
     SpaceQuery,
     SpaceSummary,
@@ -149,8 +147,8 @@ import {
     SummaryExplore,
     TablesConfiguration,
     TableSelectionType,
-    type Tag,
     UnexpectedServerError,
+    UpdateDefaultUserSpaces,
     UpdateMetadata,
     UpdateProject,
     UpdateProjectMember,
@@ -164,10 +162,17 @@ import {
     WarehouseClient,
     WarehouseConnectionError,
     WarehouseCredentials,
-    type WarehouseSqlBuilder,
     WarehouseTablesCatalog,
     WarehouseTableSchema,
     WarehouseTypes,
+    type ApiCreateProjectResults,
+    type CalculateSubtotalsFromQuery,
+    type CreateDatabricksCredentials,
+    type ParameterDefinitions,
+    type ParametersValuesMap,
+    type RunQueryTags,
+    type Tag,
+    type WarehouseSqlBuilder,
 } from '@lightdash/common';
 import {
     BigqueryWarehouseClient,
@@ -193,9 +198,12 @@ import {
     ProjectEvent,
 } from '../../analytics/LightdashAnalytics';
 import { S3CacheClient } from '../../clients/Aws/S3CacheClient';
-import { S3Client } from '../../clients/Aws/S3Client';
 import EmailClient from '../../clients/EmailClient/EmailClient';
+import { type FileStorageClient } from '../../clients/FileStorage/FileStorageClient';
+import type { INatsClient } from '../../clients/NatsClient';
 import { LightdashConfig } from '../../config/parseConfig';
+import { normalizeDatabricksHostLenient } from '../../controllers/authentication/strategies/databricksStrategy';
+import { type DbPreAggregateDefinitionIn } from '../../database/entities/preAggregates';
 import type { DbTagUpdate } from '../../database/entities/tags';
 import { errorHandler } from '../../errors';
 import Logger from '../../logging/logger';
@@ -211,6 +219,7 @@ import { GroupsModel } from '../../models/GroupsModel';
 import { JobModel } from '../../models/JobModel/JobModel';
 import { OnboardingModel } from '../../models/OnboardingModel/OnboardingModel';
 import { OrganizationWarehouseCredentialsModel } from '../../models/OrganizationWarehouseCredentialsModel';
+import { PreAggregateModel } from '../../models/PreAggregateModel';
 import { ProjectCompileLogModel } from '../../models/ProjectCompileLogModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { ProjectParametersModel } from '../../models/ProjectParametersModel';
@@ -233,6 +242,7 @@ import {
     wrapSentryTransaction,
     wrapSentryTransactionSync,
 } from '../../utils';
+import { metricQueryWithLimit as applyMetricQueryLimit } from '../../utils/csvLimitUtils';
 import { EncryptionUtil } from '../../utils/EncryptionUtil/EncryptionUtil';
 import {
     CompiledQuery,
@@ -241,12 +251,10 @@ import {
 import { PivotQueryBuilder } from '../../utils/QueryBuilder/PivotQueryBuilder';
 import { applyLimitToSqlQuery } from '../../utils/QueryBuilder/utils';
 import { SubtotalsCalculator } from '../../utils/SubtotalsCalculator';
-import { metricQueryWithLimit as applyMetricQueryLimit } from '../../utils/csvLimitUtils';
+import { AdminNotificationService } from '../AdminNotificationService/AdminNotificationService';
 import { BaseService } from '../BaseService';
-import {
-    hasDirectAccessToSpace,
-    hasViewAccessToSpace,
-} from '../SpaceService/SpaceService';
+import { buildMaterializationMetricQuery } from '../PreAggregateMaterializationService/buildMaterializationMetricQuery';
+import { SpacePermissionService } from '../SpaceService/SpacePermissionService';
 import {
     doesExploreMatchRequiredAttributes,
     exploreHasFilteredAttribute,
@@ -259,6 +267,7 @@ export type ProjectServiceArguments = {
     lightdashConfig: LightdashConfig;
     analytics: LightdashAnalytics;
     projectModel: ProjectModel;
+    preAggregateModel: PreAggregateModel;
     onboardingModel: OnboardingModel;
     savedChartModel: SavedChartModel;
     jobModel: JobModel;
@@ -274,7 +283,7 @@ export type ProjectServiceArguments = {
     warehouseAvailableTablesModel: WarehouseAvailableTablesModel;
     schedulerClient: SchedulerClient;
     downloadFileModel: DownloadFileModel;
-    s3Client: S3Client;
+    fileStorageClient: FileStorageClient;
     groupsModel: GroupsModel;
     tagsModel: TagsModel;
     catalogModel: CatalogModel;
@@ -285,6 +294,9 @@ export type ProjectServiceArguments = {
     projectParametersModel: ProjectParametersModel;
     organizationWarehouseCredentialsModel: OrganizationWarehouseCredentialsModel;
     projectCompileLogModel: ProjectCompileLogModel;
+    adminNotificationService: AdminNotificationService;
+    spacePermissionService: SpacePermissionService;
+    natsClient?: INatsClient;
 };
 
 export class ProjectService extends BaseService {
@@ -293,6 +305,8 @@ export class ProjectService extends BaseService {
     analytics: LightdashAnalytics;
 
     projectModel: ProjectModel;
+
+    preAggregateModel: PreAggregateModel;
 
     onboardingModel: OnboardingModel;
 
@@ -326,7 +340,7 @@ export class ProjectService extends BaseService {
 
     downloadFileModel: DownloadFileModel;
 
-    s3Client: S3Client;
+    fileStorageClient: FileStorageClient;
 
     groupsModel: GroupsModel;
 
@@ -348,10 +362,15 @@ export class ProjectService extends BaseService {
 
     organizationWarehouseCredentialsModel: OrganizationWarehouseCredentialsModel;
 
+    adminNotificationService: AdminNotificationService;
+
+    spacePermissionService: SpacePermissionService;
+
     constructor({
         lightdashConfig,
         analytics,
         projectModel,
+        preAggregateModel,
         onboardingModel,
         savedChartModel,
         jobModel,
@@ -367,7 +386,7 @@ export class ProjectService extends BaseService {
         emailModel,
         schedulerClient,
         downloadFileModel,
-        s3Client,
+        fileStorageClient,
         groupsModel,
         tagsModel,
         catalogModel,
@@ -378,11 +397,14 @@ export class ProjectService extends BaseService {
         projectParametersModel,
         projectCompileLogModel,
         organizationWarehouseCredentialsModel,
+        adminNotificationService,
+        spacePermissionService,
     }: ProjectServiceArguments) {
         super();
         this.lightdashConfig = lightdashConfig;
         this.analytics = analytics;
         this.projectModel = projectModel;
+        this.preAggregateModel = preAggregateModel;
         this.onboardingModel = onboardingModel;
         this.warehouseClients = {};
         this.savedChartModel = savedChartModel;
@@ -399,7 +421,7 @@ export class ProjectService extends BaseService {
         this.emailModel = emailModel;
         this.schedulerClient = schedulerClient;
         this.downloadFileModel = downloadFileModel;
-        this.s3Client = s3Client;
+        this.fileStorageClient = fileStorageClient;
         this.groupsModel = groupsModel;
         this.tagsModel = tagsModel;
         this.catalogModel = catalogModel;
@@ -411,6 +433,8 @@ export class ProjectService extends BaseService {
         this.projectCompileLogModel = projectCompileLogModel;
         this.organizationWarehouseCredentialsModel =
             organizationWarehouseCredentialsModel;
+        this.adminNotificationService = adminNotificationService;
+        this.spacePermissionService = spacePermissionService;
     }
 
     static getMetricQueryExecutionProperties({
@@ -810,21 +834,42 @@ export class ProjectService extends BaseService {
                     `Refreshing databricks token for user ${userUuid}`,
                 );
 
-                const accessToken =
-                    await UserService.generateDatabricksAccessToken(
+                // If the project has an oauthClientId, the token was
+                // obtained with that client (e.g. CLI flow) — use it as-is.
+                // Only fall back to server config when there's no project
+                // client (UI flow stores tokens in user warehouse credentials).
+                let clientId: string;
+                let clientSecret: string | undefined;
+                if (args.oauthClientId) {
+                    clientId = args.oauthClientId;
+                    clientSecret = args.oauthClientSecret;
+                } else if (this.lightdashConfig.auth.databricks.clientId) {
+                    clientId = this.lightdashConfig.auth.databricks.clientId;
+                    clientSecret =
+                        this.lightdashConfig.auth.databricks.clientSecret;
+                } else {
+                    clientId = DATABRICKS_DEFAULT_OAUTH_CLIENT_ID;
+                    clientSecret = undefined;
+                }
+                const { accessToken, refreshToken: newRefreshToken } =
+                    await refreshDatabricksOAuthToken(
+                        args.serverHostName,
+                        clientId,
                         refreshToken,
+                        clientSecret,
                     );
                 return {
                     ...args,
                     authenticationType: DatabricksAuthenticationType.OAUTH_M2M,
                     token: accessToken,
+                    refreshToken: newRefreshToken || refreshToken,
                 };
             } catch (e: unknown) {
                 if (e instanceof LightdashError) {
                     throw e;
                 }
                 this.logger.error(
-                    `Error refreshing databricks token: ${JSON.stringify(e)}`,
+                    `Error refreshing databricks token: ${getErrorMessage(e)}`,
                 );
                 throw new UnexpectedServerError(
                     'Error refreshing databricks token',
@@ -849,18 +894,32 @@ export class ProjectService extends BaseService {
                     `Refreshing databricks U2M OAuth token for user ${userUuid}`,
                 );
 
-                // Use client ID from config (same as used during OAuth authorization)
-                // Default to pre-registered Databricks public client
-                const clientId =
-                    this.lightdashConfig.auth.databricks.clientId ||
-                    args.oauthClientId ||
-                    DATABRICKS_DEFAULT_OAUTH_CLIENT_ID;
+                // Resolve OAuth client for token refresh.
+                // U2M credentials store the clientId that obtained the token.
+                // The secret is only in server config (never stored in DB).
+                let clientId: string;
+                let clientSecret: string | undefined;
+                if (args.oauthClientId) {
+                    clientId = args.oauthClientId;
+                } else if (this.lightdashConfig.auth.databricks.clientId) {
+                    clientId = this.lightdashConfig.auth.databricks.clientId;
+                } else {
+                    clientId = DATABRICKS_DEFAULT_OAUTH_CLIENT_ID;
+                }
+
+                if (
+                    clientId === this.lightdashConfig.auth.databricks.clientId
+                ) {
+                    clientSecret =
+                        this.lightdashConfig.auth.databricks.clientSecret;
+                }
 
                 const { accessToken, refreshToken: newRefreshToken } =
                     await refreshDatabricksOAuthToken(
                         args.serverHostName,
                         clientId,
                         refreshToken,
+                        clientSecret,
                     );
 
                 return {
@@ -873,14 +932,9 @@ export class ProjectService extends BaseService {
                 if (e instanceof LightdashError) {
                     throw e;
                 }
-                this.logger.error(
-                    `Error refreshing databricks U2M OAuth token: ${JSON.stringify(
-                        e,
-                    )}`,
-                );
-                throw new UnexpectedServerError(
-                    'Error refreshing databricks U2M OAuth token',
-                );
+                const errorMessage = `Error refreshing databricks U2M OAuth token: ${getErrorMessage(e)}`;
+                this.logger.error(errorMessage);
+                throw new DatabricksTokenError(errorMessage);
             }
         }
 
@@ -1037,13 +1091,35 @@ export class ProjectService extends BaseService {
         if (
             args.warehouseConnection.type === WarehouseTypes.DATABRICKS &&
             args.warehouseConnection.authenticationType ===
-                DatabricksAuthenticationType.OAUTH_M2M &&
+                DatabricksAuthenticationType.OAUTH_U2M &&
             !organizationWarehouseCredentialsUuid
         ) {
-            const refreshToken = await this.userModel.getRefreshToken(
-                userUuid,
-                OpenIdIdentityIssuerType.DATABRICKS,
-            );
+            // Use refresh token from request body first (e.g. CLI flow).
+            // Otherwise, resolve a host-matching user credential to avoid
+            // cross-workspace refresh token mismatches.
+            let { refreshToken } = args.warehouseConnection;
+            if (!refreshToken) {
+                const matchingCredential =
+                    await this.userWarehouseCredentialsModel.findDatabricksOauthU2mForHostWithSecrets(
+                        userUuid,
+                        args.warehouseConnection.serverHostName,
+                    );
+                if (
+                    matchingCredential?.credentials.type ===
+                        WarehouseTypes.DATABRICKS &&
+                    matchingCredential.credentials.authenticationType ===
+                        DatabricksAuthenticationType.OAUTH_U2M
+                ) {
+                    refreshToken = matchingCredential.credentials.refreshToken;
+                }
+            }
+
+            if (!refreshToken) {
+                throw new NotFoundError(
+                    `No Databricks OAuth credentials found for workspace ${args.warehouseConnection.serverHostName}. Please sign in with Databricks for this workspace and try again.`,
+                );
+            }
+
             // Validate refresh token and generate new access token
             this.logger.debug(
                 `Refreshing databricks warehouse credentials from user uuid: ${userUuid}`,
@@ -1052,12 +1128,35 @@ export class ProjectService extends BaseService {
                 { ...args.warehouseConnection, refreshToken },
                 userUuid,
             );
+
             return {
                 ...args,
                 warehouseConnection: {
                     ...args.warehouseConnection,
                     ...credentials,
                     refreshToken, // Store refresh token from user so we can generate new access tokens later
+                },
+            };
+        }
+
+        if (
+            args.warehouseConnection.type === WarehouseTypes.DATABRICKS &&
+            args.warehouseConnection.authenticationType ===
+                DatabricksAuthenticationType.OAUTH_M2M &&
+            !organizationWarehouseCredentialsUuid
+        ) {
+            this.logger.debug(
+                `Refreshing databricks M2M warehouse credentials from user uuid: ${userUuid}`,
+            );
+            const credentials = await this.refreshCredentials(
+                args.warehouseConnection,
+                userUuid,
+            );
+            return {
+                ...args,
+                warehouseConnection: {
+                    ...args.warehouseConnection,
+                    ...credentials,
                 },
             };
         }
@@ -1124,10 +1223,12 @@ export class ProjectService extends BaseService {
         projectUuid,
         userId,
         isRegisteredUser,
+        isServiceAccount = false,
     }: {
         projectUuid: string;
         userId: string;
         isRegisteredUser: boolean;
+        isServiceAccount?: boolean;
     }) {
         // First, check if project uses organization-level credentials
         const project = await this.projectModel.get(projectUuid);
@@ -1153,6 +1254,13 @@ export class ProjectService extends BaseService {
             );
         }
 
+        // Service accounts cannot use personal warehouse credentials
+        if (isServiceAccount && credentials.requireUserCredentials) {
+            throw new ForbiddenError(
+                'Service accounts cannot run queries when user credentials are required.',
+            );
+        }
+
         // Check if user has their own credentials for this project's warehouse type
         // Only fetch user credentials when:
         // 1. requireUserCredentials is enabled (user credentials are mandatory)
@@ -1171,7 +1279,23 @@ export class ProjectService extends BaseService {
                   )
                 : undefined;
 
-            if (userWarehouseCredentials) {
+            // Skip user credentials if the serverHostName doesn't match the project
+            const userCredHost =
+                userWarehouseCredentials?.credentials.type ===
+                    WarehouseTypes.DATABRICKS &&
+                'serverHostName' in userWarehouseCredentials.credentials
+                    ? normalizeDatabricksHostLenient(
+                          userWarehouseCredentials.credentials.serverHostName,
+                      )
+                    : undefined;
+            const projectHost =
+                credentials.type === WarehouseTypes.DATABRICKS
+                    ? normalizeDatabricksHostLenient(credentials.serverHostName)
+                    : undefined;
+            const hostMismatch =
+                userCredHost && projectHost && userCredHost !== projectHost;
+
+            if (userWarehouseCredentials && !hostMismatch) {
                 credentials = this.clearSecretsFromCredentials(credentials);
 
                 // User has credentials - use them
@@ -1189,7 +1313,11 @@ export class ProjectService extends BaseService {
                 );
                 userWarehouseCredentialsUuid = userWarehouseCredentials.uuid;
             } else if (credentials.requireUserCredentials) {
-                // User credentials are required but not found
+                if (credentials.type === WarehouseTypes.DATABRICKS) {
+                    throw new DatabricksTokenError(
+                        'Please authenticate to access Databricks',
+                    );
+                }
                 throw new NotFoundError('User warehouse credentials not found');
             } else if (!organizationWarehouseCredentialsUuid) {
                 // No user credentials, no org credentials, refresh project credentials
@@ -1326,7 +1454,143 @@ export class ProjectService extends BaseService {
         return this._getWarehouseClient(projectUuid, credentials, overrides);
     }
 
-    private async saveExploresToCacheAndIndexCatalog(
+
+    private async syncPreAggregateDefinitionsRegistry(
+        projectUuid: string,
+    ): Promise<void> {
+        const exploresByUuid =
+            await this.projectModel.getAllExploresFromCache(projectUuid);
+
+        const preAggregateExploreUuidByName = new Map<string, string>(
+            Object.entries(exploresByUuid)
+                .filter(
+                    ([, explore]) =>
+                        !isExploreError(explore) &&
+                        explore.type === ExploreType.PRE_AGGREGATE,
+                )
+                .map(([cachedExploreUuid, explore]) => [
+                    explore.name,
+                    cachedExploreUuid,
+                ]),
+        );
+
+        const definitionRows: DbPreAggregateDefinitionIn[] = [];
+
+        Object.entries(exploresByUuid).forEach(
+            ([sourceCachedExploreUuid, sourceExplore]) => {
+                if (
+                    isExploreError(sourceExplore) ||
+                    !sourceExplore.preAggregates ||
+                    sourceExplore.preAggregates.length === 0
+                ) {
+                    return;
+                }
+
+                sourceExplore.preAggregates.forEach(
+                    (preAggregateDefinition) => {
+                        const preAggregateExploreName =
+                            getPreAggregateExploreName(
+                                sourceExplore.name,
+                                preAggregateDefinition.name,
+                            );
+                        const preAggCachedExploreUuid =
+                            preAggregateExploreUuidByName.get(
+                                preAggregateExploreName,
+                            );
+
+                        if (!preAggCachedExploreUuid) {
+                            this.logger.warn(
+                                `Skipping pre-aggregate definition "${preAggregateDefinition.name}" for source explore "${sourceExplore.name}" in project ${projectUuid}: generated pre-aggregate explore "${preAggregateExploreName}" not found in cache`,
+                            );
+                            return;
+                        }
+
+                        let materializationMetricQuery = null;
+                        let materializationQueryError = null;
+
+                        try {
+                            materializationMetricQuery =
+                                buildMaterializationMetricQuery({
+                                    sourceExplore,
+                                    preAggregateDef: preAggregateDefinition,
+                                });
+                        } catch (error) {
+                            materializationQueryError = getErrorMessage(error);
+                        }
+
+                        definitionRows.push({
+                            project_uuid: projectUuid,
+                            source_cached_explore_uuid: sourceCachedExploreUuid,
+                            pre_agg_cached_explore_uuid:
+                                preAggCachedExploreUuid,
+                            pre_aggregate_definition: preAggregateDefinition,
+                            materialization_metric_query:
+                                materializationMetricQuery,
+                            materialization_query_error:
+                                materializationQueryError,
+                            refresh_cron:
+                                preAggregateDefinition.refresh?.cron ?? null,
+                        });
+                    },
+                );
+            },
+        );
+
+        await this.preAggregateModel.upsertPreAggregateDefinitions(
+            definitionRows,
+        );
+
+        const invalidDefinitionsCount = definitionRows.filter(
+            (row) => row.materialization_metric_query === null,
+        ).length;
+        this.logger.info(
+            `Upserted ${definitionRows.length} pre-aggregate definition registry row(s) for project ${projectUuid}`,
+            {
+                invalidDefinitionsCount,
+            },
+        );
+    }
+
+    private async syncAndEnqueuePreAggregateMaterializations(args: {
+        projectUuid: string;
+        organizationUuid: string;
+        userUuid: string;
+    }): Promise<void> {
+        try {
+            await this.syncPreAggregateDefinitionsRegistry(args.projectUuid);
+
+            const preAggregateDefinitions =
+                await this.preAggregateModel.getPreAggregateDefinitionsForProject(
+                    args.projectUuid,
+                );
+            const materializableDefinitions = preAggregateDefinitions.filter(
+                (definition) => definition.materializationMetricQuery !== null,
+            );
+
+            if (materializableDefinitions.length > 0) {
+                await Promise.all(
+                    materializableDefinitions.map((definition) =>
+                        this.schedulerClient.materializePreAggregate({
+                            organizationUuid: args.organizationUuid,
+                            projectUuid: args.projectUuid,
+                            userUuid: args.userUuid,
+                            preAggregateDefinitionUuid:
+                                definition.preAggregateDefinitionUuid,
+                            trigger: 'compile',
+                        }),
+                    ),
+                );
+            }
+        } catch (error) {
+            this.logger.error(
+                `Failed to sync/enqueue pre-aggregate materializations for project ${args.projectUuid}: ${getErrorMessage(
+                    error,
+                )}`,
+            );
+        }
+    }
+
+    async saveExploresToCacheAndIndexCatalog(
         userUuid: string,
         projectUuid: string,
         explores: (Explore | ExploreError)[],
@@ -1347,6 +1611,9 @@ export class ProjectService extends BaseService {
 
         const prevMetricTreeEdges =
             await this.catalogModel.getAllMetricsTreeEdges(projectUuid);
+
+        const prevMetricsTreeNodes =
+            await this.catalogModel.getAllMetricsTreeNodes(projectUuid);
 
         const { cachedExploreUuids } =
             await this.projectModel.saveExploresToCache(projectUuid, explores);
@@ -1376,14 +1643,25 @@ export class ProjectService extends BaseService {
             `Inserted compilation log for project ${projectUuid}: ${compilationReport.totalExploresCount} explores, ${compilationReport.errorExploresCount} errors`,
         );
 
-        return this.schedulerClient.indexCatalog({
+        const indexCatalogJob = await this.schedulerClient.indexCatalog({
             projectUuid,
             userUuid,
             organizationUuid,
             prevCatalogItemsWithTags,
             prevCatalogItemsWithIcons,
             prevMetricTreeEdges,
+            prevMetricsTreeNodes,
         });
+
+        if (this.lightdashConfig.preAggregates.enabled) {
+            await this.syncAndEnqueuePreAggregateMaterializations({
+                projectUuid,
+                organizationUuid,
+                userUuid,
+            });
+        }
+
+        return indexCatalogJob;
     }
 
     async getProject(projectUuid: string, account: Account): Promise<Project> {
@@ -1400,6 +1678,33 @@ export class ProjectService extends BaseService {
             throw new ForbiddenError();
         }
         return project;
+    }
+
+    async getDatabricksOAuthConfigForProject(
+        projectUuid: string,
+        account: Account,
+    ): Promise<{
+        projectName: string;
+        serverHostName: string;
+        oauthClientId?: string;
+        oauthClientSecret?: string;
+    }> {
+        const project = await this.getProject(projectUuid, account);
+        const credentials =
+            await this.projectModel.getWarehouseCredentialsForProject(
+                projectUuid,
+            );
+        if (credentials.type !== WarehouseTypes.DATABRICKS) {
+            throw new ParameterError(
+                'Project is not configured with Databricks credentials',
+            );
+        }
+        return {
+            projectName: project.name,
+            serverHostName: credentials.serverHostName,
+            oauthClientId: credentials.oauthClientId,
+            oauthClientSecret: credentials.oauthClientSecret,
+        };
     }
 
     async createWithoutCompile(
@@ -1485,6 +1790,67 @@ export class ProjectService extends BaseService {
                 method,
             ),
         });
+
+        // For preview projects: if the upstream requires user warehouse credentials
+        // and the request includes CLI-obtained tokens, create user warehouse
+        // credentials so the user doesn't have to re-authenticate in the UI
+        if (
+            createProject.type === ProjectType.PREVIEW &&
+            createProject.warehouseConnection?.requireUserCredentials
+        ) {
+            try {
+                const { warehouseConnection } = createProject;
+                const warehouseType = warehouseConnection.type;
+                switch (warehouseType) {
+                    case WarehouseTypes.DATABRICKS: {
+                        if (!warehouseConnection.refreshToken) break;
+                        const userWarehouseCredentialsUuid =
+                            await this.userWarehouseCredentialsModel.create(
+                                user.userUuid,
+                                {
+                                    name: `Databricks (${warehouseConnection.serverHostName || createProject.name})`,
+                                    credentials: {
+                                        type: WarehouseTypes.DATABRICKS,
+                                        authenticationType:
+                                            DatabricksAuthenticationType.OAUTH_U2M,
+                                        refreshToken:
+                                            warehouseConnection.refreshToken,
+                                        oauthClientId:
+                                            warehouseConnection.oauthClientId,
+                                    },
+                                },
+                                projectUuid,
+                            );
+                        await this.userWarehouseCredentialsModel.upsertUserCredentialsPreference(
+                            user.userUuid,
+                            projectUuid,
+                            userWarehouseCredentialsUuid,
+                        );
+                        this.logger.info(
+                            `Created user warehouse credentials for Databricks on project ${projectUuid}`,
+                        );
+                        break;
+                    }
+                    case WarehouseTypes.BIGQUERY:
+                    case WarehouseTypes.SNOWFLAKE:
+                    case WarehouseTypes.POSTGRES:
+                    case WarehouseTypes.REDSHIFT:
+                    case WarehouseTypes.TRINO:
+                    case WarehouseTypes.CLICKHOUSE:
+                    case WarehouseTypes.ATHENA:
+                        break;
+                    default:
+                        assertUnreachable(
+                            warehouseType,
+                            `Unknown warehouse type for user credentials`,
+                        );
+                }
+            } catch (e) {
+                this.logger.error(
+                    `Failed to create user warehouse credentials: ${e instanceof Error ? e.message : String(e)}`,
+                );
+            }
+        }
 
         let hasContentCopy = false;
         let contentCopyError: string | undefined;
@@ -1782,10 +2148,13 @@ export class ProjectService extends BaseService {
     ): Promise<void> {
         const project =
             await this.projectModel.getWithSensitiveFields(projectUuid);
+
+        // manage:DeployProject for non-preview projects (restrictable via custom roles)
+        // manage:DeployProject@self for preview projects created by the user
         if (
             user.ability.cannot(
-                'update',
-                subject('Project', {
+                'manage',
+                subject('DeployProject', {
                     projectUuid,
                     organizationUuid: project.organizationUuid,
                     type: project.type,
@@ -1794,7 +2163,7 @@ export class ProjectService extends BaseService {
             )
         ) {
             throw new ForbiddenError(
-                `User does not have permission to update project`,
+                `User does not have permission to deploy to this project`,
             );
         }
 
@@ -1861,6 +2230,22 @@ export class ProjectService extends BaseService {
                         );
                 }
                 break;
+            case WarehouseTypes.ATHENA:
+                const athenaAuthenticationType =
+                    project.warehouseConnection.authenticationType ??
+                    AthenaAuthenticationType.ACCESS_KEY;
+
+                if (
+                    athenaAuthenticationType ===
+                        AthenaAuthenticationType.ACCESS_KEY &&
+                    (!project.warehouseConnection.accessKeyId ||
+                        !project.warehouseConnection.secretAccessKey)
+                ) {
+                    throw new ParameterError(
+                        'Athena access key authentication requires accessKeyId and secretAccessKey',
+                    );
+                }
+                break;
             default:
                 break;
         }
@@ -1868,17 +2253,15 @@ export class ProjectService extends BaseService {
 
     async updateAndScheduleAsyncWork(
         projectUuid: string,
-        user: SessionUser,
+        account: Account,
         data: UpdateProject,
         method: RequestMethod,
     ): Promise<{ jobUuid: string }> {
-        if (!isUserWithOrg(user)) {
-            throw new ForbiddenError('User is not part of an organization');
-        }
+        assertIsAccountWithOrg(account);
         const savedProject =
             await this.projectModel.getWithSensitiveFields(projectUuid);
         if (
-            user.ability.cannot(
+            account.user.ability.cannot(
                 'update',
                 subject('Project', {
                     organizationUuid: savedProject.organizationUuid,
@@ -1894,7 +2277,7 @@ export class ProjectService extends BaseService {
             jobType: JobType.COMPILE_PROJECT,
             jobStatus: JobStatusType.STARTED,
             projectUuid: undefined,
-            userUuid: user.userUuid,
+            userUuid: account.user.id,
             steps: [
                 { stepType: JobStepType.TESTING_ADAPTOR },
                 ...(savedProject.dbtConnection.type === DbtProjectType.NONE
@@ -1904,7 +2287,7 @@ export class ProjectService extends BaseService {
         };
         const createProject = await this._resolveWarehouseClientCredentials(
             data,
-            user.userUuid,
+            account.user.id,
             savedProject.organizationUuid,
         );
         const updatedProject = ProjectModel.mergeMissingProjectConfigSecrets(
@@ -1915,17 +2298,48 @@ export class ProjectService extends BaseService {
         this.validateConfigSecrets(updatedProject);
 
         await this.projectModel.update(projectUuid, updatedProject);
+
+        if (
+            hasConnectionChanges(
+                {
+                    warehouseConnection: savedProject.warehouseConnection,
+                    dbtConnection: savedProject.dbtConnection,
+                },
+                {
+                    warehouseConnection: updatedProject.warehouseConnection,
+                    dbtConnection: updatedProject.dbtConnection,
+                },
+            )
+        ) {
+            this.adminNotificationService
+                .notifyConnectionSettingsChange({
+                    organizationUuid: savedProject.organizationUuid,
+                    projectUuid,
+                    projectName: savedProject.name,
+                    changedBy: account,
+                })
+                .catch((error) => {
+                    this.logger.error(
+                        'Failed to send connection settings change notification',
+                        {
+                            error,
+                            projectUuid,
+                        },
+                    );
+                });
+        }
+
         await this.jobModel.create(job);
 
         if (updatedProject.dbtConnection.type !== DbtProjectType.NONE) {
             await this.schedulerClient.testAndCompileProject({
-                organizationUuid: user.organizationUuid,
-                createdByUserUuid: user.userUuid,
+                organizationUuid: account.organization.organizationUuid,
+                createdByUserUuid: account.user.id,
                 projectUuid,
                 requestMethod: method,
                 jobUuid: job.jobUuid,
                 isPreview: savedProject.type === ProjectType.PREVIEW,
-                userUuid: user.userUuid,
+                userUuid: account.user.id,
             });
         } else {
             // Nothing to test and compile, just update the job status
@@ -1939,6 +2353,91 @@ export class ProjectService extends BaseService {
         return {
             jobUuid: job.jobUuid,
         };
+    }
+
+    /*
+    Similar code to updateAndScheduleAsyncWork, but only for warehouse credentials
+    This will not trigger any job
+    We could reuse this method in updateAndScheduleAsyncWork to avoid code duplication
+    */
+    async updateWarehouseCredentials(
+        projectUuid: string,
+        account: Account,
+        data: { warehouseConnection: CreateWarehouseCredentials },
+    ): Promise<void> {
+        assertIsAccountWithOrg(account);
+        const savedProject =
+            await this.projectModel.getWithSensitiveFields(projectUuid);
+        if (
+            account.user.ability.cannot(
+                'update',
+                subject('Project', {
+                    organizationUuid: savedProject.organizationUuid,
+                    projectUuid,
+                }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        const updatedProjectData: UpdateProject = {
+            name: savedProject.name,
+            dbtConnection: savedProject.dbtConnection,
+            dbtVersion: savedProject.dbtVersion,
+            warehouseConnection: data.warehouseConnection,
+        };
+
+        const resolvedData = await this._resolveWarehouseClientCredentials(
+            updatedProjectData,
+            account.user.id,
+            savedProject.organizationUuid,
+        );
+
+        const updatedProject = ProjectModel.mergeMissingProjectConfigSecrets(
+            resolvedData,
+            savedProject,
+        );
+
+        // extra security measure, let's remove all sensitive credentials when authentication type is NONE on Snowflake
+        if (
+            updatedProject.warehouseConnection.type ===
+                WarehouseTypes.SNOWFLAKE &&
+            updatedProject.warehouseConnection.authenticationType ===
+                SnowflakeAuthenticationType.NONE
+        ) {
+            updatedProject.warehouseConnection =
+                OrganizationWarehouseCredentialsModel.stripSensitiveCredentials(
+                    updatedProject.warehouseConnection,
+                ) as CreateWarehouseCredentials;
+        }
+
+        this.validateConfigSecrets(updatedProject);
+
+        await this.projectModel.update(projectUuid, updatedProject);
+
+        if (
+            hasConnectionChanges(
+                { warehouseConnection: savedProject.warehouseConnection },
+                { warehouseConnection: updatedProject.warehouseConnection },
+            )
+        ) {
+            this.adminNotificationService
+                .notifyConnectionSettingsChange({
+                    organizationUuid: savedProject.organizationUuid,
+                    projectUuid,
+                    projectName: savedProject.name,
+                    changedBy: account,
+                })
+                .catch((error) => {
+                    this.logger.error(
+                        'Failed to send connection settings change notification',
+                        {
+                            error,
+                            projectUuid,
+                        },
+                    );
+                });
+        }
     }
 
     async testAndCompileProject(
@@ -2182,7 +2681,6 @@ export class ProjectService extends BaseService {
                 onWarehouseCatalogChange: () => {},
             },
             data.dbtVersion || DefaultSupportedDbtVersion,
-            undefined,
             this.analytics,
         );
         try {
@@ -2296,11 +2794,29 @@ export class ProjectService extends BaseService {
                 this.logger.debug(
                     `Refreshing databricks warehouse credentials from refresh token on buildAdapter`,
                 );
-                const accessToken =
-                    await UserService.generateDatabricksAccessToken(
+                let clientId: string;
+                let clientSecret: string | undefined;
+                if (project.warehouseConnection.oauthClientId) {
+                    clientId = project.warehouseConnection.oauthClientId;
+                    clientSecret =
+                        project.warehouseConnection.oauthClientSecret;
+                } else if (this.lightdashConfig.auth.databricks.clientId) {
+                    clientId = this.lightdashConfig.auth.databricks.clientId;
+                    clientSecret =
+                        this.lightdashConfig.auth.databricks.clientSecret;
+                } else {
+                    clientId = DATABRICKS_DEFAULT_OAUTH_CLIENT_ID;
+                    clientSecret = undefined;
+                }
+                const { accessToken, refreshToken } =
+                    await refreshDatabricksOAuthToken(
+                        project.warehouseConnection.serverHostName,
+                        clientId,
                         project.warehouseConnection.refreshToken,
+                        clientSecret,
                     );
                 project.warehouseConnection.token = accessToken;
+                project.warehouseConnection.refreshToken = refreshToken;
             }
         }
 
@@ -2309,22 +2825,63 @@ export class ProjectService extends BaseService {
             project.warehouseConnection.authenticationType ===
                 DatabricksAuthenticationType.OAUTH_U2M
         ) {
-            // For U2M OAuth, check if token needs refresh
-            if (project.warehouseConnection.refreshToken) {
+            // For U2M OAuth, resolve refresh token from user credentials if not on project
+            let u2mRefreshToken =
+                project.warehouseConnection.refreshToken ?? undefined;
+
+            let userCredOauthClientId: string | undefined;
+            if (!u2mRefreshToken) {
+                const userCreds =
+                    await this.userWarehouseCredentialsModel.findForProjectWithSecrets(
+                        projectUuid,
+                        user.userUuid,
+                        WarehouseTypes.DATABRICKS,
+                    );
+                if (
+                    userCreds?.credentials.type === WarehouseTypes.DATABRICKS &&
+                    userCreds.credentials.authenticationType ===
+                        DatabricksAuthenticationType.OAUTH_U2M &&
+                    userCreds.credentials.refreshToken
+                ) {
+                    u2mRefreshToken = userCreds.credentials.refreshToken;
+                    userCredOauthClientId = userCreds.credentials.oauthClientId;
+                }
+            }
+
+            if (u2mRefreshToken) {
                 this.logger.debug(
                     `Refreshing databricks U2M OAuth token from refresh token on buildAdapter`,
                 );
+                // Resolve client: user cred → project → server config → default
+                let clientId: string;
+                let clientSecret: string | undefined;
+                const storedClientId =
+                    userCredOauthClientId ||
+                    project.warehouseConnection.oauthClientId;
+                if (storedClientId) {
+                    clientId = storedClientId;
+                } else if (this.lightdashConfig.auth.databricks.clientId) {
+                    clientId = this.lightdashConfig.auth.databricks.clientId;
+                } else {
+                    clientId = DATABRICKS_DEFAULT_OAUTH_CLIENT_ID;
+                }
+
+                if (
+                    clientId === this.lightdashConfig.auth.databricks.clientId
+                ) {
+                    clientSecret =
+                        this.lightdashConfig.auth.databricks.clientSecret;
+                }
+
                 const { accessToken, refreshToken } =
                     await refreshDatabricksOAuthToken(
                         project.warehouseConnection.serverHostName,
-                        project.warehouseConnection.oauthClientId ||
-                            DATABRICKS_DEFAULT_OAUTH_CLIENT_ID,
-                        project.warehouseConnection.refreshToken,
+                        clientId,
+                        u2mRefreshToken,
+                        clientSecret,
                     );
                 project.warehouseConnection.token = accessToken;
-                // Update refresh token in case it was rotated
                 project.warehouseConnection.refreshToken = refreshToken;
-                // Note: Updated tokens will be persisted when project credentials are next saved
             }
         }
 
@@ -2354,7 +2911,6 @@ export class ProjectService extends BaseService {
                 },
             },
             project.dbtVersion || DefaultSupportedDbtVersion,
-            undefined,
             this.analytics,
         );
         return { adapter, sshTunnel };
@@ -2366,60 +2922,91 @@ export class ProjectService extends BaseService {
         warehouseSqlBuilder: WarehouseSqlBuilder,
         availableParameters: string[],
         dateZoom?: DateZoom,
-    ): Explore {
+    ): { explore: Explore; dateZoomApplied: boolean } {
         if (dateZoom?.granularity) {
-            const timeDimensionsMap: Record<string, CompiledDimension> =
-                Object.values(explore.tables).reduce<
-                    Record<string, CompiledDimension>
-                >((acc, t) => {
-                    Object.values(t.dimensions).forEach((dim) => {
-                        if (
-                            dim.type === DimensionType.TIMESTAMP ||
-                            dim.type === DimensionType.DATE
-                        ) {
-                            acc[getItemId(dim)] = dim;
-                        }
-                    });
-                    return acc;
-                }, {});
+            const allDimensionsMap = getAllDimensionsMap(explore);
+            const timeDimensionsMap = getTimeDimensionsMap(explore);
 
             let timeOrDateDimension = dateZoom?.xAxisFieldId;
 
             if (!timeOrDateDimension) {
-                const firstTimeDimensionIdInMetricQuery =
-                    metricQuery.dimensions.find(
-                        (dimension) => !!timeDimensionsMap[dimension],
-                    );
-
-                timeOrDateDimension = firstTimeDimensionIdInMetricQuery;
+                timeOrDateDimension = metricQuery.dimensions.find(
+                    (dimension) =>
+                        !!resolveToBaseTimeDimension(
+                            dimension,
+                            allDimensionsMap,
+                            timeDimensionsMap,
+                        ),
+                );
             }
 
             if (timeOrDateDimension) {
-                const dimToOverride = timeDimensionsMap[timeOrDateDimension];
-                const { baseDimensionId } =
-                    getDateDimension(timeOrDateDimension);
-                const baseTimeDimension =
-                    dimToOverride.timeInterval && baseDimensionId
-                        ? timeDimensionsMap[baseDimensionId]
-                        : dimToOverride;
+                const dimToOverride = allDimensionsMap[timeOrDateDimension];
+                const baseTimeDimension = resolveToBaseTimeDimension(
+                    timeOrDateDimension,
+                    allDimensionsMap,
+                    timeDimensionsMap,
+                );
 
-                const dimWithGranularityOverride =
-                    createDimensionWithGranularity(
-                        dimToOverride.name,
-                        baseTimeDimension,
-                        explore,
-                        warehouseSqlBuilder,
-                        dateZoom?.granularity,
-                        availableParameters,
+                if (!baseTimeDimension) {
+                    return { explore, dateZoomApplied: false };
+                }
+
+                // Skip sub-day zoom for DATE-only dimensions (no time component)
+                if (
+                    baseTimeDimension.type === DimensionType.DATE &&
+                    isStandardDateGranularity(dateZoom.granularity) &&
+                    isSubDayGranularity(dateZoom.granularity)
+                ) {
+                    return { explore, dateZoomApplied: false };
+                }
+
+                if (!isStandardDateGranularity(dateZoom.granularity)) {
+                    // Custom granularity: find the pre-compiled dimension
+                    const customDimName = `${baseTimeDimension.name}_${dateZoom.granularity}`;
+                    const customDim = Object.values(explore.tables).reduce<
+                        CompiledDimension | undefined
+                    >(
+                        (found, t) => found ?? t.dimensions[customDimName],
+                        undefined,
                     );
 
-                return replaceDimensionInExplore(
-                    explore,
-                    dimWithGranularityOverride,
-                );
+                    if (customDim) {
+                        const dimWithCustomOverride: CompiledDimension = {
+                            ...customDim,
+                            name: dimToOverride.name,
+                        };
+                        return {
+                            explore: replaceDimensionInExplore(
+                                explore,
+                                dimWithCustomOverride,
+                            ),
+                            dateZoomApplied: true,
+                        };
+                    }
+                    // Custom granularity not found — return unchanged explore
+                } else {
+                    // Standard granularity: existing logic
+                    const dimWithGranularityOverride =
+                        createDimensionWithGranularity(
+                            dimToOverride.name,
+                            baseTimeDimension,
+                            explore,
+                            warehouseSqlBuilder,
+                            dateZoom.granularity,
+                            availableParameters,
+                        );
+                    return {
+                        explore: replaceDimensionInExplore(
+                            explore,
+                            dimWithGranularityOverride,
+                        ),
+                        dateZoomApplied: true,
+                    };
+                }
             }
         }
-        return explore;
+        return { explore, dateZoomApplied: false };
     }
 
     static async _compileQuery({
@@ -2433,6 +3020,7 @@ export class ProjectService extends BaseService {
         parameters,
         availableParameterDefinitions,
         pivotConfiguration,
+        pivotDimensions,
         continueOnError,
     }: {
         metricQuery: MetricQuery;
@@ -2445,17 +3033,19 @@ export class ProjectService extends BaseService {
         parameters?: ParametersValuesMap;
         availableParameterDefinitions: ParameterDefinitions;
         pivotConfiguration?: PivotConfiguration;
+        pivotDimensions?: string[];
         continueOnError?: boolean;
     }): Promise<CompiledQuery> {
         const availableParameters = Object.keys(availableParameterDefinitions);
 
-        const exploreWithOverride = ProjectService.updateExploreWithDateZoom(
-            explore,
-            metricQuery,
-            warehouseSqlBuilder,
-            availableParameters,
-            dateZoom,
-        );
+        const { explore: exploreWithOverride } =
+            ProjectService.updateExploreWithDateZoom(
+                explore,
+                metricQuery,
+                warehouseSqlBuilder,
+                availableParameters,
+                dateZoom,
+            );
 
         const compiledMetricQuery = compileMetricQuery({
             explore: exploreWithOverride,
@@ -2474,7 +3064,9 @@ export class ProjectService extends BaseService {
             parameters,
             parameterDefinitions: availableParameterDefinitions,
             pivotConfiguration,
+            pivotDimensions,
             continueOnError,
+            originalExplore: dateZoom ? explore : undefined,
         });
 
         return wrapSentryTransactionSync('QueryBuilder.buildQuery', {}, () =>
@@ -2505,13 +3097,19 @@ export class ProjectService extends BaseService {
             body: MetricQuery & {
                 parameters?: ParametersValuesMap;
                 pivotConfiguration?: PivotConfiguration;
+                pivotDimensions?: string[];
             };
             projectUuid: string;
         } & ({ exploreName: string } | { explore: Explore }),
     ) {
         const {
             account,
-            body: { parameters, pivotConfiguration, ...metricQuery },
+            body: {
+                parameters,
+                pivotConfiguration,
+                pivotDimensions,
+                ...metricQuery
+            },
             projectUuid,
         } = args;
 
@@ -2560,15 +3158,26 @@ export class ProjectService extends BaseService {
             explore,
         );
 
+        // Combine default parameter values with request parameters
+        const combinedParameters = await this.combineParameters(
+            projectUuid,
+            explore,
+            parameters,
+        );
+
+        const timezone = await this.getQueryTimezoneForProject(projectUuid);
+
         const compiledQuery = await ProjectService._compileQuery({
             metricQuery,
             explore,
             warehouseSqlBuilder,
             intrinsicUserAttributes,
             userAttributes,
-            timezone: this.lightdashConfig.query.timezone || 'UTC',
-            parameters,
+            timezone,
+            parameters: combinedParameters,
             availableParameterDefinitions,
+            pivotConfiguration,
+            pivotDimensions,
             continueOnError: true, // Return SQL even with compilation errors for debugging
         });
 
@@ -2672,8 +3281,11 @@ export class ProjectService extends BaseService {
         );
         const { organizationUuid, projectUuid } = savedChart;
 
-        const [space, explore] = await Promise.all([
-            this.spaceModel.getSpaceSummary(savedChart.spaceUuid),
+        const [spaceCtx, explore] = await Promise.all([
+            this.spacePermissionService.getSpaceAccessContext(
+                account.user.id,
+                savedChart.spaceUuid,
+            ),
             this.getExplore(
                 account,
                 projectUuid,
@@ -2682,29 +3294,10 @@ export class ProjectService extends BaseService {
             ),
         ]);
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user: {
-                userUuid: account.user.id,
-                organizationUuid: account.organization.organizationUuid,
-                organizationName: account.organization.name,
-            },
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-        const access = await this.spaceModel.getUserSpaceAccess(
-            account.user.id,
-            space.uuid,
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
-
         if (
             account.user.ability.cannot(
                 'view',
-                subject('SavedChart', {
-                    organizationUuid,
-                    projectUuid,
-                    isPrivate: space.isPrivate,
-                    access,
-                }),
+                subject('SavedChart', spaceCtx),
             ) ||
             account.user.ability.cannot(
                 'view',
@@ -2776,8 +3369,11 @@ export class ProjectService extends BaseService {
         const savedChart = await this.savedChartModel.get(chartUuid);
         const { organizationUuid, projectUuid } = savedChart;
 
-        const [space, explore] = await Promise.all([
-            this.spaceModel.getSpaceSummary(savedChart.spaceUuid),
+        const [spaceCtx, explore] = await Promise.all([
+            this.spacePermissionService.getSpaceAccessContext(
+                account.user.id,
+                savedChart.spaceUuid,
+            ),
             this.getExplore(
                 account,
                 projectUuid,
@@ -2786,29 +3382,10 @@ export class ProjectService extends BaseService {
             ),
         ]);
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user: {
-                userUuid: account.user.id,
-                organizationUuid: account.organization.organizationUuid,
-                organizationName: account.organization.name,
-            },
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-        const access = await this.spaceModel.getUserSpaceAccess(
-            account.user.id,
-            space.uuid,
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
-
         if (
             account.user.ability.cannot(
                 'view',
-                subject('SavedChart', {
-                    organizationUuid,
-                    projectUuid,
-                    isPrivate: space.isPrivate,
-                    access,
-                }),
+                subject('SavedChart', spaceCtx),
             ) ||
             account.user.ability.cannot(
                 'view',
@@ -2913,7 +3490,11 @@ export class ProjectService extends BaseService {
         }
 
         return {
-            chart: { ...savedChart, isPrivate: space.isPrivate, access },
+            chart: {
+                ...savedChart,
+                inheritsFromOrgOrProject: spaceCtx.inheritsFromOrgOrProject,
+                access: spaceCtx.access,
+            },
             explore,
             metricQuery: metricQueryWithDashboardOverrides,
             cacheMetadata,
@@ -3103,63 +3684,6 @@ export class ProjectService extends BaseService {
         );
     }
 
-    async getResultsForChart(
-        account: Account,
-        chartUuid: string,
-        context: QueryExecutionContext,
-        dashboardParameters?: ParametersValuesMap,
-    ): Promise<{
-        rows: Record<string, AnyType>[];
-        cacheMetadata: CacheMetadata;
-    }> {
-        return wrapSentryTransaction(
-            'getResultsForChartWithWarehouseQuery',
-            {
-                userUuid: account.user.id,
-                chartUuid,
-            },
-            async () => {
-                const chart = await this.savedChartModel.get(chartUuid);
-                const { metricQuery, parameters: savedChartParameters } = chart;
-                const exploreId = chart.tableName;
-                const queryTags: RunQueryTags = {
-                    ...this.getUserQueryTags(account),
-                    project_uuid: chart.projectUuid,
-                    chart_uuid: chartUuid,
-                    explore_name: exploreId,
-                    query_context: context,
-                };
-
-                // Parameter overrides are the dashboard parameters
-                const explore = await this.getExplore(
-                    account,
-                    chart.projectUuid,
-                    exploreId,
-                );
-
-                const parameters = await this.combineParameters(
-                    chart.projectUuid,
-                    explore,
-                    undefined,
-                    dashboardParameters ?? savedChartParameters, // Dashboard parameters go in place of saved chart parameters
-                );
-
-                return this.runMetricQuery({
-                    account,
-                    metricQuery,
-                    projectUuid: chart.projectUuid,
-                    exploreName: exploreId,
-                    csvLimit: undefined,
-                    context,
-                    chartUuid,
-                    queryTags,
-                    parameters,
-                    explore, // Passing in explore to avoid fetching it again
-                });
-            },
-        );
-    }
-
     async getResultsFromCacheOrWarehouse({
         projectUuid,
         userUuid,
@@ -3204,7 +3728,7 @@ export class ProjectService extends BaseService {
                 ) {
                     const cacheEntryMetadata = await this.s3CacheClient
                         .getResultsMetadata(queryHash)
-                        .catch((e) => undefined); // ignore since error is tracked in s3Client
+                        .catch((e) => undefined); // ignore since error is tracked in fileStorageClient
 
                     if (
                         cacheEntryMetadata?.LastModified &&
@@ -3296,7 +3820,7 @@ export class ProjectService extends BaseService {
                     // fire and forget
                     this.s3CacheClient
                         .uploadResults(queryHash, buffer, queryTags)
-                        .catch((e) => undefined); // ignore since error is tracked in s3Client
+                        .catch((e) => undefined); // ignore since error is tracked in fileStorageClient
                 }
 
                 return {
@@ -3383,6 +3907,7 @@ export class ProjectService extends BaseService {
                             projectUuid,
                             userId: account.user.id,
                             isRegisteredUser: account.isRegisteredUser(),
+                            isServiceAccount: account.isServiceAccount(),
                         });
                     const { warehouseClient, sshTunnel } =
                         await this._getWarehouseClient(
@@ -3409,16 +3934,20 @@ export class ProjectService extends BaseService {
                     const availableParameterDefinitions =
                         await this.getAvailableParameters(projectUuid, explore);
 
+                    const timezone =
+                        await this.getQueryTimezoneForProject(projectUuid);
+
                     const fullQuery = await ProjectService._compileQuery({
                         metricQuery: metricQueryWithLimit,
                         explore,
                         warehouseSqlBuilder: warehouseClient,
                         intrinsicUserAttributes,
                         userAttributes: mergedUserAttributes,
-                        timezone: this.lightdashConfig.query.timezone || 'UTC',
+                        timezone,
                         dateZoom,
                         parameters,
                         availableParameterDefinitions,
+                        pivotDimensions: metricQueryWithLimit.pivotDimensions,
                     });
 
                     const { query } = fullQuery;
@@ -3613,7 +4142,7 @@ export class ProjectService extends BaseService {
         const columns: VizColumn[] = [];
 
         const fileUrl = await this.downloadFileModel.streamFunction(
-            this.s3Client,
+            this.fileStorageClient,
         )(
             `${this.lightdashConfig.siteUrl}/api/v1/projects/${projectUuid}/sqlRunner/results`,
             async (writer) => {
@@ -3637,7 +4166,7 @@ export class ProjectService extends BaseService {
                     },
                 );
             },
-            this.s3Client,
+            this.fileStorageClient,
         );
 
         await sshTunnel.disconnect();
@@ -3720,7 +4249,7 @@ export class ProjectService extends BaseService {
         let columnCount: undefined | number;
 
         const fileUrl = await this.downloadFileModel.streamFunction(
-            this.s3Client,
+            this.fileStorageClient,
         )(
             `${this.lightdashConfig.siteUrl}/api/v1/projects/${projectUuid}/sqlRunner/results`,
             async (writer) => {
@@ -3814,7 +4343,7 @@ export class ProjectService extends BaseService {
                     writer(currentTransformedRow);
                 }
             },
-            this.s3Client,
+            this.fileStorageClient,
         );
 
         await sshTunnel.disconnect();
@@ -3860,7 +4389,7 @@ export class ProjectService extends BaseService {
             case DownloadFileType.JSONL:
                 return fs.createReadStream(downloadFile.path);
             case DownloadFileType.S3_JSONL:
-                return this.s3Client.getS3FileStream(downloadFile.path);
+                return this.fileStorageClient.getFileStream(downloadFile.path);
             default:
                 throw new ParameterError('File is not a valid JSONL file');
         }
@@ -4055,13 +4584,15 @@ export class ProjectService extends BaseService {
             parameters,
         );
 
+        const timezone = await this.getQueryTimezoneForProject(projectUuid);
+
         const { query } = await ProjectService._compileQuery({
             metricQuery,
             explore,
             warehouseSqlBuilder: warehouseClient,
             intrinsicUserAttributes,
             userAttributes: mergedUserAttributes,
-            timezone: this.lightdashConfig.query.timezone || 'UTC',
+            timezone,
             parameters: combinedParameters,
             availableParameterDefinitions,
         });
@@ -4387,6 +4918,141 @@ export class ProjectService extends BaseService {
         return job;
     }
 
+    private async assertCanRefreshPreAggregates(
+        user: SessionUser,
+        projectUuid: string,
+    ): Promise<{ organizationUuid: string }> {
+        const { organizationUuid, type } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'create',
+                subject('Job', { organizationUuid, projectUuid }),
+            ) ||
+            user.ability.cannot(
+                'manage',
+                subject('CompileProject', {
+                    organizationUuid,
+                    projectUuid,
+                    type,
+                }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        return { organizationUuid };
+    }
+
+    async refreshPreAggregates(
+        user: SessionUser,
+        projectUuid: string,
+    ): Promise<{ jobIds: string[] }> {
+        const { organizationUuid } = await this.assertCanRefreshPreAggregates(
+            user,
+            projectUuid,
+        );
+
+        const preAggregateDefinitions =
+            await this.preAggregateModel.getPreAggregateDefinitionsForProject(
+                projectUuid,
+            );
+
+        if (preAggregateDefinitions.length === 0) {
+            throw new NotFoundError(
+                'No pre-aggregate definitions found for this project. Recompile the project to populate the registry.',
+            );
+        }
+
+        const materializableDefinitions = preAggregateDefinitions.filter(
+            (definition) => definition.materializationMetricQuery !== null,
+        );
+
+        preAggregateDefinitions
+            .filter(
+                (definition) => definition.materializationMetricQuery === null,
+            )
+            .forEach((definition) => {
+                this.logger.warn(
+                    `Skipping manual refresh for pre-aggregate definition ${definition.preAggregateDefinitionUuid} in project ${projectUuid}: ${
+                        definition.materializationQueryError ||
+                        'materialization query is missing'
+                    }`,
+                );
+            });
+
+        if (materializableDefinitions.length === 0) {
+            throw new ParameterError(
+                'No valid pre-aggregate definitions are materializable. Recompile the project and fix definition errors first.',
+            );
+        }
+
+        const jobs = await Promise.all(
+            materializableDefinitions.map((definition) =>
+                this.schedulerClient.materializePreAggregate({
+                    organizationUuid,
+                    projectUuid,
+                    userUuid: user.userUuid,
+                    preAggregateDefinitionUuid:
+                        definition.preAggregateDefinitionUuid,
+                    trigger: 'manual',
+                }),
+            ),
+        );
+
+        return {
+            jobIds: jobs.map((job) => job.jobId),
+        };
+    }
+
+    async refreshPreAggregateByDefinitionName(
+        user: SessionUser,
+        projectUuid: string,
+        preAggregateDefinitionName: string,
+    ): Promise<{ jobIds: string[] }> {
+        const { organizationUuid } = await this.assertCanRefreshPreAggregates(
+            user,
+            projectUuid,
+        );
+
+        const preAggregateDefinition =
+            await this.preAggregateModel.getPreAggregateDefinitionByDefinitionName(
+                {
+                    projectUuid,
+                    preAggregateDefinitionName,
+                },
+            );
+
+        if (!preAggregateDefinition) {
+            throw new NotFoundError(
+                `Pre-aggregate definition "${preAggregateDefinitionName}" not found`,
+            );
+        }
+
+        if (!preAggregateDefinition.materializationMetricQuery) {
+            throw new ParameterError(
+                `Pre-aggregate definition "${preAggregateDefinitionName}" cannot be materialized: ${
+                    preAggregateDefinition.materializationQueryError ||
+                    'materialization query is missing'
+                }`,
+            );
+        }
+
+        const { jobId } = await this.schedulerClient.materializePreAggregate({
+            organizationUuid,
+            projectUuid,
+            userUuid: user.userUuid,
+            preAggregateDefinitionUuid:
+                preAggregateDefinition.preAggregateDefinitionUuid,
+            trigger: 'manual',
+        });
+
+        return {
+            jobIds: [jobId],
+        };
+    }
+
     async scheduleCompileProject(
         user: SessionUser,
         projectUuid: string,
@@ -4595,8 +5261,12 @@ export class ProjectService extends BaseService {
         const { userAttributes } = await this.getUserAttributes({ account });
 
         return exploreSummaries.reduce<SummaryExplore[]>((acc, summary) => {
-            const { baseTableRequiredAttributes, ...rest } = summary;
-            const summaryExplore: SummaryExplore = rest; // Just type assertion to remove the baseTableRequiredAttributes
+            const {
+                baseTableRequiredAttributes,
+                baseTableAnyAttributes,
+                ...rest
+            } = summary;
+            const summaryExplore: SummaryExplore = rest; // Just type assertion to remove the baseTableRequiredAttributes and baseTableAnyAttributes
 
             if (!includeErrors && 'errors' in summaryExplore) {
                 return acc;
@@ -4606,6 +5276,7 @@ export class ProjectService extends BaseService {
             if (
                 !doesExploreMatchRequiredAttributes(
                     baseTableRequiredAttributes,
+                    baseTableAnyAttributes,
                     userAttributes,
                 )
             ) {
@@ -4617,11 +5288,30 @@ export class ProjectService extends BaseService {
         }, []);
     }
 
+    private canViewPreAggregateExplores(
+        account: Account,
+        organizationUuid: string,
+        projectUuid: string,
+    ): boolean {
+        if (!this.lightdashConfig.preAggregates.enabled) {
+            return false;
+        }
+
+        return account.user.ability.can(
+            'manage',
+            subject('PreAggregation', {
+                organizationUuid,
+                projectUuid,
+            }),
+        );
+    }
+
     async getAllExploresSummary(
         account: Account,
         projectUuid: string,
         filtered: boolean,
         includeErrors: boolean = true,
+        includePreAggregates: boolean = false,
     ): Promise<SummaryExplore[]> {
         const { organizationUuid } =
             await this.projectModel.getSummary(projectUuid);
@@ -4641,28 +5331,44 @@ export class ProjectService extends BaseService {
             projectUuid,
             includeErrors,
         );
+        const shouldIncludePreAggregateExplores =
+            includePreAggregates &&
+            this.canViewPreAggregateExplores(
+                account,
+                organizationUuid,
+                projectUuid,
+            );
+        const visibleExploreSummaries = shouldIncludePreAggregateExplores
+            ? allExploreSummaries
+            : allExploreSummaries.filter(
+                  (explore) => explore.type !== ExploreType.PRE_AGGREGATE,
+              );
 
         if (filtered) {
             const {
                 tableSelection: { type, value },
             } = await this.getTablesConfiguration(account, projectUuid);
             if (type === TableSelectionType.WITH_TAGS) {
-                return allExploreSummaries.filter(
+                return visibleExploreSummaries.filter(
                     (explore) =>
                         hasIntersection(explore.tags || [], value || []) ||
-                        explore.type === ExploreType.VIRTUAL, // Custom explores/Virtual views are included by default
+                        explore.type === ExploreType.VIRTUAL || // Custom explores/Virtual views are included by default
+                        (shouldIncludePreAggregateExplores &&
+                            explore.type === ExploreType.PRE_AGGREGATE),
                 );
             }
             if (type === TableSelectionType.WITH_NAMES) {
-                return allExploreSummaries.filter(
+                return visibleExploreSummaries.filter(
                     (explore) =>
                         (value || []).includes(explore.name) ||
-                        explore.type === ExploreType.VIRTUAL, // Custom explores/Virtual views are included by default
+                        explore.type === ExploreType.VIRTUAL || // Custom explores/Virtual views are included by default
+                        (shouldIncludePreAggregateExplores &&
+                            explore.type === ExploreType.PRE_AGGREGATE),
                 );
             }
         }
 
-        return allExploreSummaries;
+        return visibleExploreSummaries;
     }
 
     async getExplore(
@@ -4756,6 +5462,12 @@ export class ProjectService extends BaseService {
                     'name',
                     exploreNames,
                 );
+                const canViewPreAggregateExplores =
+                    this.canViewPreAggregateExplores(
+                        account,
+                        project.organizationUuid,
+                        projectUuid,
+                    );
 
                 const { userAttributes } = await this.getUserAttributes({
                     account,
@@ -4764,6 +5476,12 @@ export class ProjectService extends BaseService {
                 return Object.values(explores).reduce<
                     Record<string, Explore | ExploreError>
                 >((acc, explore) => {
+                    if (
+                        explore.type === ExploreType.PRE_AGGREGATE &&
+                        !canViewPreAggregateExplores
+                    ) {
+                        return acc;
+                    }
                     if (isExploreError(explore)) {
                         acc[explore.name] = explore;
                     } else {
@@ -5150,31 +5868,18 @@ export class ProjectService extends BaseService {
                         savedChartUuid,
                     ]);
 
-                const space = await this.spaceModel.getSpaceSummary(
-                    savedChart.spaceUuid,
-                );
-
-                const nestedPermissionsFlag = await this.featureFlagModel.get({
-                    user: {
-                        userUuid: account.user.id,
-                        organizationUuid: account.organization.organizationUuid,
-                        organizationName: account.organization.name,
-                    },
-                    featureFlagId: FeatureFlags.NestedSpacesPermissions,
-                });
-                const access = await this.spaceModel.getUserSpaceAccess(
-                    account.user.id,
-                    space.uuid,
-                    { useInheritedAccess: nestedPermissionsFlag.enabled },
-                );
+                const spaceCtx =
+                    await this.spacePermissionService.getSpaceAccessContext(
+                        account.user.id,
+                        savedChart.spaceUuid,
+                    );
 
                 if (
                     account.user.ability.cannot(
                         'view',
                         subject('SavedChart', {
                             ...savedChart,
-                            isPrivate: space.isPrivate,
-                            access,
+                            ...spaceCtx,
                         }),
                     )
                 ) {
@@ -5225,53 +5930,31 @@ export class ProjectService extends BaseService {
                     return [];
                 }
 
-                const nestedPermissionsFlag = await this.featureFlagModel.get({
-                    user: {
-                        userUuid: account.user.id,
+                const [spacesCtx, exploresMap] = await Promise.all([
+                    this.spacePermissionService.getSpacesAccessContext(
+                        account.user.id,
+                        uniqueSpaceUuids,
+                    ),
+                    this.findExplores({
+                        account,
+                        projectUuid: savedCharts[0].projectUuid, // TODO: route should be updated to be project/dashboard specific. For now we pick it from first chart as they all should be from the same project
+                        exploreNames: savedCharts.map(
+                            (chart) => chart.tableName,
+                        ),
                         organizationUuid: account.organization.organizationUuid,
-                        organizationName: account.organization.name,
-                    },
-                    featureFlagId: FeatureFlags.NestedSpacesPermissions,
-                });
-
-                const [spaceAccessMap, exploresMap, userSpacesAccess] =
-                    await Promise.all([
-                        this.spaceModel.getSpacesForAccessCheck(
-                            uniqueSpaceUuids,
-                        ),
-                        this.findExplores({
-                            account,
-                            projectUuid: savedCharts[0].projectUuid, // TODO: route should be updated to be project/dashboard specific. For now we pick it from first chart as they all should be from the same project
-                            exploreNames: savedCharts.map(
-                                (chart) => chart.tableName,
-                            ),
-                            organizationUuid:
-                                account.organization.organizationUuid,
-                        }),
-                        this.spaceModel.getUserSpacesAccess(
-                            account.user.id,
-                            uniqueSpaceUuids,
-                            {
-                                useInheritedAccess:
-                                    nestedPermissionsFlag.enabled,
-                            },
-                        ),
-                    ]);
+                    }),
+                ]);
 
                 return savedCharts.map((savedChart) => {
-                    const spaceAccess = spaceAccessMap.get(
-                        savedChart.spaceUuid,
-                    );
+                    const spaceCtx = spacesCtx[savedChart.spaceUuid];
 
                     if (
+                        !spaceCtx ||
                         account.user.ability.cannot(
                             'view',
                             subject('SavedChart', {
                                 ...savedChart,
-                                isPrivate: spaceAccess?.isPrivate,
-                                access:
-                                    userSpacesAccess[savedChart.spaceUuid] ??
-                                    [],
+                                ...spaceCtx,
                             }),
                         )
                     ) {
@@ -5505,6 +6188,42 @@ export class ProjectService extends BaseService {
         await this.projectModel.updateMetadata(projectUuid, data);
     }
 
+    async updateDefaultUserSpaces(
+        user: SessionUser,
+        projectUuid: string,
+        data: UpdateDefaultUserSpaces,
+    ): Promise<void> {
+        const { enabled: defaultUserSpacesEnabled } =
+            await this.featureFlagModel.get({
+                user,
+                featureFlagId: FeatureFlags.DefaultUserSpaces,
+            });
+        if (!defaultUserSpacesEnabled) {
+            throw new ForbiddenError(
+                'Default user spaces feature is not enabled',
+            );
+        }
+
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('Project', {
+                    organizationUuid,
+                    projectUuid,
+                }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        await this.projectModel.updateDefaultUserSpaces(
+            projectUuid,
+            data.hasDefaultUserSpaces,
+        );
+    }
+
     async deleteProjectAccess(
         user: SessionUser,
         projectUuid: string,
@@ -5563,29 +6282,13 @@ export class ProjectService extends BaseService {
             throw new ForbiddenError();
         }
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user,
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-
         const spaces = await this.spaceModel.find({ projectUuid });
-        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
-            user.userUuid,
-            spaces.map((s) => s.uuid),
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
-
-        const allowedSpaceUuids = spaces
-            .filter(
-                (space) =>
-                    space.projectUuid === projectUuid &&
-                    hasViewAccessToSpace(
-                        user,
-                        space,
-                        spacesAccess[space.uuid] ?? [],
-                    ),
-            )
-            .map(({ uuid }) => uuid);
+        const allowedSpaceUuids =
+            await this.spacePermissionService.getAccessibleSpaceUuids(
+                'view',
+                user,
+                spaces.map((s) => s.uuid),
+            );
 
         const savedQueries =
             await this.spaceModel.getSpaceQueries(allowedSpaceUuids);
@@ -5611,29 +6314,13 @@ export class ProjectService extends BaseService {
             throw new ForbiddenError();
         }
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user,
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-
         const spaces = await this.spaceModel.find({ projectUuid });
-        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
-            user.userUuid,
-            spaces.map((s) => s.uuid),
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
-
-        const allowedSpaceUuids = spaces
-            .filter(
-                (space) =>
-                    space.projectUuid === projectUuid &&
-                    hasViewAccessToSpace(
-                        user,
-                        space,
-                        spacesAccess[space.uuid] ?? [],
-                    ),
-            )
-            .map((space) => space.uuid);
+        const allowedSpaceUuids =
+            await this.spacePermissionService.getAccessibleSpaceUuids(
+                'view',
+                user,
+                spaces.map((s) => s.uuid),
+            );
 
         return this.savedChartModel.find({
             projectUuid,
@@ -5659,104 +6346,70 @@ export class ProjectService extends BaseService {
             throw new ForbiddenError();
         }
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user,
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-
         const spaces = await this.spaceModel.find({ projectUuid });
-        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
-            user.userUuid,
-            spaces.map((s) => s.uuid),
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
-        const allowedSpaces = spaces.filter(
-            (space) =>
-                (space.projectUuid === projectUuid &&
-                    hasDirectAccessToSpace(user, space)) ||
-                hasViewAccessToSpace(
-                    user,
-                    space,
-                    spacesAccess[space.uuid] ?? [],
-                ),
+        const allowedSpaceUuids =
+            await this.spacePermissionService.getAccessibleSpaceUuids(
+                'view',
+                user,
+                spaces.map((s) => s.uuid),
+            );
+
+        const allowedSpaceUuidsSet = new Set(allowedSpaceUuids);
+        const allowedSpaces = spaces.filter((space) =>
+            allowedSpaceUuidsSet.has(space.uuid),
         );
 
-        const mostPopular = await this.getMostPopular(allowedSpaces);
-        const recentlyUpdated = await this.getRecentlyUpdated(allowedSpaces);
+        const spaceUuids = allowedSpaces.map(({ uuid }) => uuid);
+        const [
+            popularCharts,
+            popularSqlCharts,
+            popularDashboards,
+            recentCharts,
+            recentSqlCharts,
+            recentDashboards,
+        ] = await Promise.all([
+            this.spaceModel.getSpaceQueries(spaceUuids, {
+                mostPopular: true,
+            }),
+            this.spaceModel.getSpaceSqlCharts(spaceUuids, {
+                mostPopular: true,
+            }),
+            this.spaceModel.getSpaceDashboards(spaceUuids, {
+                mostPopular: true,
+            }),
+            this.spaceModel.getSpaceQueries(spaceUuids, {
+                recentlyUpdated: true,
+            }),
+            this.spaceModel.getSpaceSqlCharts(spaceUuids, {
+                recentlyUpdated: true,
+            }),
+            this.spaceModel.getSpaceDashboards(spaceUuids, {
+                recentlyUpdated: true,
+            }),
+        ]);
 
         return {
-            mostPopular: mostPopular
+            mostPopular: [
+                ...popularCharts,
+                ...popularSqlCharts,
+                ...popularDashboards,
+            ]
                 .sort((a, b) => b.views - a.views)
                 .slice(
                     0,
                     this.spaceModel.MOST_POPULAR_OR_RECENTLY_UPDATED_LIMIT,
                 ),
-            recentlyUpdated: recentlyUpdated
+            recentlyUpdated: [
+                ...recentCharts,
+                ...recentSqlCharts,
+                ...recentDashboards,
+            ]
                 .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
                 .slice(
                     0,
                     this.spaceModel.MOST_POPULAR_OR_RECENTLY_UPDATED_LIMIT,
                 ),
         };
-    }
-
-    async getMostPopular(
-        allowedSpaces: Pick<SpaceSummary, 'uuid'>[],
-    ): Promise<(SpaceQuery | DashboardBasicDetails)[]> {
-        const mostPopularCharts = await this.spaceModel.getSpaceQueries(
-            allowedSpaces.map(({ uuid }) => uuid),
-            {
-                mostPopular: true,
-            },
-        );
-        const mostPopularSqlCharts = await this.spaceModel.getSpaceSqlCharts(
-            allowedSpaces.map(({ uuid }) => uuid),
-            {
-                mostPopular: true,
-            },
-        );
-        const mostPopularDashboards = await this.spaceModel.getSpaceDashboards(
-            allowedSpaces.map(({ uuid }) => uuid),
-            {
-                mostPopular: true,
-            },
-        );
-
-        return [
-            ...mostPopularCharts,
-            ...mostPopularSqlCharts,
-            ...mostPopularDashboards,
-        ];
-    }
-
-    async getRecentlyUpdated(
-        allowedSpaces: Pick<SpaceSummary, 'uuid'>[],
-    ): Promise<(SpaceQuery | DashboardBasicDetails)[]> {
-        const recentlyUpdatedCharts = await this.spaceModel.getSpaceQueries(
-            allowedSpaces.map(({ uuid }) => uuid),
-            {
-                recentlyUpdated: true,
-            },
-        );
-        const recentlyUpdatedSqlCharts =
-            await this.spaceModel.getSpaceSqlCharts(
-                allowedSpaces.map(({ uuid }) => uuid),
-                {
-                    recentlyUpdated: true,
-                },
-            );
-        const recentlyUpdatedDashboards =
-            await this.spaceModel.getSpaceDashboards(
-                allowedSpaces.map(({ uuid }) => uuid),
-                {
-                    recentlyUpdated: true,
-                },
-            );
-        return [
-            ...recentlyUpdatedCharts,
-            ...recentlyUpdatedSqlCharts,
-            ...recentlyUpdatedDashboards,
-        ];
     }
 
     async getSpaces(
@@ -5774,28 +6427,34 @@ export class ProjectService extends BaseService {
             throw new ForbiddenError();
         }
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user,
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-
         const spaces = await this.spaceModel.find({ projectUuid });
-        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
-            user.userUuid,
-            spaces.map((s) => s.uuid),
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
+        const spaceUuids = spaces.map((s) => s.uuid);
+        const [userSpacesCtx, directAccessMap] = await Promise.all([
+            this.spacePermissionService.getSpacesAccessContext(
+                user.userUuid,
+                spaceUuids,
+            ),
+            this.spacePermissionService.getDirectAccessUserUuids(spaceUuids),
+        ]);
 
-        const spacesWithUserAccess = spaces
-            .filter((space) =>
-                hasViewAccessToSpace(user, space, spacesAccess[space.uuid]),
-            )
-            .map((spaceSummary) => ({
-                ...spaceSummary,
-                userAccess: spacesAccess[spaceSummary.uuid]?.[0] ?? [],
-            }));
-
-        return spacesWithUserAccess;
+        return spaces
+            .filter((space) => {
+                const ctx = userSpacesCtx[space.uuid];
+                return ctx && user.ability.can('view', subject('Space', ctx));
+            })
+            .map((spaceSummary) => {
+                const ctx = userSpacesCtx[spaceSummary.uuid];
+                const directAccessUuids =
+                    directAccessMap[spaceSummary.uuid] ?? [];
+                return {
+                    ...spaceSummary,
+                    inheritsFromOrgOrProject: ctx.inheritsFromOrgOrProject,
+                    access: directAccessUuids,
+                    userAccess: ctx?.access.find(
+                        (a) => a.userUuid === user.userUuid,
+                    ),
+                };
+            });
     }
 
     async createPreview(
@@ -5947,7 +6606,8 @@ export class ProjectService extends BaseService {
         );
     }
 
-    async _getCalculateTotalQuery(
+    static async _getCalculateTotalQuery(
+        timezone: string,
         userAttributes: UserAttributeValueMap,
         intrinsicUserAttributes: IntrinsicUserAttributes,
         explore: Explore,
@@ -5986,7 +6646,7 @@ export class ProjectService extends BaseService {
             warehouseSqlBuilder: warehouseClient,
             intrinsicUserAttributes,
             userAttributes,
-            timezone: this.lightdashConfig.query.timezone || 'UTC',
+            timezone,
             parameters,
             availableParameterDefinitions,
         });
@@ -6007,7 +6667,9 @@ export class ProjectService extends BaseService {
         availableParameterDefinitions: ParameterDefinitions,
         parameters?: ParametersValuesMap,
     ) {
-        return this._getCalculateTotalQuery(
+        const timezone = this.lightdashConfig.query.timezone ?? 'UTC';
+        return ProjectService._getCalculateTotalQuery(
+            timezone,
             userAttributes,
             intrinsicUserAttributes,
             explore,
@@ -6032,6 +6694,7 @@ export class ProjectService extends BaseService {
                 projectUuid,
                 userId: account.user.id,
                 isRegisteredUser: account.isRegisteredUser(),
+                isServiceAccount: account.isServiceAccount(),
             }),
             {
                 snowflakeVirtualWarehouse: explore.warehouse,
@@ -6047,8 +6710,11 @@ export class ProjectService extends BaseService {
             explore,
         );
 
+        const timezone = await this.getQueryTimezoneForProject(projectUuid);
+
         try {
-            const { query } = await this._getCalculateTotalQuery(
+            const { query } = await ProjectService._getCalculateTotalQuery(
+                timezone,
                 userAttributes,
                 intrinsicUserAttributes,
                 explore,
@@ -6091,6 +6757,7 @@ export class ProjectService extends BaseService {
             projectUuid,
             userId: account.user.id,
             isRegisteredUser: account.isRegisteredUser(),
+            isServiceAccount: account.isServiceAccount(),
         });
         const { warehouseClient, sshTunnel } = await this._getWarehouseClient(
             projectUuid,
@@ -6109,16 +6776,20 @@ export class ProjectService extends BaseService {
             explore,
         );
 
+        const timezone = await this.getQueryTimezoneForProject(projectUuid);
+
         try {
-            const { query, totalQuery } = await this._getCalculateTotalQuery(
-                userAttributes,
-                intrinsicUserAttributes,
-                explore,
-                metricQuery,
-                warehouseClient,
-                availableParameterDefinitions,
-                parameters,
-            );
+            const { query, totalQuery } =
+                await ProjectService._getCalculateTotalQuery(
+                    timezone,
+                    userAttributes,
+                    intrinsicUserAttributes,
+                    explore,
+                    metricQuery,
+                    warehouseClient,
+                    availableParameterDefinitions,
+                    parameters,
+                );
 
             const queryTags: RunQueryTags = {
                 ...this.getUserQueryTags(account),
@@ -6200,32 +6871,16 @@ export class ProjectService extends BaseService {
               )
             : savedChart.metricQuery;
 
-        const space = await this.spaceModel.getSpaceSummary(
-            savedChart.spaceUuid,
-        );
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user: {
-                userUuid: account.user.id,
-                organizationUuid: account.organization.organizationUuid,
-                organizationName: account.organization.name,
-            },
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-        const access = await this.spaceModel.getUserSpaceAccess(
-            account.user.id,
-            savedChart.spaceUuid,
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
+        const spaceCtx =
+            await this.spacePermissionService.getSpaceAccessContext(
+                account.user.id,
+                savedChart.spaceUuid,
+            );
 
         if (
             account.user.ability.cannot(
                 'view',
-                subject('SavedChart', {
-                    organizationUuid,
-                    projectUuid,
-                    isPrivate: space.isPrivate,
-                    access,
-                }),
+                subject('SavedChart', spaceCtx),
             ) ||
             account.user.ability.cannot(
                 'view',
@@ -6475,7 +7130,9 @@ export class ProjectService extends BaseService {
         const allExplores = Object.values(cachedExplores);
 
         const validExplores = allExplores?.filter(
-            (explore) => explore.type !== ExploreType.VIRTUAL,
+            (explore) =>
+                explore.type !== ExploreType.VIRTUAL &&
+                explore.type !== ExploreType.PRE_AGGREGATE,
         );
 
         if (!validExplores) {
@@ -6591,6 +7248,20 @@ export class ProjectService extends BaseService {
             project.projectUuid,
             user.userUuid,
             credentials.type,
+        );
+    }
+
+    async getProjectUserWarehouseCredentials(
+        user: SessionUser,
+        projectUuid: string,
+    ): Promise<UserWarehouseCredentials[]> {
+        const project = await this.projectModel.getSummary(projectUuid);
+        if (user.ability.cannot('view', subject('Project', project))) {
+            throw new ForbiddenError();
+        }
+        return this.userWarehouseCredentialsModel.getAllByUserUuidForProject(
+            user.userUuid,
+            projectUuid,
         );
     }
 
@@ -6751,6 +7422,7 @@ export class ProjectService extends BaseService {
                 projectUuid,
                 userId: account.user.id,
                 isRegisteredUser: account.isRegisteredUser(),
+                isServiceAccount: account.isServiceAccount(),
             }),
         );
 
@@ -6833,6 +7505,43 @@ export class ProjectService extends BaseService {
         });
 
         return updatedProject;
+    }
+
+    async updateQueryTimezone(
+        user: SessionUser,
+        projectUuid: string,
+        queryTimezone: string | null,
+    ) {
+        const project = await this.projectModel.getSummary(projectUuid);
+
+        if (user.ability.cannot('update', subject('Project', project))) {
+            throw new ForbiddenError();
+        }
+
+        if (queryTimezone !== null && !isValidTimezone(queryTimezone)) {
+            throw new ParameterError(`Invalid timezone: "${queryTimezone}"`);
+        }
+
+        await this.projectModel.updateQueryTimezone(projectUuid, queryTimezone);
+
+        this.analytics.track({
+            event: 'query_timezone.updated',
+            userId: user.userUuid,
+            properties: {
+                projectId: projectUuid,
+                organizationUuid: project.organizationUuid,
+                queryTimezone:
+                    queryTimezone !== null
+                        ? getTimezoneLabel(queryTimezone)
+                        : null,
+            },
+        });
+    }
+
+    async getQueryTimezoneForProject(projectUuid: string): Promise<string> {
+        const projectTimezone =
+            await this.projectModel.getQueryTimezone(projectUuid);
+        return projectTimezone ?? this.lightdashConfig.query.timezone ?? 'UTC';
     }
 
     async createTag(
@@ -6984,6 +7693,37 @@ export class ProjectService extends BaseService {
             projectUuid,
             parameters ?? {},
         );
+    }
+
+    async replaceProjectDefaults({
+        user,
+        projectUuid,
+        defaults,
+    }: {
+        user: SessionUser;
+        projectUuid: string;
+        defaults: ProjectDefaults;
+    }) {
+        const { organizationUuid, type, createdByUserUuid } =
+            await this.projectModel.getWithSensitiveFields(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'update',
+                subject('Project', {
+                    projectUuid,
+                    organizationUuid,
+                    type,
+                    createdByUserUuid,
+                }),
+            )
+        ) {
+            throw new ForbiddenError(
+                `User does not have permission to update project defaults`,
+            );
+        }
+
+        await this.projectModel.updateProjectDefaults(projectUuid, defaults);
     }
 
     async replaceYamlTags(
@@ -7220,6 +7960,7 @@ export class ProjectService extends BaseService {
                 spotlight: {
                     default_visibility: 'hide', // todo: pass correct config
                 },
+                defaults: project.projectDefaults,
             },
             disableTimestampConversion,
         );
@@ -7326,6 +8067,39 @@ export class ProjectService extends BaseService {
                 );
             }
             throw new UnexpectedServerError('Failed to get datasets');
+        }
+    }
+
+    async getBigqueryProjects(user: SessionUser) {
+        // At this point, there might not be any projects
+        // so we can't check any permissions here.
+        // Bigquery will handle the permissions
+        const refreshToken = await this.userModel.getRefreshToken(
+            user.userUuid,
+            OpenIdIdentityIssuerType.GOOGLE,
+        );
+
+        // Validate refresh token has the right bigquery scopes and get access token
+        const accessToken = await UserService.generateGoogleAccessToken(
+            refreshToken,
+            'bigquery',
+        );
+
+        try {
+            const projects =
+                await BigqueryWarehouseClient.getProjects(accessToken);
+            return projects;
+        } catch (error) {
+            this.logger.error(
+                `getBigqueryProjects error: ${JSON.stringify(error)}`,
+            );
+
+            if (BigqueryWarehouseClient.isBigqueryError(error)) {
+                throw new WarehouseConnectionError(
+                    `Failed to get projects from BigQuery`,
+                );
+            }
+            throw new UnexpectedServerError('Failed to get projects');
         }
     }
 

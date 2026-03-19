@@ -1,9 +1,7 @@
 import {
     FeatureFlags,
     getAvailableParametersFromTables,
-    getDimensions,
-    getItemId,
-    isDateItem,
+    getDateZoomCapabilities,
     QueryExecutionContext,
     type ApiError,
     type ApiExecuteAsyncDashboardChartQueryResults,
@@ -18,6 +16,7 @@ import { queuedLightdashApi } from '../../api/queuedApi';
 import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
 import { convertDateDashboardFilters } from '../../utils/dateFilter';
 import { useExplore } from '../useExplore';
+import { useQueryRetryConfig } from '../useQueryRetry';
 import { useSavedQuery } from '../useSavedQuery';
 import useSearchParams from '../useSearchParams';
 import { useServerFeatureFlag } from '../useServerOrClientFeatureFlag';
@@ -66,6 +65,7 @@ export const useDashboardChartReadyQuery = (
     chartUuid: string | null,
     contextOverride?: QueryExecutionContext,
 ) => {
+    const retryConfig = useQueryRetryConfig();
     const dashboardUuid = useDashboardContext((c) => c.dashboard?.uuid);
     const invalidateCache = useDashboardContext((c) => c.invalidateCache);
     const dashboardFilters = useDashboardFiltersForTile(tileUuid);
@@ -99,12 +99,21 @@ export const useDashboardChartReadyQuery = (
             ?.map((ds) => `${ds.fieldId}.${ds.descending}`)
             ?.join(',') || '';
 
+    const projectUuid = useDashboardContext((c) => c.projectUuid);
     const chartQuery = useSavedQuery({
-        id: chartUuid ?? undefined,
+        uuidOrSlug: chartUuid ?? undefined,
+        projectUuid,
     });
 
     const { data: explore, error: exploreError } = useExplore(
         chartQuery.data?.metricQuery?.exploreName,
+    );
+
+    const addAvailableCustomGranularities = useDashboardContext(
+        (c) => c.addAvailableCustomGranularities,
+    );
+    const setTileHasTimestampDimension = useDashboardContext(
+        (c) => c.setTileHasTimestampDimension,
     );
 
     useEffect(() => {
@@ -115,25 +124,39 @@ export const useDashboardChartReadyQuery = (
         }
     }, [explore, addParameterDefinitions]);
 
+    const dateZoomCapabilities = useMemo(() => {
+        if (!chartQuery.data || !explore) return undefined;
+        return getDateZoomCapabilities(explore, chartQuery.data.metricQuery);
+    }, [chartQuery.data, explore]);
+
+    useEffect(() => {
+        if (!dateZoomCapabilities) return;
+
+        if (
+            Object.keys(dateZoomCapabilities.availableCustomGranularities)
+                .length > 0
+        ) {
+            addAvailableCustomGranularities(
+                dateZoomCapabilities.availableCustomGranularities,
+            );
+        }
+    }, [dateZoomCapabilities, addAvailableCustomGranularities]);
+
     const timezoneFixFilters =
         dashboardFilters && convertDateDashboardFilters(dashboardFilters);
 
-    const hasADateDimension = useMemo(() => {
-        const metricQueryDimensions = [
-            ...(chartQuery.data?.metricQuery?.dimensions ?? []),
-            ...(chartQuery.data?.metricQuery?.customDimensions ?? []),
-        ];
+    const hasADateDimension = dateZoomCapabilities
+        ? dateZoomCapabilities.hasDateDimension ||
+          dateZoomCapabilities.hasTimestampDimension
+        : false;
+    const hasTimestampDimension =
+        dateZoomCapabilities?.hasTimestampDimension ?? false;
 
-        if (!explore) return false;
-        return getDimensions(explore).find(
-            (c) =>
-                metricQueryDimensions.includes(getItemId(c)) && isDateItem(c),
-        );
-    }, [
-        chartQuery.data?.metricQuery?.customDimensions,
-        chartQuery.data?.metricQuery?.dimensions,
-        explore,
-    ]);
+    // Report TIMESTAMP dimension presence to dashboard context per tile
+    useEffect(() => {
+        setTileHasTimestampDimension(tileUuid, hasTimestampDimension);
+        return () => setTileHasTimestampDimension(tileUuid, false);
+    }, [tileUuid, hasTimestampDimension, setTileHasTimestampDimension]);
 
     const chartParameterValues = useMemo(() => {
         if (!tileParameterReferences || !tileParameterReferences[tileUuid])
@@ -145,27 +168,11 @@ export const useDashboardChartReadyQuery = (
         );
     }, [parameterValues, tileParameterReferences, tileUuid]);
 
-    useEffect(() => {
-        if (!chartUuid) return;
-
-        setChartsWithDateZoomApplied((prev) => {
-            if (hasADateDimension) {
-                const nextSet = new Set(prev ?? []);
-                if (granularity) {
-                    nextSet.add(chartUuid);
-                } else {
-                    nextSet.delete(chartUuid);
-                }
-                return nextSet;
-            }
-            return prev;
-        });
-    }, [
-        hasADateDimension,
-        granularity,
-        chartUuid,
-        setChartsWithDateZoomApplied,
-    ]);
+    // dateZoomApplied comes from the query response — the backend is the
+    // single source of truth for whether zoom was actually applied.
+    // We still need a pre-query estimate for the query key so we avoid
+    // unnecessary refetches when zoom won't have an effect.
+    const isZoomLikelyApplied = hasADateDimension && !!granularity;
 
     const { data: useSqlPivotResults } = useServerFeatureFlag(
         FeatureFlags.UseSqlPivotResults,
@@ -182,7 +189,7 @@ export const useDashboardChartReadyQuery = (
             sortKey,
             contextOverride || context,
             autoRefresh,
-            hasADateDimension ? granularity : null,
+            isZoomLikelyApplied ? granularity : null,
             invalidateCache,
             chartParameterValues,
             useSqlPivotResults,
@@ -197,7 +204,7 @@ export const useDashboardChartReadyQuery = (
             contextOverride,
             context,
             autoRefresh,
-            hasADateDimension,
+            isZoomLikelyApplied,
             granularity,
             invalidateCache,
             chartParameterValues,
@@ -263,9 +270,32 @@ export const useDashboardChartReadyQuery = (
         enabled: Boolean(
             chartUuid && dashboardUuid && chartQuery.data && explore,
         ),
-        retry: false,
+        ...retryConfig,
         refetchOnMount: false,
     });
+
+    // Update chartsWithDateZoomApplied based on the backend's dateZoomApplied
+    const dateZoomApplied =
+        queryResult.data?.executeQueryResponse?.dateZoomApplied ?? false;
+
+    useEffect(() => {
+        if (!chartUuid || !hasADateDimension) return;
+
+        setChartsWithDateZoomApplied((prev) => {
+            const nextSet = new Set(prev ?? []);
+            if (dateZoomApplied) {
+                nextSet.add(chartUuid);
+            } else {
+                nextSet.delete(chartUuid);
+            }
+            return nextSet;
+        });
+    }, [
+        dateZoomApplied,
+        hasADateDimension,
+        chartUuid,
+        setChartsWithDateZoomApplied,
+    ]);
 
     useEffect(() => {
         if (queryResult.data?.executeQueryResponse?.parameterReferences) {

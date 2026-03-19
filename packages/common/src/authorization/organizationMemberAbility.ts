@@ -42,11 +42,11 @@ const applyOrganizationMemberStaticAbilities: Record<
         applyOrganizationMemberStaticAbilities.member(member, { can });
         can('view', 'Dashboard', {
             organizationUuid: member.organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('view', 'SavedChart', {
             organizationUuid: member.organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('view', 'Dashboard', {
             organizationUuid: member.organizationUuid,
@@ -62,7 +62,7 @@ const applyOrganizationMemberStaticAbilities: Record<
         });
         can('view', 'Space', {
             organizationUuid: member.organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('view', 'Space', {
             organizationUuid: member.organizationUuid,
@@ -196,7 +196,7 @@ const applyOrganizationMemberStaticAbilities: Record<
         });
         can('manage', 'Space', {
             organizationUuid: member.organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('create', 'Space', {
             organizationUuid: member.organizationUuid,
@@ -223,6 +223,9 @@ const applyOrganizationMemberStaticAbilities: Record<
     },
     developer(member, { can }) {
         applyOrganizationMemberStaticAbilities.editor(member, { can });
+        can('manage', 'PreAggregation', {
+            organizationUuid: member.organizationUuid,
+        });
         can('manage', 'VirtualView', {
             organizationUuid: member.organizationUuid,
         });
@@ -269,6 +272,11 @@ const applyOrganizationMemberStaticAbilities: Record<
         can('update', 'Project', {
             organizationUuid: member.organizationUuid,
         });
+        can('manage', 'DeployProject', {
+            organizationUuid: member.organizationUuid,
+            type: ProjectType.PREVIEW,
+            createdByUserUuid: member.userUuid,
+        });
         can('delete', 'Project', {
             organizationUuid: member.organizationUuid,
             type: ProjectType.PREVIEW,
@@ -305,6 +313,7 @@ const applyOrganizationMemberStaticAbilities: Record<
             organizationUuid: member.organizationUuid,
             type: { $in: [ProjectType.DEFAULT, ProjectType.PREVIEW] },
         });
+
         can('delete', 'Project', {
             organizationUuid: member.organizationUuid,
         });
@@ -340,6 +349,19 @@ const applyOrganizationMemberStaticAbilities: Record<
         });
         can('manage', 'ScheduledDeliveries', {
             organizationUuid: member.organizationUuid,
+        });
+        can('manage', 'DeletedContent', {
+            organizationUuid: member.organizationUuid,
+        });
+        can('manage', 'GitIntegration', {
+            organizationUuid: member.organizationUuid,
+        });
+        can('manage', 'DeployProject', {
+            organizationUuid: member.organizationUuid,
+        });
+        can('impersonate', 'User', {
+            organizationUuid: member.organizationUuid,
+            isActive: true,
         });
     },
 };

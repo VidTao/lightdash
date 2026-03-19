@@ -47,6 +47,7 @@ export type DownloadAsyncQueryResultsArgs = Omit<
     hiddenFields?: string[];
     pivotConfig?: PivotConfig;
     attachmentDownloadName?: string;
+    expirationSecondsOverride?: number;
 };
 
 export type ScheduleDownloadAsyncQueryResultsArgs = Omit<
@@ -91,6 +92,14 @@ export type ExecuteAsyncUnderlyingDataQueryArgs = CommonAsyncQueryArgs & {
 export type ExecuteAsyncQueryReturn = {
     queryUuid: string;
     cacheMetadata: CacheMetadata;
+};
+
+export type PreAggregationRouteMode = 'required' | 'opportunistic';
+
+export type PreAggregationRoute = {
+    sourceExploreName: string;
+    preAggregateName: string;
+    mode: PreAggregationRouteMode;
 };
 
 export type ExecuteAsyncSqlQueryArgs = CommonAsyncQueryArgs & {
@@ -145,14 +154,13 @@ export const isExecuteAsyncSqlChartByUuid = (
 ): args is ExecuteAsyncSqlChartByUuidArgs => 'savedSqlUuid' in args;
 
 export type RunAsyncWarehouseQueryArgs = {
-    userId: string;
-    // Is the user in the database?
-    isRegisteredUser: boolean;
     projectUuid: string;
+    userUuid: string;
+    queryUuid: string;
+    isRegisteredUser: boolean;
+    isServiceAccount?: boolean;
     queryTags: RunQueryTags;
-    query: string;
     fieldsMap: ItemsMap;
-    queryHistoryUuid: string;
     cacheKey: string;
     warehouseCredentialsOverrides?: {
         snowflakeVirtualWarehouse?: string;
@@ -160,4 +168,14 @@ export type RunAsyncWarehouseQueryArgs = {
     };
     pivotConfiguration?: PivotConfiguration;
     originalColumns?: ResultColumns;
+    query: string;
+    queryCreatedAt: Date;
+};
+
+export type RunAsyncPreAggregateQueryArgs = Omit<
+    RunAsyncWarehouseQueryArgs,
+    'query'
+> & {
+    preAggregateQuery: string;
+    warehouseQuery: string;
 };

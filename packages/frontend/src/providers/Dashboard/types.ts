@@ -10,6 +10,7 @@ import {
     type ParameterDefinitions,
     type ParametersValuesMap,
     type ParameterValue,
+    type PreAggregateMatchMiss,
     type ResultColumn,
     type SortField,
 } from '@lightdash/common';
@@ -23,6 +24,17 @@ import {
 export type SqlChartTileMetadata = {
     columns: ResultColumn[];
 };
+
+export type TilePreAggregateStatus = {
+    tileUuid: string;
+    tileName: string;
+    hit: boolean;
+    preAggregateName: string | null;
+    reason: PreAggregateMatchMiss | null;
+    hasPreAggregateMetadata: boolean;
+    tabUuid: string | null | undefined;
+};
+
 export type DashboardContextType = {
     projectUuid?: string;
     isDashboardLoading: boolean;
@@ -57,7 +69,7 @@ export type DashboardContextType = {
         filter: DashboardFilterRule,
         index: number,
         isTemporary: boolean,
-        isEditMode: boolean,
+        isInEditMode: boolean,
     ) => void;
     removeDimensionDashboardFilter: (
         index: number,
@@ -88,9 +100,9 @@ export type DashboardContextType = {
         tileUuid: string,
         metadata: SqlChartTileMetadata,
     ) => void;
-    dateZoomGranularity: DateGranularity | undefined;
+    dateZoomGranularity: DateGranularity | string | undefined;
     setDateZoomGranularity: Dispatch<
-        SetStateAction<DateGranularity | undefined>
+        SetStateAction<DateGranularity | string | undefined>
     >;
     chartsWithDateZoomApplied: Set<string> | undefined;
     setChartsWithDateZoomApplied: Dispatch<
@@ -102,7 +114,8 @@ export type DashboardContextType = {
     requiredDashboardFilters: Pick<DashboardFilterRule, 'id' | 'label'>[];
     isDateZoomDisabled: boolean;
     setIsDateZoomDisabled: Dispatch<SetStateAction<boolean>>;
-
+    isAddFilterDisabled: boolean;
+    setIsAddFilterDisabled: Dispatch<SetStateAction<boolean>>;
     setSavedParameters: Dispatch<SetStateAction<DashboardParameters>>;
     parametersHaveChanged: boolean;
     dashboardParameters: DashboardParameters;
@@ -115,13 +128,39 @@ export type DashboardContextType = {
     areAllChartsLoaded: boolean;
     parameterDefinitions: ParameterDefinitions;
     addParameterDefinitions: (parameters: ParameterDefinitions) => void;
+    availableCustomGranularities: Record<string, string>;
+    addAvailableCustomGranularities: (
+        granularities: Record<string, string>,
+    ) => void;
     missingRequiredParameters: string[];
     pinnedParameters: string[];
     setPinnedParameters: (parameters: string[]) => void;
     toggleParameterPin: (parameterKey: string) => void;
     havePinnedParametersChanged: boolean;
     setHavePinnedParametersChanged: Dispatch<SetStateAction<boolean>>;
+    dashboardHasTimestampDimension: boolean;
+    setTileHasTimestampDimension: (
+        tileUuid: string,
+        hasTimestamp: boolean,
+    ) => void;
+    dateZoomGranularities: (DateGranularity | string)[];
+    setDateZoomGranularities: (
+        granularities: (DateGranularity | string)[],
+    ) => void;
+    haveDateZoomGranularitiesChanged: boolean;
+    setHaveDateZoomGranularitiesChanged: Dispatch<SetStateAction<boolean>>;
+    defaultDateZoomGranularity: DateGranularity | string | undefined;
+    setDefaultDateZoomGranularity: (
+        granularity: DateGranularity | string | undefined,
+    ) => void;
+    hasDefaultDateZoomGranularityChanged: boolean;
+    setHasDefaultDateZoomGranularityChanged: Dispatch<SetStateAction<boolean>>;
     tileNamesById: Record<string, string>;
+    preAggregateStatuses: Record<string, TilePreAggregateStatus>;
+    addPreAggregateStatus: (
+        tileUuid: string,
+        cacheMetadata: CacheMetadata,
+    ) => void;
     refreshDashboardVersion: () => Promise<void>;
     isRefreshingDashboardVersion: boolean;
     markTileScreenshotReady: (tileUuid: string) => void;

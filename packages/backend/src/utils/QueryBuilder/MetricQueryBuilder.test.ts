@@ -1,6 +1,7 @@
 import {
     AnyType,
     BinType,
+    CompiledMetricQuery,
     CustomDimensionType,
     DimensionType,
     Explore,
@@ -10,9 +11,11 @@ import {
     JoinRelationship,
     MetricType,
     SortByDirection,
+    SupportedDbtAdapter,
     TimeFrames,
     VizAggregationOptions,
     VizIndexType,
+    type CompiledMetric,
 } from '@lightdash/common';
 import {
     BuildQueryProps,
@@ -21,6 +24,7 @@ import {
 } from './MetricQueryBuilder';
 import {
     bigqueryClientMock,
+    EXPECTED_SQL_NO_DIMENSIONS_WITH_FILTER,
     EXPECTED_SQL_WITH_CROSS_JOIN,
     EXPECTED_SQL_WITH_CROSS_TABLE_METRICS,
     EXPECTED_SQL_WITH_CUSTOM_DIMENSION_AND_TABLE_CALCULATION,
@@ -34,25 +38,49 @@ import {
     EXPLORE_ALL_JOIN_TYPES_CHAIN,
     EXPLORE_BIGQUERY,
     EXPLORE_JOIN_CHAIN,
+    EXPLORE_WITH_AVERAGE_DISTINCT,
     EXPLORE_WITH_CROSS_TABLE_METRICS,
+    EXPLORE_WITH_DATE_DIMENSION,
+    EXPLORE_WITH_DATE_DIMENSION_ZOOMED,
+    EXPLORE_WITH_NESTED_AGG,
     EXPLORE_WITH_REQUIRED_FILTERS,
     EXPLORE_WITH_SQL_FILTER,
+    EXPLORE_WITH_SUM_DISTINCT,
     EXPLORE_WITHOUT_JOIN_RELATIONSHIPS,
     EXPLORE_WITHOUT_PRIMARY_KEYS,
     INTRINSIC_USER_ATTRIBUTES,
     METRIC_QUERY,
     METRIC_QUERY_ALL_JOIN_TYPES_CHAIN_SQL,
+    METRIC_QUERY_AVERAGE_DISTINCT_NO_DIMS,
+    METRIC_QUERY_AVERAGE_DISTINCT_WITH_DIMS,
     METRIC_QUERY_CROSS_TABLE,
     METRIC_QUERY_JOIN_CHAIN,
     METRIC_QUERY_JOIN_CHAIN_SQL,
+    METRIC_QUERY_NESTED_AGG_COMPLEX,
+    METRIC_QUERY_NESTED_AGG_CONDITIONAL,
+    METRIC_QUERY_NESTED_AGG_COUNT_DISTINCT,
+    METRIC_QUERY_NESTED_AGG_MIXED,
+    METRIC_QUERY_NESTED_AGG_NO_DIMS,
+    METRIC_QUERY_NESTED_AGG_PRODUCT,
+    METRIC_QUERY_NESTED_AGG_RAW_COL,
+    METRIC_QUERY_NESTED_AGG_TRANSITIVE,
+    METRIC_QUERY_NESTED_AGG_TRANSITIVE_MIXED,
+    METRIC_QUERY_NESTED_AGG_WINDOW_TABLE_REF,
+    METRIC_QUERY_NESTED_AGG_WITH_DIMS,
     METRIC_QUERY_SQL,
     METRIC_QUERY_SQL_BIGQUERY,
+    METRIC_QUERY_SUM_DISTINCT_NO_DIMS,
+    METRIC_QUERY_SUM_DISTINCT_WITH_DIMS,
     METRIC_QUERY_TWO_TABLES,
     METRIC_QUERY_TWO_TABLES_SQL,
     METRIC_QUERY_WITH_ADDITIONAL_METRIC,
     METRIC_QUERY_WITH_ADDITIONAL_METRIC_SQL,
     METRIC_QUERY_WITH_CUSTOM_DIMENSION,
     METRIC_QUERY_WITH_CUSTOM_SQL_DIMENSION,
+    METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE,
+    METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE_SQL,
+    METRIC_QUERY_WITH_DATE_FILTER,
+    METRIC_QUERY_WITH_DATE_ZOOM_FILTER_SQL,
     METRIC_QUERY_WITH_DAY_OF_WEEK_NAME_SORT,
     METRIC_QUERY_WITH_DAY_OF_WEEK_NAME_SORT_SQL,
     METRIC_QUERY_WITH_DISABLED_FILTER,
@@ -84,6 +112,8 @@ import {
     METRIC_QUERY_WITH_TABLE_CALCULATION_FILTER_SQL,
     METRIC_QUERY_WITH_TABLE_REFERENCE,
     METRIC_QUERY_WITH_TABLE_REFERENCE_SQL,
+    METRIC_QUERY_WITH_USER_ATTRIBUTE_FILTER_VALUE,
+    METRIC_QUERY_WITH_USER_ATTRIBUTE_FILTER_VALUE_SQL,
     QUERY_BUILDER_UTC_TIMEZONE,
     warehouseClientMock,
 } from './MetricQueryBuilder.mock';
@@ -98,6 +128,462 @@ const buildQuery = (
         ...args,
         parameterDefinitions: {},
     }).compileQuery();
+
+const POP_TEST_POP_METRIC_NAME = 'total_order_amount__pop__year_1__testpop';
+const POP_TEST_POP_METRIC_ID = `orders_${POP_TEST_POP_METRIC_NAME}`;
+const POP_TEST_FANOUT_POP_METRIC_NAME = 'metric_amount__pop__year_1__fanout';
+const POP_TEST_FANOUT_POP_METRIC_ID = `table2_${POP_TEST_FANOUT_POP_METRIC_NAME}`;
+const EXPLORE_WITH_NESTED_AGG_AND_FANOUT: Explore = {
+    ...EXPLORE_WITH_NESTED_AGG,
+    joinedTables: [
+        {
+            table: 'fanout_users',
+            sqlOn: '${my_table.id} = ${fanout_users.account_id}',
+            compiledSqlOn: '("my_table".id) = ("fanout_users".account_id)',
+            type: 'left',
+            relationship: JoinRelationship.ONE_TO_MANY,
+            tablesReferences: ['my_table', 'fanout_users'],
+        },
+    ],
+    tables: {
+        ...EXPLORE_WITH_NESTED_AGG.tables,
+        my_table: {
+            ...EXPLORE_WITH_NESTED_AGG.tables.my_table,
+            metrics: {
+                ...EXPLORE_WITH_NESTED_AGG.tables.my_table.metrics,
+                cross_table_sum_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'cross_table_sum_of_max',
+                    label: 'cross_table_sum_of_max',
+                    sql: 'sum(${max_value}) / NULLIF(${fanout_users.count_users}, 0)',
+                    compiledSql:
+                        'SUM(MAX("my_table".value)) / NULLIF(COUNT("fanout_users".id), 0)',
+                    tablesReferences: ['my_table', 'fanout_users'],
+                    hidden: false,
+                },
+            },
+        },
+        fanout_users: {
+            name: 'fanout_users',
+            label: 'fanout_users',
+            database: 'db',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."fanout_users"',
+            primaryKey: ['id'],
+            dimensions: {
+                title: {
+                    type: DimensionType.STRING,
+                    name: 'title',
+                    label: 'title',
+                    table: 'fanout_users',
+                    tableLabel: 'fanout_users',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.title',
+                    compiledSql: '"fanout_users".title',
+                    tablesReferences: ['fanout_users'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                count_users: {
+                    type: MetricType.COUNT,
+                    fieldType: FieldType.METRIC,
+                    table: 'fanout_users',
+                    tableLabel: 'fanout_users',
+                    name: 'count_users',
+                    label: 'count_users',
+                    sql: '${TABLE}.id',
+                    compiledSql: 'COUNT("fanout_users".id)',
+                    tablesReferences: ['fanout_users'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+const METRIC_QUERY_NESTED_AGG_WITH_FANOUT: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['fanout_users_title'],
+    metrics: ['my_table_sum_of_max', 'my_table_count_records'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+const METRIC_QUERY_NESTED_AGG_WITH_FANOUT_CROSS_TABLE: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['fanout_users_title'],
+    metrics: ['my_table_cross_table_sum_of_max', 'my_table_count_records'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_cross_table_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+const POP_TEST_EXPLORE: Explore = {
+    targetDatabase: SupportedDbtAdapter.POSTGRES,
+    name: 'orders',
+    label: 'orders',
+    baseTable: 'orders',
+    tags: [],
+    joinedTables: [],
+    tables: {
+        orders: {
+            name: 'orders',
+            label: 'orders',
+            database: 'postgres',
+            schema: 'jaffle',
+            sqlTable: '"postgres"."jaffle"."orders"',
+            primaryKey: ['order_id'],
+            dimensions: {
+                order_id: {
+                    type: DimensionType.NUMBER,
+                    name: 'order_id',
+                    label: 'order_id',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.order_id',
+                    compiledSql: '"orders".order_id',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+                order_date: {
+                    type: DimensionType.DATE,
+                    name: 'order_date',
+                    label: 'order_date',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.order_date',
+                    compiledSql: '"orders".order_date',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+                order_date_year: {
+                    type: DimensionType.DATE,
+                    name: 'order_date_year',
+                    label: 'order_date_year',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: "DATE_TRUNC('YEAR', ${TABLE}.order_date)",
+                    compiledSql: `DATE_TRUNC('YEAR', "orders".order_date)`,
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                    timeInterval: TimeFrames.YEAR,
+                    timeIntervalBaseDimensionName: 'order_date',
+                },
+                is_completed: {
+                    type: DimensionType.BOOLEAN,
+                    name: 'is_completed',
+                    label: 'is_completed',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.is_completed',
+                    compiledSql: '"orders".is_completed',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                total_order_amount: {
+                    type: MetricType.SUM,
+                    fieldType: FieldType.METRIC,
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    name: 'total_order_amount',
+                    label: 'total_order_amount',
+                    sql: '${TABLE}.amount',
+                    compiledSql: 'SUM("orders".amount)',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+const POP_TEST_METRIC_QUERY: CompiledMetricQuery = {
+    exploreName: 'orders',
+    dimensions: ['orders_order_date_year'],
+    metrics: ['orders_total_order_amount', POP_TEST_POP_METRIC_ID],
+    filters: {
+        dimensions: {
+            id: 'root',
+            and: [
+                {
+                    id: 'is-completed',
+                    target: {
+                        fieldId: 'orders_is_completed',
+                    },
+                    operator: FilterOperator.EQUALS,
+                    values: [true],
+                },
+                {
+                    id: 'base-year',
+                    target: {
+                        fieldId: 'orders_order_date_year',
+                    },
+                    operator: FilterOperator.EQUALS,
+                    values: ['2025-01-01'],
+                },
+            ],
+        },
+    },
+    sorts: [{ fieldId: 'orders_order_date_year', descending: true }],
+    limit: 500,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    additionalMetrics: [
+        {
+            table: 'orders',
+            name: POP_TEST_POP_METRIC_NAME,
+            label: 'Previous year total_order_amount',
+            type: MetricType.SUM,
+            sql: '${TABLE}.amount',
+            generationType: 'periodOverPeriod' as const,
+            baseMetricId: 'orders_total_order_amount',
+            timeDimensionId: 'orders_order_date_year',
+            granularity: TimeFrames.YEAR,
+            periodOffset: 1,
+        },
+    ],
+    compiledAdditionalMetrics: [
+        {
+            type: MetricType.SUM,
+            fieldType: FieldType.METRIC,
+            table: 'orders',
+            tableLabel: 'orders',
+            name: POP_TEST_POP_METRIC_NAME,
+            label: 'Previous year total_order_amount',
+            sql: '${TABLE}.amount',
+            compiledSql: 'SUM("orders".amount)',
+            tablesReferences: ['orders'],
+            hidden: true,
+        },
+    ],
+    compiledCustomDimensions: [],
+};
+
+const POP_TEST_FANOUT_EXPLORE: Explore = {
+    targetDatabase: SupportedDbtAdapter.POSTGRES,
+    name: 'base',
+    label: 'base',
+    baseTable: 'table1',
+    tags: [],
+    joinedTables: [
+        {
+            table: 'table2',
+            sqlOn: '${table1.shared} = ${table2.shared}',
+            compiledSqlOn: '("table1".shared) = ("table2".shared)',
+            type: undefined,
+            tablesReferences: ['table1', 'table2'],
+            relationship: JoinRelationship.MANY_TO_ONE,
+        },
+    ],
+    tables: {
+        table1: {
+            name: 'table1',
+            label: 'table1',
+            database: 'database',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."table1"',
+            primaryKey: ['id'],
+            dimensions: {
+                id: {
+                    type: DimensionType.NUMBER,
+                    name: 'id',
+                    label: 'id',
+                    table: 'table1',
+                    tableLabel: 'table1',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.id',
+                    compiledSql: '"table1".id',
+                    tablesReferences: ['table1'],
+                    hidden: false,
+                },
+                shared: {
+                    type: DimensionType.STRING,
+                    name: 'shared',
+                    label: 'shared',
+                    table: 'table1',
+                    tableLabel: 'table1',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.shared',
+                    compiledSql: '"table1".shared',
+                    tablesReferences: ['table1'],
+                    hidden: false,
+                },
+            },
+            metrics: {},
+            lineageGraph: {},
+        },
+        table2: {
+            name: 'table2',
+            label: 'table2',
+            database: 'database',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."table2"',
+            primaryKey: ['id'],
+            dimensions: {
+                id: {
+                    type: DimensionType.NUMBER,
+                    name: 'id',
+                    label: 'id',
+                    table: 'table2',
+                    tableLabel: 'table2',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.id',
+                    compiledSql: '"table2".id',
+                    tablesReferences: ['table2'],
+                    hidden: false,
+                },
+                shared: {
+                    type: DimensionType.STRING,
+                    name: 'shared',
+                    label: 'shared',
+                    table: 'table2',
+                    tableLabel: 'table2',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.shared',
+                    compiledSql: '"table2".shared',
+                    tablesReferences: ['table2'],
+                    hidden: false,
+                },
+                order_date: {
+                    type: DimensionType.DATE,
+                    name: 'order_date',
+                    label: 'order_date',
+                    table: 'table2',
+                    tableLabel: 'table2',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.order_date',
+                    compiledSql: '"table2".order_date',
+                    tablesReferences: ['table2'],
+                    hidden: false,
+                },
+                order_date_year: {
+                    type: DimensionType.DATE,
+                    name: 'order_date_year',
+                    label: 'order_date_year',
+                    table: 'table2',
+                    tableLabel: 'table2',
+                    fieldType: FieldType.DIMENSION,
+                    sql: "DATE_TRUNC('YEAR', ${TABLE}.order_date)",
+                    compiledSql: `DATE_TRUNC('YEAR', "table2".order_date)`,
+                    tablesReferences: ['table2'],
+                    hidden: false,
+                    timeInterval: TimeFrames.YEAR,
+                    timeIntervalBaseDimensionName: 'order_date',
+                },
+                is_completed: {
+                    type: DimensionType.BOOLEAN,
+                    name: 'is_completed',
+                    label: 'is_completed',
+                    table: 'table2',
+                    tableLabel: 'table2',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.is_completed',
+                    compiledSql: '"table2".is_completed',
+                    tablesReferences: ['table2'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                metric_amount: {
+                    type: MetricType.SUM,
+                    fieldType: FieldType.METRIC,
+                    table: 'table2',
+                    tableLabel: 'table2',
+                    name: 'metric_amount',
+                    label: 'metric_amount',
+                    sql: '${TABLE}.amount',
+                    compiledSql: 'SUM("table2".amount)',
+                    tablesReferences: ['table2'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+const POP_TEST_FANOUT_METRIC_QUERY: CompiledMetricQuery = {
+    exploreName: 'base',
+    dimensions: ['table2_order_date_year'],
+    metrics: ['table2_metric_amount', POP_TEST_FANOUT_POP_METRIC_ID],
+    filters: {
+        dimensions: {
+            id: 'root',
+            and: [
+                {
+                    id: 'is-completed',
+                    target: {
+                        fieldId: 'table2_is_completed',
+                    },
+                    operator: FilterOperator.EQUALS,
+                    values: [true],
+                },
+                {
+                    id: 'base-year',
+                    target: {
+                        fieldId: 'table2_order_date_year',
+                    },
+                    operator: FilterOperator.EQUALS,
+                    values: ['2025-01-01'],
+                },
+            ],
+        },
+    },
+    sorts: [{ fieldId: 'table2_order_date_year', descending: true }],
+    limit: 100,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    additionalMetrics: [
+        {
+            table: 'table2',
+            name: POP_TEST_FANOUT_POP_METRIC_NAME,
+            label: 'Previous year metric_amount',
+            type: MetricType.SUM,
+            sql: '${TABLE}.amount',
+            generationType: 'periodOverPeriod' as const,
+            baseMetricId: 'table2_metric_amount',
+            timeDimensionId: 'table2_order_date_year',
+            granularity: TimeFrames.YEAR,
+            periodOffset: 1,
+        },
+    ],
+    compiledAdditionalMetrics: [
+        {
+            type: MetricType.SUM,
+            fieldType: FieldType.METRIC,
+            table: 'table2',
+            tableLabel: 'table2',
+            name: POP_TEST_FANOUT_POP_METRIC_NAME,
+            label: 'Previous year metric_amount',
+            sql: '${TABLE}.amount',
+            compiledSql: 'SUM("table2".amount)',
+            tablesReferences: ['table2'],
+            hidden: true,
+        },
+    ],
+    compiledCustomDimensions: [],
+};
 
 describe('Query builder', () => {
     test('Should build simple metric query', () => {
@@ -250,6 +736,89 @@ describe('Query builder', () => {
             replaceWhitespace(
                 METRIC_QUERY_WITH_METRIC_FILTER_AND_ONE_DISABLED_SQL,
             ),
+        );
+    });
+
+    test('Should reuse non-time filters for PoP metrics while shifting the comparison period', () => {
+        const { query } = buildQuery({
+            explore: POP_TEST_EXPLORE,
+            compiledMetricQuery: POP_TEST_METRIC_QUERY,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(
+            query.match(/\("orders"\.is_completed\) = true/g) ?? [],
+        ).toHaveLength(2);
+        expect(query.match(/\('2025-01-01'\)/g) ?? []).toHaveLength(1);
+        expect(query).toMatch(
+            /DATE_TRUNC\('YEAR', "orders"\.order_date\) >= pop_min_max_[a-z0-9_]+\.min_date - INTERVAL '1 YEAR'/,
+        );
+        expect(query).toMatch(
+            /DATE_TRUNC\('YEAR', "orders"\.order_date\) <= pop_min_max_[a-z0-9_]+\.max_date - INTERVAL '1 YEAR'/,
+        );
+    });
+
+    test('Should not carry date filter into PoP CTE when only date filters exist', () => {
+        const metricQueryWithOnlyDateFilter: CompiledMetricQuery = {
+            ...POP_TEST_METRIC_QUERY,
+            filters: {
+                dimensions: {
+                    id: 'root',
+                    and: [
+                        {
+                            id: 'base-year',
+                            target: {
+                                fieldId: 'orders_order_date_year',
+                            },
+                            operator: FilterOperator.EQUALS,
+                            values: ['2025-01-01'],
+                        },
+                    ],
+                },
+            },
+        };
+
+        const { query } = buildQuery({
+            explore: POP_TEST_EXPLORE,
+            compiledMetricQuery: metricQueryWithOnlyDateFilter,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // The date filter should appear once in base_metrics but NOT in the PoP CTE
+        expect(query.match(/\('2025-01-01'\)/g) ?? []).toHaveLength(1);
+        // The PoP CTE should still have the shifted date range
+        expect(query).toMatch(
+            /DATE_TRUNC\('YEAR', "orders"\.order_date\) >= pop_min_max_[a-z0-9_]+\.min_date - INTERVAL '1 YEAR'/,
+        );
+        expect(query).toMatch(
+            /DATE_TRUNC\('YEAR', "orders"\.order_date\) <= pop_min_max_[a-z0-9_]+\.max_date - INTERVAL '1 YEAR'/,
+        );
+    });
+
+    test('Should reuse non-time filters for PoP metrics in fanout-protected CTEs while shifting the comparison period', () => {
+        const { query } = buildQuery({
+            explore: POP_TEST_FANOUT_EXPLORE,
+            compiledMetricQuery: POP_TEST_FANOUT_METRIC_QUERY,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(query).toContain('cte_pop_keys_');
+        expect(query).toContain('cte_pop_metrics_');
+        expect(
+            query.match(/\("table2"\.is_completed\) = true/g) ?? [],
+        ).toHaveLength(3);
+        expect(query.match(/\('2025-01-01'\)/g) ?? []).toHaveLength(2);
+        expect(query).toMatch(
+            /DATE_TRUNC\('YEAR', "table2"\.order_date\) >= cte_pop_min_max_[a-z0-9_]+__year_1__[a-z0-9_]+\.min_date - INTERVAL '1 YEAR'/,
+        );
+        expect(query).toMatch(
+            /DATE_TRUNC\('YEAR', "table2"\.order_date\) <= cte_pop_min_max_[a-z0-9_]+__year_1__[a-z0-9_]+\.max_date - INTERVAL '1 YEAR'/,
         );
     });
 
@@ -428,6 +997,62 @@ describe('Query builder', () => {
         ).toStrictEqual(replaceWhitespace(METRIC_QUERY_WITH_SQL_FILTER));
     });
 
+    test('Should replace intrinsic user attributes in filter values', () => {
+        expect(
+            replaceWhitespace(
+                buildQuery({
+                    explore: EXPLORE,
+                    compiledMetricQuery:
+                        METRIC_QUERY_WITH_USER_ATTRIBUTE_FILTER_VALUE,
+                    warehouseSqlBuilder: warehouseClientMock,
+                    intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                    timezone: QUERY_BUILDER_UTC_TIMEZONE,
+                }).query,
+            ),
+        ).toStrictEqual(
+            replaceWhitespace(
+                METRIC_QUERY_WITH_USER_ATTRIBUTE_FILTER_VALUE_SQL,
+            ),
+        );
+    });
+
+    test('Should replace custom user attributes in filter values', () => {
+        expect(
+            replaceWhitespace(
+                buildQuery({
+                    explore: EXPLORE,
+                    compiledMetricQuery:
+                        METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE,
+                    warehouseSqlBuilder: warehouseClientMock,
+                    userAttributes: {
+                        country: ['EU'],
+                    },
+                    intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                    timezone: QUERY_BUILDER_UTC_TIMEZONE,
+                }).query,
+            ),
+        ).toStrictEqual(
+            replaceWhitespace(
+                METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE_SQL,
+            ),
+        );
+    });
+
+    test('Should throw error if user attribute in filter value is missing', () => {
+        expect(
+            () =>
+                buildQuery({
+                    explore: EXPLORE,
+                    compiledMetricQuery:
+                        METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE,
+                    warehouseSqlBuilder: warehouseClientMock,
+                    userAttributes: {},
+                    intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                    timezone: QUERY_BUILDER_UTC_TIMEZONE,
+                }).query,
+        ).toThrow(ForbiddenError);
+    });
+
     it('buildQuery with custom dimension bin number', () => {
         expect(
             replaceWhitespace(
@@ -536,6 +1161,40 @@ describe('Query builder', () => {
             ),
         ).toStrictEqual(
             replaceWhitespace(EXPECTED_SQL_WITH_SORTED_CUSTOM_DIMENSION),
+        );
+    });
+
+    it('buildQuery with row() table calculation should order by custom bin _order column', () => {
+        const { query } = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: {
+                ...METRIC_QUERY_WITH_CUSTOM_DIMENSION,
+                sorts: [{ fieldId: 'age_range', descending: false }],
+                tableCalculations: [
+                    {
+                        name: 'row_num',
+                        displayName: '',
+                        sql: 'row()',
+                    },
+                ],
+                compiledTableCalculations: [
+                    {
+                        name: 'row_num',
+                        displayName: '',
+                        sql: 'row()',
+                        compiledSql: 'row()',
+                        dependsOn: [],
+                    },
+                ],
+            },
+            warehouseSqlBuilder: bigqueryClientMock,
+            userAttributes: {},
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(query).toContain(
+            'ROW_NUMBER() OVER (ORDER BY `age_range_order`) AS `row_num`',
         );
     });
 
@@ -1801,6 +2460,124 @@ LIMIT 10`;
             expect(result.query).toContain('("table2_metric3") IN (100)');
             expect(result.query).toContain('("calc1") IS NOT NULL');
         });
+
+        test('Should not create cte_unaffected with empty SELECT when only dimension filters exist', () => {
+            const noDimensionsSelected: string[] = [];
+            const onlyMetricFromJoinedTable = ['table2_metric3'];
+            const dimensionFilterWithoutDimensionInSelect = {
+                dimensions: {
+                    id: 'root',
+                    and: [
+                        {
+                            id: '1',
+                            target: {
+                                fieldId: 'table1_dim1',
+                            },
+                            operator: FilterOperator.EQUALS,
+                            values: [2025],
+                        },
+                    ],
+                },
+            };
+
+            const result = buildQuery({
+                explore: EXPLORE,
+                compiledMetricQuery: {
+                    ...METRIC_QUERY_TWO_TABLES,
+                    dimensions: noDimensionsSelected,
+                    metrics: onlyMetricFromJoinedTable,
+                    filters: dimensionFilterWithoutDimensionInSelect,
+                    sorts: [{ fieldId: 'table2_metric3', descending: true }],
+                    limit: 500,
+                    tableCalculations: [],
+                    compiledTableCalculations: [],
+                },
+                warehouseSqlBuilder: warehouseClientMock,
+                intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            });
+
+            expect(replaceWhitespace(result.query)).toBe(
+                replaceWhitespace(EXPECTED_SQL_NO_DIMENSIONS_WITH_FILTER),
+            );
+        });
+
+        test('sum_distinct should include selected dimensions in PARTITION BY', () => {
+            const result = buildQuery({
+                explore: EXPLORE_WITH_SUM_DISTINCT,
+                compiledMetricQuery: METRIC_QUERY_SUM_DISTINCT_WITH_DIMS,
+                warehouseSqlBuilder: warehouseClientMock,
+                intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            });
+
+            // The PARTITION BY should include both the distinct key and the selected dimensions
+            expect(result.query).toContain(
+                'PARTITION BY "orders".line_item_id, "orders".payment_method, "orders".status',
+            );
+            // Should still have the ROW_NUMBER window function
+            expect(result.query).toContain('ROW_NUMBER() OVER');
+            // Should have the dd CTE
+            expect(result.query).toContain('dd_orders_total_revenue');
+        });
+
+        test('sum_distinct should work with no dimensions selected', () => {
+            const result = buildQuery({
+                explore: EXPLORE_WITH_SUM_DISTINCT,
+                compiledMetricQuery: METRIC_QUERY_SUM_DISTINCT_NO_DIMS,
+                warehouseSqlBuilder: warehouseClientMock,
+                intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            });
+
+            // PARTITION BY should contain only the distinct key (no dimensions)
+            expect(result.query).toContain(
+                'PARTITION BY "orders".line_item_id ORDER BY',
+            );
+            // Should use CROSS JOIN (no dimensions to join on)
+            expect(result.query).not.toContain('INNER JOIN dd_');
+        });
+
+        test('average_distinct should generate CTE with FLOAT division', () => {
+            const result = buildQuery({
+                explore: EXPLORE_WITH_AVERAGE_DISTINCT,
+                compiledMetricQuery: METRIC_QUERY_AVERAGE_DISTINCT_NO_DIMS,
+                warehouseSqlBuilder: warehouseClientMock,
+                intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            });
+
+            expect(result.query).toContain('ROW_NUMBER() OVER');
+            expect(result.query).toContain('dd_orders_avg_shipping_cost');
+            expect(result.query).toContain(
+                'PARTITION BY "orders".line_item_id ORDER BY',
+            );
+            // Should use FLOAT division, not integer division
+            expect(result.query).toContain(
+                'CAST(SUM(CASE WHEN __dd_rn = 1 THEN __dd_val ELSE NULL END) AS FLOAT)',
+            );
+            expect(result.query).toContain(
+                'CAST(NULLIF(COUNT(CASE WHEN __dd_rn = 1 THEN __dd_val END), 0) AS FLOAT)',
+            );
+            // Neither distinct metric type should use COALESCE
+            expect(result.query).not.toContain('COALESCE');
+        });
+
+        test('average_distinct should include selected dimensions in PARTITION BY', () => {
+            const result = buildQuery({
+                explore: EXPLORE_WITH_AVERAGE_DISTINCT,
+                compiledMetricQuery: METRIC_QUERY_AVERAGE_DISTINCT_WITH_DIMS,
+                warehouseSqlBuilder: warehouseClientMock,
+                intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            });
+
+            expect(result.query).toContain(
+                'PARTITION BY "orders".line_item_id, "orders".payment_method',
+            );
+            expect(result.query).toContain('GROUP BY');
+            expect(result.query).toContain('dd_orders_avg_shipping_cost');
+        });
     });
 
     describe('Table Calculations', () => {
@@ -2903,12 +3680,1256 @@ describe('Query Structure Tests', () => {
 
         // Should return normal SQL for table calculations without pivot functions
         expect(result.query).toContain('"table1_metric1" * 2 AS "normal_calc"');
+        // Row functions should be compiled to SQL window functions
         expect(result.query).toContain(
-            'offset("table1_metric1", -1) AS "row_calc"',
+            'LAG("table1_metric1", 1) OVER (ORDER BY "table1_metric1" DESC) AS "row_calc"',
         );
 
         // Verify that the pivot function SQL is not in the query
         expect(result.query).not.toContain('pivot_offset(revenue, -1)');
         expect(result.query).not.toContain('pivot_column()');
+    });
+
+    test('Should return NULL for interdependent table calculations with pivot functions', () => {
+        const metricQueryWithInterdependentPivotCalc = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'impressions',
+                    displayName: 'Impressions',
+                    sql: 'COALESCE(${table1.metric1}, 0)',
+                },
+                {
+                    name: 'impressions_delta',
+                    displayName: 'Impressions Delta',
+                    sql: '${impressions} - pivot_offset(${impressions}, -1)',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'impressions',
+                    displayName: 'Impressions',
+                    sql: 'COALESCE(${table1.metric1}, 0)',
+                    compiledSql: 'COALESCE(table1_metric1, 0)',
+                    dependsOn: [],
+                },
+                {
+                    name: 'impressions_delta',
+                    displayName: 'Impressions Delta',
+                    sql: '${impressions} - pivot_offset(${impressions}, -1)',
+                    compiledSql: 'impressions - pivot_offset(impressions, -1)',
+                    dependsOn: ['impressions'],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithInterdependentPivotCalc,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should contain the base impressions calculation
+        expect(result.query).toContain('COALESCE(table1_metric1, 0)');
+        expect(result.query).toContain('"impressions"');
+
+        // Should return NULL for the interdependent pivot calc
+        expect(result.query.toLowerCase()).toContain(
+            'null as "impressions_delta"',
+        );
+
+        // Verify that the raw pivot_offset function is not in the query
+        expect(result.query).not.toContain('pivot_offset');
+    });
+
+    test('Should build column_totals CTE when total() is used', () => {
+        const metricQueryWithTotal = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.metric1} / total(${table1.metric1})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.metric1} / total(${table1.metric1})',
+                    compiledSql: '"table1_metric1" / total("table1_metric1")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should have the column_totals CTE
+        expect(result.query).toContain('column_totals AS (');
+        // Should use the metric's compiledSql for aggregation
+        expect(result.query).toContain(
+            'MAX("table1".number_column) AS "table1_metric1__total"',
+        );
+        // Should have with_totals CTE joining column_totals
+        expect(result.query).toContain('with_totals AS (');
+        expect(result.query).toContain('CROSS JOIN column_totals');
+        // Should replace total() with column alias in table calc
+        expect(result.query).toContain('"table1_metric1__total"');
+        // Should NOT contain the raw total() call
+        expect(result.query).not.toContain('total("table1_metric1")');
+    });
+
+    test('Should build row_totals CTE when row_total() is used with pivot', () => {
+        const metricQueryWithRowTotal = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pct_of_row',
+                    displayName: 'Pct of Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_row',
+                    displayName: 'Pct of Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                    compiledSql:
+                        '"table1_metric1" / row_total("table1_metric1")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithRowTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            pivotConfiguration: {
+                indexColumn: [
+                    {
+                        reference: 'table1_dim1',
+                        type: VizIndexType.CATEGORY,
+                    },
+                ],
+                valuesColumns: [],
+                groupByColumns: undefined,
+                sortBy: undefined,
+            },
+        });
+
+        // Should have the row_totals CTE
+        expect(result.query).toContain('row_totals AS (');
+        // Should SUM the already-computed metric values (row totals are always SUM)
+        expect(result.query).toContain(
+            'SUM("table1_metric1") AS "table1_metric1__row_total"',
+        );
+        // Should read from the grouped results CTE, not from raw tables
+        expect(result.query).not.toMatch(
+            /row_totals AS \([^)]*FROM "postgres"\."schema"\."table1"/s,
+        );
+        // Should GROUP BY the non-pivot dimension
+        expect(result.query).toContain('GROUP BY 1');
+        // Should have with_totals CTE with LEFT JOIN on dimension
+        expect(result.query).toContain('with_totals AS (');
+        expect(result.query).toContain('LEFT JOIN row_totals ON');
+        // Should replace row_total() with column alias
+        expect(result.query).toContain('"table1_metric1__row_total"');
+        expect(result.query).not.toContain('row_total("table1_metric1")');
+    });
+
+    test('Should build both column_totals and row_totals when both are used', () => {
+        const metricQueryWithBothTotals = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pct_total',
+                    displayName: 'Pct Total',
+                    sql: '${table1.metric1} / total(${table1.metric1})',
+                },
+                {
+                    name: 'pct_row',
+                    displayName: 'Pct Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_total',
+                    displayName: 'Pct Total',
+                    sql: '${table1.metric1} / total(${table1.metric1})',
+                    compiledSql: '"table1_metric1" / total("table1_metric1")',
+                    dependsOn: [],
+                },
+                {
+                    name: 'pct_row',
+                    displayName: 'Pct Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                    compiledSql:
+                        '"table1_metric1" / row_total("table1_metric1")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithBothTotals,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            pivotConfiguration: {
+                indexColumn: [
+                    {
+                        reference: 'table1_dim1',
+                        type: VizIndexType.CATEGORY,
+                    },
+                ],
+                valuesColumns: [],
+                groupByColumns: undefined,
+                sortBy: undefined,
+            },
+        });
+
+        // Should have both totals CTEs
+        expect(result.query).toContain('column_totals AS (');
+        expect(result.query).toContain('row_totals AS (');
+        expect(result.query).toContain('with_totals AS (');
+
+        // Should have CROSS JOIN for column_totals and LEFT JOIN for row_totals
+        expect(result.query).toContain('CROSS JOIN column_totals');
+        expect(result.query).toContain('LEFT JOIN row_totals ON');
+
+        // Both replacements should be present
+        expect(result.query).toContain('"table1_metric1__total"');
+        expect(result.query).toContain('"table1_metric1__row_total"');
+    });
+
+    test('Should handle total() in dependent table calculations', () => {
+        const metricQueryWithTotalDependentCalc = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pct_total',
+                    displayName: 'Pct Total',
+                    sql: '${table1.metric1} / total(${table1.metric1})',
+                },
+                {
+                    name: 'double_pct',
+                    displayName: 'Double Pct',
+                    sql: '${pct_total} * 2',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_total',
+                    displayName: 'Pct Total',
+                    sql: '${table1.metric1} / total(${table1.metric1})',
+                    compiledSql: '"table1_metric1" / total("table1_metric1")',
+                    dependsOn: [],
+                },
+                {
+                    name: 'double_pct',
+                    displayName: 'Double Pct',
+                    sql: '${pct_total} * 2',
+                    compiledSql: '"pct_total" * 2',
+                    dependsOn: ['pct_total'],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithTotalDependentCalc,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should have column_totals and with_totals CTEs
+        expect(result.query).toContain('column_totals AS (');
+        expect(result.query).toContain('with_totals AS (');
+
+        // Should have dependent table calc CTE
+        expect(result.query).toContain('tc_pct_total AS (');
+        expect(result.query).toContain('tc_double_pct AS (');
+
+        // total() should be replaced in the dependent CTE
+        expect(result.query).toContain('"table1_metric1__total"');
+        expect(result.query).not.toContain('total("table1_metric1")');
+    });
+
+    test('Should fall back row_total() to field reference when no pivot configuration', () => {
+        const metricQueryWithRowTotalNoPivot = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pct_of_row',
+                    displayName: 'Pct of Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_row',
+                    displayName: 'Pct of Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                    compiledSql:
+                        '"table1_metric1" / row_total("table1_metric1")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        // No pivotConfiguration passed
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithRowTotalNoPivot,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should NOT build row_totals CTE
+        expect(result.query).not.toContain('row_totals AS (');
+        // row_total("field") should be replaced with just "field" (identity fallback)
+        expect(result.query).not.toContain('row_total("table1_metric1")');
+        expect(result.query).not.toContain('"table1_metric1__row_total"');
+        // The field reference itself should still be present
+        expect(result.query).toContain('"table1_metric1"');
+    });
+
+    test('Should not build totals CTEs when total() is not used', () => {
+        const metricQueryWithoutTotal = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'simple_calc',
+                    displayName: 'Simple Calc',
+                    sql: '${table1.metric1} + 100',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'simple_calc',
+                    displayName: 'Simple Calc',
+                    sql: '${table1.metric1} + 100',
+                    compiledSql: '"table1_metric1" + 100',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithoutTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should NOT have any totals CTEs
+        expect(result.query).not.toContain('column_totals AS (');
+        expect(result.query).not.toContain('row_totals AS (');
+        expect(result.query).not.toContain('with_totals AS (');
+    });
+
+    /**
+     * Imagine "Avg Order Value" grouped by month: Jan=$50, Feb=$80, Mar=$60.
+     * A naive SUM of those averages gives $190 — meaningless.
+     * total() must go back to the raw orders table and run AVG(order_value)
+     * across ALL rows (e.g. $62), not SUM the already-grouped averages.
+     *
+     * This test proves the column_totals CTE contains AVG(...), not SUM(...).
+     */
+    test('Should use AVG aggregation in column_totals for average metrics (not SUM)', () => {
+        const exploreWithAvgMetric: Explore = {
+            ...EXPLORE,
+            tables: {
+                ...EXPLORE.tables,
+                table1: {
+                    ...EXPLORE.tables.table1,
+                    metrics: {
+                        ...EXPLORE.tables.table1.metrics,
+                        avg_metric: {
+                            type: MetricType.AVERAGE,
+                            fieldType: FieldType.METRIC,
+                            table: 'table1',
+                            tableLabel: 'table1',
+                            name: 'avg_metric',
+                            label: 'avg_metric',
+                            sql: '${TABLE}.number_column',
+                            compiledSql: 'AVG("table1".number_column)',
+                            tablesReferences: ['table1'],
+                            hidden: false,
+                        } as CompiledMetric,
+                    },
+                },
+            },
+        };
+
+        const metricQueryWithAvgTotal = {
+            ...METRIC_QUERY,
+            metrics: ['table1_avg_metric'],
+            tableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.avg_metric} / total(${table1.avg_metric})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.avg_metric} / total(${table1.avg_metric})',
+                    compiledSql:
+                        '"table1_avg_metric" / total("table1_avg_metric")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: exploreWithAvgMetric,
+            compiledMetricQuery: metricQueryWithAvgTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Must use AVG, not SUM — re-aggregates from raw data
+        expect(result.query).toContain(
+            'AVG("table1".number_column) AS "table1_avg_metric__total"',
+        );
+        expect(result.query).not.toMatch(
+            /SUM\("table1"\.number_column\).*AS "table1_avg_metric__total"/,
+        );
+    });
+
+    /**
+     * Unique customers per region: North=80, South=70, East=60.
+     * Some customers shop in multiple regions. Summing gives 210,
+     * but the true distinct count might be 150.
+     *
+     * total() must re-run COUNT(DISTINCT user_id) across all raw data
+     * so shared customers are only counted once.
+     */
+    test('Should use COUNT(DISTINCT) aggregation in column_totals for count_distinct metrics', () => {
+        const exploreWithCountDistinctMetric: Explore = {
+            ...EXPLORE,
+            tables: {
+                ...EXPLORE.tables,
+                table1: {
+                    ...EXPLORE.tables.table1,
+                    metrics: {
+                        ...EXPLORE.tables.table1.metrics,
+                        unique_users: {
+                            type: MetricType.COUNT_DISTINCT,
+                            fieldType: FieldType.METRIC,
+                            table: 'table1',
+                            tableLabel: 'table1',
+                            name: 'unique_users',
+                            label: 'unique_users',
+                            sql: '${TABLE}.user_id',
+                            compiledSql: 'COUNT(DISTINCT "table1".user_id)',
+                            tablesReferences: ['table1'],
+                            hidden: false,
+                        } as CompiledMetric,
+                    },
+                },
+            },
+        };
+
+        const metricQueryWithCountDistinctTotal = {
+            ...METRIC_QUERY,
+            metrics: ['table1_unique_users'],
+            tableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.unique_users} / total(${table1.unique_users})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.unique_users} / total(${table1.unique_users})',
+                    compiledSql:
+                        '"table1_unique_users" / total("table1_unique_users")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: exploreWithCountDistinctMetric,
+            compiledMetricQuery: metricQueryWithCountDistinctTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(result.query).toContain(
+            'COUNT(DISTINCT "table1".user_id) AS "table1_unique_users__total"',
+        );
+    });
+
+    /**
+     * Custom SQL metric "Revenue Per Order" = SUM(revenue) / COUNT(order_id).
+     * This is a ratio of two aggregations, not a simple AVG.
+     *
+     * total() must use the full compiled expression — running both
+     * SUM and COUNT against raw data — not just SUM the pre-computed ratios.
+     */
+    test('Should use full compiled expression in column_totals for custom SQL (number) metrics', () => {
+        const exploreWithCustomMetric: Explore = {
+            ...EXPLORE,
+            tables: {
+                ...EXPLORE.tables,
+                table1: {
+                    ...EXPLORE.tables.table1,
+                    metrics: {
+                        ...EXPLORE.tables.table1.metrics,
+                        revenue_per_order: {
+                            type: MetricType.NUMBER,
+                            fieldType: FieldType.METRIC,
+                            table: 'table1',
+                            tableLabel: 'table1',
+                            name: 'revenue_per_order',
+                            label: 'revenue_per_order',
+                            sql: '${total_revenue} / ${order_count}',
+                            compiledSql:
+                                'SUM("table1".revenue) / COUNT("table1".order_id)',
+                            tablesReferences: ['table1'],
+                            hidden: false,
+                        } as CompiledMetric,
+                    },
+                },
+            },
+        };
+
+        const metricQueryWithCustomTotal = {
+            ...METRIC_QUERY,
+            metrics: ['table1_revenue_per_order'],
+            tableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.revenue_per_order} / total(${table1.revenue_per_order})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_total',
+                    displayName: 'Pct of Total',
+                    sql: '${table1.revenue_per_order} / total(${table1.revenue_per_order})',
+                    compiledSql:
+                        '"table1_revenue_per_order" / total("table1_revenue_per_order")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: exploreWithCustomMetric,
+            compiledMetricQuery: metricQueryWithCustomTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Custom SQL metric should use its full compiledSql with embedded aggregations
+        expect(result.query).toContain(
+            'SUM("table1".revenue) / COUNT("table1".order_id) AS "table1_revenue_per_order__total"',
+        );
+    });
+
+    /**
+     * Two metrics in one query: Total Revenue (SUM) and Avg Order Value (AVG).
+     * Both use total() in table calculations.
+     *
+     * The single column_totals CTE must contain BOTH SUM(revenue) AND
+     * AVG(order_value) — each metric gets its own correct aggregation,
+     * they don't all default to SUM.
+     */
+    test('Should use correct aggregation per metric when multiple metric types use total()', () => {
+        const exploreWithMultipleMetrics: Explore = {
+            ...EXPLORE,
+            tables: {
+                ...EXPLORE.tables,
+                table1: {
+                    ...EXPLORE.tables.table1,
+                    metrics: {
+                        ...EXPLORE.tables.table1.metrics,
+                        total_revenue: {
+                            type: MetricType.SUM,
+                            fieldType: FieldType.METRIC,
+                            table: 'table1',
+                            tableLabel: 'table1',
+                            name: 'total_revenue',
+                            label: 'total_revenue',
+                            sql: '${TABLE}.revenue',
+                            compiledSql: 'SUM("table1".revenue)',
+                            tablesReferences: ['table1'],
+                            hidden: false,
+                        } as CompiledMetric,
+                        avg_order_value: {
+                            type: MetricType.AVERAGE,
+                            fieldType: FieldType.METRIC,
+                            table: 'table1',
+                            tableLabel: 'table1',
+                            name: 'avg_order_value',
+                            label: 'avg_order_value',
+                            sql: '${TABLE}.order_value',
+                            compiledSql: 'AVG("table1".order_value)',
+                            tablesReferences: ['table1'],
+                            hidden: false,
+                        } as CompiledMetric,
+                    },
+                },
+            },
+        };
+
+        const metricQueryWithMultipleTotals = {
+            ...METRIC_QUERY,
+            metrics: ['table1_total_revenue', 'table1_avg_order_value'],
+            tableCalculations: [
+                {
+                    name: 'revenue_pct',
+                    displayName: 'Revenue %',
+                    sql: '${table1.total_revenue} / total(${table1.total_revenue})',
+                },
+                {
+                    name: 'avg_pct',
+                    displayName: 'Avg %',
+                    sql: '${table1.avg_order_value} / total(${table1.avg_order_value})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'revenue_pct',
+                    displayName: 'Revenue %',
+                    sql: '${table1.total_revenue} / total(${table1.total_revenue})',
+                    compiledSql:
+                        '"table1_total_revenue" / total("table1_total_revenue")',
+                    dependsOn: [],
+                },
+                {
+                    name: 'avg_pct',
+                    displayName: 'Avg %',
+                    sql: '${table1.avg_order_value} / total(${table1.avg_order_value})',
+                    compiledSql:
+                        '"table1_avg_order_value" / total("table1_avg_order_value")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: exploreWithMultipleMetrics,
+            compiledMetricQuery: metricQueryWithMultipleTotals,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // SUM metric should use SUM in column_totals
+        expect(result.query).toContain(
+            'SUM("table1".revenue) AS "table1_total_revenue__total"',
+        );
+        // AVG metric should use AVG in column_totals (not SUM)
+        expect(result.query).toContain(
+            'AVG("table1".order_value) AS "table1_avg_order_value__total"',
+        );
+    });
+
+    /**
+     * "Avg Order Value" pivoted by region: North=$50, South=$45, East=$60.
+     * row_total() gives $50+$45+$60 = $155 — a SUM of the averages.
+     *
+     * This is mathematically questionable (summing averages), but it's the
+     * spec: row_total is always SUM regardless of metric type. This test
+     * documents that intentional design choice so it isn't accidentally
+     * "fixed" to use AVG later without a deliberate decision.
+     *
+     * Looker differs here — it lets users choose the aggregation function
+     * for row totals (mean, max, min, etc. via pivot_row()).
+     */
+    test('Should always SUM in row_totals regardless of metric type (by design)', () => {
+        const exploreWithAvgMetric: Explore = {
+            ...EXPLORE,
+            tables: {
+                ...EXPLORE.tables,
+                table1: {
+                    ...EXPLORE.tables.table1,
+                    metrics: {
+                        ...EXPLORE.tables.table1.metrics,
+                        avg_metric: {
+                            type: MetricType.AVERAGE,
+                            fieldType: FieldType.METRIC,
+                            table: 'table1',
+                            tableLabel: 'table1',
+                            name: 'avg_metric',
+                            label: 'avg_metric',
+                            sql: '${TABLE}.number_column',
+                            compiledSql: 'AVG("table1".number_column)',
+                            tablesReferences: ['table1'],
+                            hidden: false,
+                        } as CompiledMetric,
+                    },
+                },
+            },
+        };
+
+        const metricQueryWithAvgRowTotal = {
+            ...METRIC_QUERY,
+            metrics: ['table1_avg_metric'],
+            tableCalculations: [
+                {
+                    name: 'row_sum',
+                    displayName: 'Row Sum',
+                    sql: 'row_total(${table1.avg_metric})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'row_sum',
+                    displayName: 'Row Sum',
+                    sql: 'row_total(${table1.avg_metric})',
+                    compiledSql: 'row_total("table1_avg_metric")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: exploreWithAvgMetric,
+            compiledMetricQuery: metricQueryWithAvgRowTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            pivotConfiguration: {
+                indexColumn: [
+                    {
+                        reference: 'table1_dim1',
+                        type: VizIndexType.CATEGORY,
+                    },
+                ],
+                valuesColumns: [],
+                groupByColumns: undefined,
+                sortBy: undefined,
+            },
+        });
+
+        // row_total always uses SUM of grouped values, even for AVG metrics
+        expect(result.query).toContain(
+            'SUM("table1_avg_metric") AS "table1_avg_metric__row_total"',
+        );
+        // Should NOT use AVG for row totals
+        expect(result.query).not.toMatch(
+            /AVG\("table1_avg_metric"\).*AS "table1_avg_metric__row_total"/,
+        );
+    });
+
+    test('Should build row_totals CTE using pivotDimensions (lightweight alternative to pivotConfiguration)', () => {
+        const metricQueryWithRowTotal = {
+            ...METRIC_QUERY,
+            tableCalculations: [
+                {
+                    name: 'pct_of_row',
+                    displayName: 'Pct of Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                },
+            ],
+            compiledTableCalculations: [
+                {
+                    name: 'pct_of_row',
+                    displayName: 'Pct of Row',
+                    sql: '${table1.metric1} / row_total(${table1.metric1})',
+                    compiledSql:
+                        '"table1_metric1" / row_total("table1_metric1")',
+                    dependsOn: [],
+                },
+            ],
+        };
+
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: metricQueryWithRowTotal,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+            // Use pivotDimensions instead of pivotConfiguration
+            pivotDimensions: ['table1_dim2'],
+        });
+
+        // Should have the row_totals CTE
+        expect(result.query).toContain('row_totals AS (');
+        // Should SUM from grouped results
+        expect(result.query).toContain(
+            'SUM("table1_metric1") AS "table1_metric1__row_total"',
+        );
+        // Non-pivot dim (table1_dim1) should be in GROUP BY
+        expect(result.query).toContain('"table1_dim1"');
+        expect(result.query).toContain('GROUP BY 1');
+        // Should have with_totals CTE
+        expect(result.query).toContain('with_totals AS (');
+        expect(result.query).toContain('LEFT JOIN row_totals ON');
+        // Should replace row_total() with column alias
+        expect(result.query).toContain('"table1_metric1__row_total"');
+        expect(result.query).not.toContain('row_total("table1_metric1")');
+    });
+});
+
+describe('Date zoom with filters', () => {
+    test('Should use raw column in WHERE clause when date zoom is active', () => {
+        expect(
+            replaceWhitespace(
+                buildQuery({
+                    explore: EXPLORE_WITH_DATE_DIMENSION_ZOOMED,
+                    compiledMetricQuery: METRIC_QUERY_WITH_DATE_FILTER,
+                    warehouseSqlBuilder: warehouseClientMock,
+                    intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+                    timezone: QUERY_BUILDER_UTC_TIMEZONE,
+                    originalExplore: EXPLORE_WITH_DATE_DIMENSION,
+                }).query,
+            ),
+        ).toStrictEqual(
+            replaceWhitespace(METRIC_QUERY_WITH_DATE_ZOOM_FILTER_SQL),
+        );
+    });
+
+    test('Should use DATE_TRUNC in WHERE clause without originalExplore (no date zoom)', () => {
+        // Without originalExplore, the zoomed explore is used for both SELECT and WHERE
+        // This verifies backwards compatibility: when no date zoom, filters use the explore as-is
+        const result = buildQuery({
+            explore: EXPLORE_WITH_DATE_DIMENSION,
+            compiledMetricQuery: METRIC_QUERY_WITH_DATE_FILTER,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+        // Without date zoom, both SELECT and WHERE use the raw column
+        expect(result.query).toContain('"orders".created_at');
+        expect(result.query).not.toContain('DATE_TRUNC');
+    });
+});
+
+describe('Default sort behavior', () => {
+    test('Should apply default sort by time dimension DESC when no sorts are specified', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_DATE_DIMENSION,
+            compiledMetricQuery: {
+                ...METRIC_QUERY,
+                dimensions: ['orders_created_at'],
+                metrics: ['orders_order_count'],
+                sorts: [], // No sorts specified
+            },
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should apply default sort by date dimension descending
+        expect(result.query).toContain('ORDER BY');
+        expect(result.query).toContain('"orders_created_at" DESC');
+    });
+
+    test('Should apply default sort by first metric DESC when no time dimension', () => {
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: {
+                ...METRIC_QUERY,
+                dimensions: ['table1_dim1'],
+                metrics: ['table1_metric1'],
+                sorts: [], // No sorts specified
+            },
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should apply default sort by first metric descending
+        expect(result.query).toContain('ORDER BY');
+        expect(result.query).toContain('"table1_metric1" DESC');
+    });
+
+    test('Should apply default sort by first dimension ASC when only dimensions', () => {
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: {
+                ...METRIC_QUERY,
+                dimensions: ['table1_dim1'],
+                metrics: [],
+                sorts: [], // No sorts specified
+            },
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should apply default sort by first dimension ascending
+        expect(result.query).toContain('ORDER BY');
+        expect(result.query).toContain('"table1_dim1"');
+        expect(result.query).not.toContain('"table1_dim1" DESC');
+    });
+
+    test('Should not apply default sort when sorts are already specified', () => {
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: {
+                ...METRIC_QUERY,
+                dimensions: ['table1_dim1'],
+                metrics: ['table1_metric1'],
+                sorts: [
+                    {
+                        fieldId: 'table1_dim1',
+                        descending: true,
+                    },
+                ],
+            },
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should use the specified sort, not the default
+        expect(result.query).toContain('ORDER BY');
+        expect(result.query).toContain('"table1_dim1" DESC');
+        // Should not contain the default metric sort
+        expect(result.query).not.toContain('"table1_metric1" DESC');
+    });
+
+    test('Should have no ORDER BY when no dimensions and no metrics', () => {
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: {
+                ...METRIC_QUERY,
+                dimensions: [],
+                metrics: [],
+                sorts: [],
+            },
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should have no ORDER BY clause at all
+        expect(result.query).not.toContain('ORDER BY');
+    });
+
+    test('Should have no ORDER BY when no dimensions but metrics present (e.g. calculate total)', () => {
+        const result = buildQuery({
+            explore: EXPLORE,
+            compiledMetricQuery: {
+                ...METRIC_QUERY,
+                dimensions: [],
+                metrics: ['table1_metric1'],
+                sorts: [],
+            },
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // No dimensions means single aggregated row, ORDER BY is meaningless
+        expect(result.query).not.toContain('ORDER BY');
+    });
+});
+
+describe('Nested aggregate metrics', () => {
+    test('should generate nested_agg CTE for metrics with nested aggregates and dimensions', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_WITH_DIMS,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should contain both CTEs
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+        // CTE 1 should compute the inner metric
+        expect(result.query).toContain(
+            'MAX("my_table".value) AS "my_table_max_value"',
+        );
+        // Final query should NOT contain nested aggregate
+        expect(result.query).not.toContain('SUM(MAX(');
+        // Results CTE should reference CTE 1 columns
+        expect(result.query).toContain('nested_agg."my_table_max_value"');
+        // Outer SELECT should reference nested_agg_results (no aggregates)
+        expect(result.query).toContain('INNER JOIN nested_agg_results ON');
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_sum_of_max"',
+        );
+    });
+
+    test('should select FROM nested_agg when no dimensions are selected', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_NO_DIMS,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).not.toContain('SUM(MAX(');
+        // With no dimensions and no other metrics, selects directly from the CTE
+        expect(result.query).toContain('FROM nested_agg');
+    });
+
+    test('should handle complex nested aggregate with mixed refs (agg + non-agg)', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_COMPLEX,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should contain the nested_agg CTE
+        expect(result.query).toContain('nested_agg AS (');
+        // Should NOT contain nested aggregate
+        expect(result.query).not.toContain('SUM(MAX(');
+        // The count_records metric ref (non-nested) should still compile normally
+        expect(result.query).toContain('COUNT("my_table".id)');
+    });
+
+    test('should handle COUNT(DISTINCT) wrapping aggregate metric (PROD-5657)', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_COUNT_DISTINCT,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should contain both CTEs
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+        // CTE 1 should compute the inner metric
+        expect(result.query).toContain(
+            'MAX("my_table".value) AS "my_table_max_value"',
+        );
+        // Should NOT contain nested aggregate COUNT(DISTINCT MAX(...))
+        expect(result.query).not.toContain('COUNT(DISTINCT MAX(');
+        // Results CTE should reference CTE 1 columns
+        expect(result.query).toContain('nested_agg."my_table_max_value"');
+        // Outer SELECT should reference nested_agg_results (no aggregates)
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_count_distinct_of_max"',
+        );
+    });
+
+    test('should handle conditional SUM wrapping aggregate metric', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_CONDITIONAL,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should contain the nested_agg CTE
+        expect(result.query).toContain('nested_agg AS (');
+        // Should NOT contain nested aggregate SUM(CASE WHEN MAX(...)...)
+        expect(result.query).not.toContain('SUM(CASE WHEN MAX(');
+        // Should reference the CTE column in the outer SQL
+        expect(result.query).toContain('nested_agg."my_table_max_value"');
+    });
+
+    test('should NOT generate CTE for product of aggregates (no outer aggregation)', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_PRODUCT,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should NOT contain nested_agg CTE — no outer aggregation wrapping
+        expect(result.query).not.toContain('nested_agg AS (');
+        // SQL is valid: MAX(...) * COUNT(...) — sibling aggregates, not nested
+        expect(result.query).toContain('MAX("my_table".value)');
+        expect(result.query).toContain('COUNT("my_table".id)');
+    });
+
+    test('should route non-wrapping aggregate-referencing metrics through CTE when mixed with wrapping metrics', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_MIXED,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should contain both CTEs
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+        // Should NOT contain nested aggregate
+        expect(result.query).not.toContain('SUM(MAX(');
+        // Results CTE should compute product_of_aggregates using CTE refs
+        expect(result.query).toContain('nested_agg."my_table_max_value"');
+        // Outer SELECT should reference nested_agg_results columns (no aggregates)
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_product_of_aggregates"',
+        );
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_sum_of_max"',
+        );
+    });
+
+    test('should NOT route raw column aggregation + metric ref through CTE (sum(raw_col) / ${metric})', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_RAW_COL,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // The raw_agg_with_ref metric (sum(raw_col) / ${count_records}) should NOT
+        // be in the nested_agg_results CTE because its sum() wraps a raw column,
+        // not a metric reference. It's valid SQL as-is: SUM(col) / COUNT(col).
+        // The sum_of_max metric should still use the CTE.
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+        // sum_of_max should be in nested_agg_results
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_sum_of_max"',
+        );
+        // raw_agg_with_ref should be compiled directly in na_base (not in nested_agg_results)
+        // It should produce valid SQL: SUM("my_table".value) / NULLIF(COUNT("my_table".id), 0)
+        expect(result.query).toContain('SUM("my_table".value)');
+        expect(result.query).not.toContain(
+            'nested_agg_results."my_table_raw_agg_with_ref"',
+        );
+    });
+
+    test('should resolve ${TABLE} references to CTE alias inside nested_agg_results (GH-21089)', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_WINDOW_TABLE_REF,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should use nested CTE since window fn wraps aggregate metric ref
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+
+        // CTE 1 should compute the inner metric from the base table
+        expect(result.query).toContain(
+            'MAX("my_table".value) AS "my_table_max_value"',
+        );
+
+        // BUG: Inside nested_agg_results, ${TABLE} resolves to "my_table"
+        // but only "nested_agg" is in scope (FROM nested_agg).
+        // This causes BigQuery to throw "Unrecognized name: my_table"
+        expect(result.query).not.toContain('PARTITION BY "my_table".category');
+        // The correct behavior: ${TABLE} should resolve to the CTE alias
+        expect(result.query).toContain(
+            'PARTITION BY nested_agg."my_table_category"',
+        );
+    });
+
+    test('should handle transitive nested aggregates (type:number → type:number with agg → type:max)', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_TRANSITIVE,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should use nested CTE to break apart the transitive nesting
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+
+        // CTE 1 should pre-compute the inner aggregate metric (max_value)
+        expect(result.query).toContain(
+            'MAX("my_table".value) AS "my_table_max_value"',
+        );
+
+        // Final SQL should NOT contain nested aggregates like SUM(CASE WHEN MAX(...))
+        expect(result.query).not.toContain('SUM(CASE WHEN MAX(');
+    });
+
+    test('should handle transitive nested aggregates mixed with other nested metrics', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_TRANSITIVE_MIXED,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        // Should use nested CTE
+        expect(result.query).toContain('nested_agg AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+
+        // CTE 1 should pre-compute leaf aggregates only
+        expect(result.query).toContain(
+            'MAX("my_table".value) AS "my_table_max_value"',
+        );
+
+        // No nested aggregation in the query (no SUM wrapping MAX)
+        expect(result.query).not.toContain('SUM(CASE WHEN MAX(');
+
+        // ratio_of_sum_case should reference CTE columns, not base table
+        expect(result.query).toContain('nested_agg."my_table_max_value"');
+    });
+
+    test('should emit nested aggregate metric only once when fanout CTEs are also generated', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG_AND_FANOUT,
+            compiledMetricQuery: METRIC_QUERY_NESTED_AGG_WITH_FANOUT,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(result.query).toContain('cte_metrics_my_table AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_sum_of_max"',
+        );
+        expect(result.query.match(/AS "my_table_sum_of_max"/g)).toHaveLength(1);
+    });
+
+    test('should emit cross-table nested aggregate metric only once when fanout CTEs are also generated', () => {
+        const result = buildQuery({
+            explore: EXPLORE_WITH_NESTED_AGG_AND_FANOUT,
+            compiledMetricQuery:
+                METRIC_QUERY_NESTED_AGG_WITH_FANOUT_CROSS_TABLE,
+            warehouseSqlBuilder: warehouseClientMock,
+            intrinsicUserAttributes: INTRINSIC_USER_ATTRIBUTES,
+            timezone: QUERY_BUILDER_UTC_TIMEZONE,
+        });
+
+        expect(result.query).toContain('cte_metrics_my_table AS (');
+        expect(result.query).toContain('nested_agg_results AS (');
+        expect(result.query).toContain(
+            'nested_agg_results."my_table_cross_table_sum_of_max"',
+        );
+        expect(
+            result.query.match(/AS "my_table_cross_table_sum_of_max"/g),
+        ).toHaveLength(1);
     });
 });

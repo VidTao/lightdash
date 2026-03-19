@@ -1,8 +1,8 @@
 import { subject } from '@casl/ability';
 import {
+    assertUnreachable,
     ChartType,
     DashboardTileTypes,
-    assertUnreachable,
     getDefaultChartTileSize,
     hasUnusedDimensions,
     type CreateSavedChartVersion,
@@ -17,8 +17,8 @@ import {
     Radio,
     Stack,
     Text,
-    TextInput,
     Textarea,
+    TextInput,
 } from '@mantine-8/core';
 import { useForm, zodResolver } from '@mantine/form';
 import { IconPlus } from '@tabler/icons-react';
@@ -210,13 +210,17 @@ export const SaveToSpaceOrDashboard: FC<Props> = ({
 
     const { mutateAsync: updateDashboard } = useUpdateDashboard(
         form.values.dashboardUuid ?? undefined,
+        projectUuid,
     );
     const {
         data: selectedDashboard,
         isLoading: isLoadingSelectedDashboard,
         isError: isSelectedDashboardError,
         error: selectedDashboardError,
-    } = useDashboardQuery(form.values.dashboardUuid ?? undefined);
+    } = useDashboardQuery({
+        uuidOrSlug: form.values.dashboardUuid ?? undefined,
+        projectUuid,
+    });
 
     // Handle dashboard selection errors
     useEffect(() => {
@@ -315,7 +319,7 @@ export const SaveToSpaceOrDashboard: FC<Props> = ({
             if (saveDestination === SaveDestination.Space) {
                 let newSpace = values.newSpaceName
                     ? await handleCreateNewSpace({
-                          isPrivate: true,
+                          inheritParentPermissions: false,
                       })
                     : undefined;
 

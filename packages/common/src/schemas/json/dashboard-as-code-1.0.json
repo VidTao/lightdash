@@ -5,16 +5,7 @@
     "description": "Schema for defining Lightdash dashboards in YAML format for version control",
     "type": "object",
     "additionalProperties": false,
-    "required": [
-        "name",
-        "slug",
-        "spaceSlug",
-        "version",
-        "tiles",
-        "filters",
-        "tabs",
-        "updatedAt"
-    ],
+    "required": ["name", "slug", "spaceSlug", "version", "tiles", "tabs"],
     "properties": {
         "version": {
             "type": "number",
@@ -99,7 +90,10 @@
                         "maximum": 36
                     },
                     "tabUuid": {
-                        "type": ["string", "null"],
+                        "oneOf": [
+                            { "type": "string", "format": "uuid" },
+                            { "type": "null" }
+                        ],
                         "description": "UUID of the tab this tile belongs to, or null for default tab"
                     },
                     "properties": {
@@ -247,6 +241,7 @@
                 "properties": {
                     "uuid": {
                         "type": "string",
+                        "format": "uuid",
                         "description": "Unique identifier for the tab"
                     },
                     "name": {
@@ -266,7 +261,6 @@
             "type": "object",
             "description": "Dashboard-level filters that can be applied across all tiles",
             "additionalProperties": false,
-            "required": ["dimensions", "metrics", "tableCalculations"],
             "properties": {
                 "dimensions": {
                     "type": "array",
@@ -432,6 +426,39 @@
                     "items": {
                         "$ref": "#/properties/filters/properties/dimensions/items"
                     }
+                }
+            }
+        },
+        "config": {
+            "type": "object",
+            "description": "Dashboard configuration settings such as date zoom behavior",
+            "additionalProperties": false,
+            "properties": {
+                "isDateZoomDisabled": {
+                    "type": "boolean",
+                    "description": "Whether the date zoom feature is disabled for this dashboard"
+                },
+                "isAddFilterDisabled": {
+                    "type": "boolean",
+                    "description": "Whether the add filter button is disabled for this dashboard"
+                },
+                "pinnedParameters": {
+                    "type": "array",
+                    "description": "List of pinned parameter names",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dateZoomGranularities": {
+                    "type": "array",
+                    "description": "Available date zoom granularity options (e.g., Day, Week, Month, Quarter, Year)",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultDateZoomGranularity": {
+                    "type": "string",
+                    "description": "The default date zoom granularity when the dashboard loads"
                 }
             }
         }

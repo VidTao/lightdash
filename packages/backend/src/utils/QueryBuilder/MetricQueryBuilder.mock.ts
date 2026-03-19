@@ -48,7 +48,7 @@ export const warehouseClientMock: WarehouseClient = {
         rows: [],
     }),
     streamQuery(query, streamCallback) {
-        streamCallback({
+        void streamCallback({
             fields: {},
             rows: [],
         });
@@ -59,7 +59,7 @@ export const warehouseClientMock: WarehouseClient = {
         const columns = {
             test: { type: DimensionType.STRING },
         };
-        callback?.(rows, columns);
+        void callback?.(rows, columns);
         return {
             queryId: null,
             queryMetadata: null,
@@ -131,6 +131,11 @@ export const warehouseClientMock: WarehouseClient = {
         `EXTRACT(EPOCH FROM (${endTimestampSql} - ${startTimestampSql}))`,
     getMedianSql: (valueSql) =>
         `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${valueSql})`,
+    buildArray: (elements) => `ARRAY[${elements.join(', ')}]`,
+    buildArrayAgg: (expression, orderBy) =>
+        orderBy
+            ? `ARRAY_AGG(${expression} ORDER BY ${orderBy})`
+            : `ARRAY_AGG(${expression})`,
 };
 
 export const bigqueryClientMock: WarehouseClient = {
@@ -158,7 +163,7 @@ export const bigqueryClientMock: WarehouseClient = {
         rows: [],
     }),
     streamQuery(query, streamCallback) {
-        streamCallback({
+        void streamCallback({
             fields: {},
             rows: [],
         });
@@ -213,6 +218,11 @@ export const bigqueryClientMock: WarehouseClient = {
         `TIMESTAMP_DIFF(${endTimestampSql}, ${startTimestampSql}, SECOND)`,
     getMedianSql: (valueSql) =>
         `APPROX_QUANTILES(${valueSql}, 100)[OFFSET(50)]`,
+    buildArray: (elements) => `ARRAY[${elements.join(', ')}]`,
+    buildArrayAgg: (expression, orderBy) =>
+        orderBy
+            ? `ARRAY_AGG(${expression} ORDER BY ${orderBy})`
+            : `ARRAY_AGG(${expression})`,
 };
 
 export const emptyTable = (name: string): CompiledTable => ({
@@ -673,7 +683,7 @@ export const METRIC_QUERY_JOIN_CHAIN_SQL = `SELECT "table5".dim1               A
                                                      LEFT OUTER JOIN "db"."schema"."table5" AS "table5"
                                                                      ON ("table5".col) = ("table4".col)
 
-                                            GROUP BY 1 LIMIT 5`;
+                                            GROUP BY 1 ORDER BY "table5_metric1" DESC LIMIT 5`;
 
 export const METRIC_QUERY_ALL_JOIN_TYPES_CHAIN_SQL = `SELECT "table5".dim1               AS "table5_dim1",
                                                              MAX("table5".number_column) AS "table5_metric1"
@@ -687,7 +697,7 @@ export const METRIC_QUERY_ALL_JOIN_TYPES_CHAIN_SQL = `SELECT "table5".dim1      
                                                                RIGHT OUTER JOIN "db"."schema"."table5" AS "table5"
                                                                                 ON ("table5".col) = ("table4".col)
 
-                                                      GROUP BY 1 LIMIT 5`;
+                                                      GROUP BY 1 ORDER BY "table5_metric1" DESC LIMIT 5`;
 
 export const METRIC_QUERY: CompiledMetricQuery = {
     exploreName: 'table1',
@@ -784,7 +794,7 @@ export const METRIC_QUERY_WITH_TABLE_REFERENCE_SQL = `SELECT "table1".dim1 + "ta
                                                                LEFT OUTER JOIN "db"."schema"."table2" AS "table2"
                                                                                ON ("table1".shared) = ("table2".shared)
 
-                                                      GROUP BY 1 LIMIT 10`;
+                                                      GROUP BY 1 ORDER BY "table1_with_reference" LIMIT 10`;
 
 export const METRIC_QUERY_WITH_FILTER: CompiledMetricQuery = {
     exploreName: 'table1',
@@ -1451,23 +1461,41 @@ export const EXPECTED_SQL_WITH_CUSTOM_DIMENSION_BIN_NUMBER = `WITH age_range_cte
                                                                                      age_range_cte.max_id)
                                                                          END
                                                                                                  AS \`age_range\`,
+                                                                     CASE
+                                                                         WHEN "table1".dim1 IS NULL THEN 3
+                                                                         WHEN "table1".dim1 >= age_range_cte.min_id +
+                                                                                               age_range_cte.bin_width *
+                                                                                               0 AND "table1".dim1 <
+                                                                                                     age_range_cte.min_id +
+                                                                                                     age_range_cte.bin_width *
+                                                                                                     1 THEN 0
+                                                                         WHEN "table1".dim1 >= age_range_cte.min_id +
+                                                                                               age_range_cte.bin_width *
+                                                                                               1 AND "table1".dim1 <
+                                                                                                     age_range_cte.min_id +
+                                                                                                     age_range_cte.bin_width *
+                                                                                                     2 THEN 1
+                                                                         ELSE 2
+                                                                         END
+                                                                                                 AS \`age_range_order\`,
                                                                      MAX("table1".number_column) AS \`table1_metric1\`
                                                               FROM "db"."schema"."table1" AS \`table1\`
 
                                                                        CROSS JOIN age_range_cte
 
-                                                              GROUP BY 1,2
+                                                              GROUP BY 1,2,3
                                                               ORDER BY \`table1_metric1\` DESC LIMIT 10`;
 
 export const EXPECTED_SQL_WITH_CUSTOM_DIMENSION_BIN_WIDTH = `SELECT "table1".dim1               AS \`table1_dim1\`,
                                                                     CONCAT(FLOOR("table1".dim1 / 10) * 10, ' - ',
                                                                            (FLOOR("table1".dim1 / 10) + 1) * 10 -
                                                                            1)                   AS \`age_range\`,
+                                                                    FLOOR("table1".dim1 / 10) * 10 AS \`age_range_order\`,
                                                                     MAX("table1".number_column) AS \`table1_metric1\`
                                                              FROM "db"."schema"."table1" AS \`table1\`
 
 
-                                                             GROUP BY 1,2
+                                                             GROUP BY 1,2,3
                                                              ORDER BY \`table1_metric1\` DESC LIMIT 10`;
 
 export const EXPECTED_SQL_WITH_CUSTOM_DIMENSION_AND_TABLE_CALCULATION = `WITH age_range_cte
@@ -1520,12 +1548,36 @@ export const EXPECTED_SQL_WITH_CUSTOM_DIMENSION_AND_TABLE_CALCULATION = `WITH ag
                                                                                                          age_range_cte.max_id)
                                                                                                  END
                                                                                                                          AS \`age_range\`,
+                                                                                             CASE
+                                                                                                 WHEN "table1".dim1 IS NULL
+                                                                                                     THEN 3
+                                                                                                 WHEN "table1".dim1 >=
+                                                                                                      age_range_cte.min_id +
+                                                                                                      age_range_cte.bin_width *
+                                                                                                      0 AND
+                                                                                                      "table1".dim1 <
+                                                                                                      age_range_cte.min_id +
+                                                                                                      age_range_cte.bin_width *
+                                                                                                      1
+                                                                                                     THEN 0
+                                                                                                 WHEN "table1".dim1 >=
+                                                                                                      age_range_cte.min_id +
+                                                                                                      age_range_cte.bin_width *
+                                                                                                      1 AND
+                                                                                                      "table1".dim1 <
+                                                                                                      age_range_cte.min_id +
+                                                                                                      age_range_cte.bin_width *
+                                                                                                      2
+                                                                                                     THEN 1
+                                                                                                 ELSE 2
+                                                                                                 END
+                                                                                                                         AS \`age_range_order\`,
                                                                                              MAX("table1".number_column) AS \`table1_metric1\`
                                                                                       FROM "db"."schema"."table1" AS \`table1\`
 
                                                                                                CROSS JOIN age_range_cte
 
-                                                                                      GROUP BY 1,2
+                                                                                      GROUP BY 1,2,3
                                                                                       )
                                                                          SELECT *,
                                                                                 table1_dim1 + 1 AS \`calc3\`
@@ -1596,11 +1648,12 @@ export const EXPECTED_SQL_WITH_CUSTOM_DIMENSION_BIN_WIDTH_ON_POSTGRES = `SELECT 
                                                                                  10 || ' - ' ||
                                                                                  (FLOOR("table1".dim1 / 10) + 1) * 10 -
                                                                                  1)                         AS "age_range",
+                                                                                FLOOR("table1".dim1 / 10) * 10 AS "age_range_order",
                                                                                 MAX("table1".number_column) AS "table1_metric1"
                                                                          FROM "db"."schema"."table1" AS "table1"
 
 
-                                                                         GROUP BY 1,2
+                                                                         GROUP BY 1,2,3
                                                                          ORDER BY "table1_metric1" DESC LIMIT 10`;
 
 export const INTRINSIC_USER_ATTRIBUTES: IntrinsicUserAttributes = {
@@ -1896,6 +1949,21 @@ export const EXPECTED_SQL_WITH_CROSS_JOIN = `WITH cte_keys_table2 AS (
 )
 SELECT *, table1_dim1 + table2_metric2 AS "calc3" FROM metrics ORDER BY "table2_metric2" DESC LIMIT 10`;
 
+export const EXPECTED_SQL_NO_DIMENSIONS_WITH_FILTER = `WITH cte_keys_table2 AS (
+    SELECT DISTINCT "table2".dim2 AS "pk_dim2"
+    FROM "db"."schema"."table1" AS "table1"
+    LEFT OUTER JOIN "db"."schema"."table2" AS "table2" ON ("table1".shared) = ("table2".shared)
+    WHERE (( ("table1".dim1) IN (2025) ))
+), cte_metrics_table2 AS (
+    SELECT SUM("table2".number_column) AS "table2_metric3"
+    FROM cte_keys_table2
+    LEFT JOIN "db"."schema"."table2" AS "table2" ON cte_keys_table2."pk_dim2" = "table2".dim2
+)
+SELECT cte_metrics_table2."table2_metric3" AS "table2_metric3"
+FROM cte_metrics_table2
+ORDER BY "table2_metric3" DESC
+LIMIT 500`;
+
 // Explore without primary keys
 export const EXPLORE_WITHOUT_PRIMARY_KEYS: Explore = {
     ...EXPLORE,
@@ -2078,3 +2146,749 @@ export const EXPECTED_SQL_WITH_CROSS_TABLE_METRICS = `WITH cte_keys_customers AS
     FROM cte_unaffected
     CROSS JOIN cte_metrics_customers
     LIMIT 100`;
+
+// --- Date zoom + filter test data ---
+
+const dateExploreBase: Explore = {
+    targetDatabase: SupportedDbtAdapter.POSTGRES,
+    name: 'orders',
+    label: 'orders',
+    baseTable: 'orders',
+    tags: [],
+    joinedTables: [],
+    tables: {
+        orders: {
+            name: 'orders',
+            label: 'orders',
+            database: 'database',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."orders"',
+            primaryKey: ['order_id'],
+            dimensions: {
+                order_id: {
+                    type: DimensionType.NUMBER,
+                    name: 'order_id',
+                    label: 'order_id',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.order_id',
+                    compiledSql: '"orders".order_id',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+                created_at: {
+                    type: DimensionType.DATE,
+                    name: 'created_at',
+                    label: 'created_at',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.created_at',
+                    compiledSql: '"orders".created_at',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                order_count: {
+                    type: MetricType.COUNT,
+                    fieldType: FieldType.METRIC,
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    name: 'order_count',
+                    label: 'order_count',
+                    sql: '${TABLE}.order_id',
+                    compiledSql: 'COUNT("orders".order_id)',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+// Original explore (no date zoom)
+export const EXPLORE_WITH_DATE_DIMENSION: Explore = dateExploreBase;
+
+// Zoomed explore: created_at dimension has DATE_TRUNC'd compiledSql (simulating month granularity)
+export const EXPLORE_WITH_DATE_DIMENSION_ZOOMED: Explore = {
+    ...dateExploreBase,
+    tables: {
+        ...dateExploreBase.tables,
+        orders: {
+            ...dateExploreBase.tables.orders,
+            dimensions: {
+                ...dateExploreBase.tables.orders.dimensions,
+                created_at: {
+                    ...dateExploreBase.tables.orders.dimensions.created_at,
+                    compiledSql: 'DATE_TRUNC(\'month\', "orders".created_at)',
+                },
+            },
+        },
+    },
+};
+
+export const METRIC_QUERY_WITH_DATE_FILTER: CompiledMetricQuery = {
+    exploreName: 'orders',
+    dimensions: ['orders_created_at'],
+    metrics: ['orders_order_count'],
+    filters: {
+        dimensions: {
+            id: 'root',
+            and: [
+                {
+                    id: '1',
+                    target: {
+                        fieldId: 'orders_created_at',
+                    },
+                    operator: FilterOperator.IN_BETWEEN,
+                    values: ['2024-09-01', '2024-09-04'],
+                },
+            ],
+        },
+    },
+    sorts: [{ fieldId: 'orders_created_at', descending: false }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Filter with user attribute value (e.g., ${lightdash.user.email}) in filter values
+export const METRIC_QUERY_WITH_USER_ATTRIBUTE_FILTER_VALUE: CompiledMetricQuery =
+    {
+        exploreName: 'table1',
+        dimensions: ['table1_dim1'],
+        metrics: [],
+        filters: {
+            dimensions: {
+                id: 'root',
+                and: [
+                    {
+                        id: '1',
+                        target: {
+                            fieldId: 'table1_shared',
+                        },
+                        operator: FilterOperator.EQUALS,
+                        values: ['${lightdash.user.email}'],
+                    },
+                ],
+            },
+        },
+        sorts: [{ fieldId: 'table1_dim1', descending: true }],
+        limit: 10,
+        tableCalculations: [],
+        compiledTableCalculations: [],
+        compiledAdditionalMetrics: [],
+        compiledCustomDimensions: [],
+    };
+
+export const METRIC_QUERY_WITH_USER_ATTRIBUTE_FILTER_VALUE_SQL = `SELECT "table1".dim1 AS "table1_dim1"
+                                             FROM "db"."schema"."table1" AS "table1"
+
+                                             WHERE ((
+                                                 ("table1".shared) IN ('mock@lightdash.com')
+                                                 ))
+                                             GROUP BY 1
+                                             ORDER BY "table1_dim1" DESC LIMIT 10`;
+
+// Filter with custom user attribute value (e.g., ${lightdash.attribute.country}) in filter values
+export const METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE: CompiledMetricQuery =
+    {
+        exploreName: 'table1',
+        dimensions: ['table1_dim1'],
+        metrics: [],
+        filters: {
+            dimensions: {
+                id: 'root',
+                and: [
+                    {
+                        id: '1',
+                        target: {
+                            fieldId: 'table1_shared',
+                        },
+                        operator: FilterOperator.EQUALS,
+                        values: ['${lightdash.attribute.country}'],
+                    },
+                ],
+            },
+        },
+        sorts: [{ fieldId: 'table1_dim1', descending: true }],
+        limit: 10,
+        tableCalculations: [],
+        compiledTableCalculations: [],
+        compiledAdditionalMetrics: [],
+        compiledCustomDimensions: [],
+    };
+
+export const METRIC_QUERY_WITH_CUSTOM_USER_ATTRIBUTE_FILTER_VALUE_SQL = `SELECT "table1".dim1 AS "table1_dim1"
+                                             FROM "db"."schema"."table1" AS "table1"
+
+                                             WHERE ((
+                                                 ("table1".shared) IN ('EU')
+                                                 ))
+                                             GROUP BY 1
+                                             ORDER BY "table1_dim1" DESC LIMIT 10`;
+
+// --- sum_distinct fixtures ---
+
+export const EXPLORE_WITH_SUM_DISTINCT: Explore = {
+    targetDatabase: SupportedDbtAdapter.POSTGRES,
+    name: 'orders',
+    label: 'orders',
+    baseTable: 'orders',
+    tags: [],
+    joinedTables: [],
+    tables: {
+        orders: {
+            name: 'orders',
+            label: 'orders',
+            database: 'db',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."orders"',
+            primaryKey: ['order_id'],
+            dimensions: {
+                order_id: {
+                    type: DimensionType.STRING,
+                    name: 'order_id',
+                    label: 'Order ID',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.order_id',
+                    compiledSql: '"orders".order_id',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+                payment_method: {
+                    type: DimensionType.STRING,
+                    name: 'payment_method',
+                    label: 'Payment Method',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.payment_method',
+                    compiledSql: '"orders".payment_method',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+                status: {
+                    type: DimensionType.STRING,
+                    name: 'status',
+                    label: 'Status',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.status',
+                    compiledSql: '"orders".status',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                total_revenue: {
+                    type: MetricType.SUM_DISTINCT,
+                    fieldType: FieldType.METRIC,
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    name: 'total_revenue',
+                    label: 'Total Revenue',
+                    sql: '${TABLE}.amount',
+                    compiledSql: 'SUM("orders".amount)',
+                    compiledValueSql: '"orders".amount',
+                    compiledDistinctKeys: ['"orders".line_item_id'],
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+export const METRIC_QUERY_SUM_DISTINCT_WITH_DIMS: CompiledMetricQuery = {
+    exploreName: 'orders',
+    dimensions: ['orders_payment_method', 'orders_status'],
+    metrics: ['orders_total_revenue'],
+    filters: {},
+    sorts: [{ fieldId: 'orders_total_revenue', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_SUM_DISTINCT_NO_DIMS: CompiledMetricQuery = {
+    exploreName: 'orders',
+    dimensions: [],
+    metrics: ['orders_total_revenue'],
+    filters: {},
+    sorts: [{ fieldId: 'orders_total_revenue', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// --- average_distinct fixtures ---
+
+export const EXPLORE_WITH_AVERAGE_DISTINCT: Explore = {
+    targetDatabase: SupportedDbtAdapter.POSTGRES,
+    name: 'orders',
+    label: 'orders',
+    baseTable: 'orders',
+    tags: [],
+    joinedTables: [],
+    tables: {
+        orders: {
+            name: 'orders',
+            label: 'orders',
+            database: 'db',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."orders"',
+            primaryKey: ['order_id'],
+            dimensions: {
+                order_id: {
+                    type: DimensionType.STRING,
+                    name: 'order_id',
+                    label: 'Order ID',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.order_id',
+                    compiledSql: '"orders".order_id',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+                payment_method: {
+                    type: DimensionType.STRING,
+                    name: 'payment_method',
+                    label: 'Payment Method',
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.payment_method',
+                    compiledSql: '"orders".payment_method',
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                avg_shipping_cost: {
+                    type: MetricType.AVERAGE_DISTINCT,
+                    fieldType: FieldType.METRIC,
+                    table: 'orders',
+                    tableLabel: 'orders',
+                    name: 'avg_shipping_cost',
+                    label: 'Avg Shipping Cost',
+                    sql: '${TABLE}.shipping_cost',
+                    compiledSql: 'AVG("orders".shipping_cost)',
+                    compiledValueSql: '"orders".shipping_cost',
+                    compiledDistinctKeys: ['"orders".line_item_id'],
+                    tablesReferences: ['orders'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+export const METRIC_QUERY_AVERAGE_DISTINCT_WITH_DIMS: CompiledMetricQuery = {
+    exploreName: 'orders',
+    dimensions: ['orders_payment_method'],
+    metrics: ['orders_avg_shipping_cost'],
+    filters: {},
+    sorts: [{ fieldId: 'orders_avg_shipping_cost', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_AVERAGE_DISTINCT_NO_DIMS: CompiledMetricQuery = {
+    exploreName: 'orders',
+    dimensions: [],
+    metrics: ['orders_avg_shipping_cost'],
+    filters: {},
+    sorts: [{ fieldId: 'orders_avg_shipping_cost', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Expected: SELECT uses DATE_TRUNC (zoomed), but WHERE uses raw column
+export const METRIC_QUERY_WITH_DATE_ZOOM_FILTER_SQL = `SELECT
+  DATE_TRUNC('month', "orders".created_at) AS "orders_created_at",
+  COUNT("orders".order_id) AS "orders_order_count"
+FROM "db"."schema"."orders" AS "orders"
+
+WHERE ((
+  (("orders".created_at) >= ('2024-09-01') AND ("orders".created_at) <= ('2024-09-04'))
+))
+GROUP BY 1
+ORDER BY "orders_created_at"
+LIMIT 10`;
+
+// ---- Nested aggregate test fixtures ----
+// Explore with a type:number metric that wraps an aggregate metric reference
+// This creates the nested aggregate pattern: SUM(MAX(...))
+export const EXPLORE_WITH_NESTED_AGG: Explore = {
+    targetDatabase: SupportedDbtAdapter.POSTGRES,
+    name: 'my_table',
+    label: 'my_table',
+    baseTable: 'my_table',
+    tags: [],
+    joinedTables: [],
+    tables: {
+        my_table: {
+            name: 'my_table',
+            label: 'my_table',
+            database: 'db',
+            schema: 'schema',
+            sqlTable: '"db"."schema"."my_table"',
+            primaryKey: ['id'],
+            dimensions: {
+                category: {
+                    type: DimensionType.STRING,
+                    name: 'category',
+                    label: 'category',
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    fieldType: FieldType.DIMENSION,
+                    sql: '${TABLE}.category',
+                    compiledSql: '"my_table".category',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+            },
+            metrics: {
+                max_value: {
+                    type: MetricType.MAX,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'max_value',
+                    label: 'max_value',
+                    sql: '${TABLE}.value',
+                    compiledSql: 'MAX("my_table".value)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                count_records: {
+                    type: MetricType.COUNT,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'count_records',
+                    label: 'count_records',
+                    sql: '${TABLE}.id',
+                    compiledSql: 'COUNT("my_table".id)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // type:number with aggregation wrapping an aggregate metric reference
+                // This compiles to SUM(MAX(...)) which is invalid SQL
+                sum_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'sum_of_max',
+                    label: 'sum_of_max',
+                    sql: 'sum(${max_value})',
+                    compiledSql: 'SUM(MAX("my_table".value))',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // More complex: aggregation wrapping metric ref + division by another metric
+                avg_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'avg_of_max',
+                    label: 'avg_of_max',
+                    sql: 'sum(${max_value}) / NULLIF(${count_records}, 0)',
+                    compiledSql:
+                        'SUM(MAX("my_table".value)) / NULLIF(COUNT("my_table".id), 0)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // COUNT(DISTINCT) wrapping aggregate metric (PROD-5657: 1 chart)
+                count_distinct_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'count_distinct_of_max',
+                    label: 'count_distinct_of_max',
+                    sql: 'count(distinct ${max_value})',
+                    compiledSql: 'COUNT(DISTINCT MAX("my_table".value))',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // Conditional SUM wrapping aggregate metric (Looker migration pattern)
+                conditional_sum_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'conditional_sum_of_max',
+                    label: 'conditional_sum_of_max',
+                    sql: 'sum(case when ${max_value} > 100 then ${max_value} else 0 end)',
+                    compiledSql:
+                        'SUM(CASE WHEN MAX("my_table".value) > 100 THEN MAX("my_table".value) ELSE 0 END)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // Raw column aggregation combined with metric reference
+                // sql: sum(raw_col) / ${count_records}
+                // The sum() wraps a raw column (not a ${ } ref), so this is
+                // NOT a nested aggregate — it compiles to SUM(col) / COUNT(col)
+                // which is valid SQL (sibling aggregates, not nested).
+                raw_agg_with_ref: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'raw_agg_with_ref',
+                    label: 'raw_agg_with_ref',
+                    sql: 'sum(${TABLE}.value) / NULLIF(${count_records}, 0)',
+                    compiledSql:
+                        'SUM("my_table".value) / NULLIF(COUNT("my_table".id), 0)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // Window function wrapping aggregate metric + ${TABLE} reference
+                // Reproduces GH-21089: ${TABLE} resolves to base table alias
+                // inside nested_agg_results CTE where only nested_agg is in scope
+                window_sum_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'window_sum_of_max',
+                    label: 'window_sum_of_max',
+                    sql: 'SUM(${max_value}) OVER (PARTITION BY ${TABLE}.category)',
+                    compiledSql:
+                        'SUM(MAX("my_table".value)) OVER (PARTITION BY "my_table".category)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // Transitive nested aggregate: type:number referencing another type:number
+                // which itself wraps an aggregate metric.
+                // sum_case_of_max.sql = SUM(CASE WHEN ${max_value} > 100 THEN 1 ELSE 0 END)
+                //   → compiles to SUM(CASE WHEN MAX("my_table".value) > 100 THEN 1 ELSE 0 END)
+                // Then ratio_of_sum_case.sql = ${sum_case_of_max} / NULLIF(${count_records}, 0)
+                //   → compiles to SUM(CASE WHEN MAX(...) > 100 ...) / NULLIF(COUNT(...), 0)
+                // The nesting is two levels deep: ratio → sum_case → max
+                sum_case_of_max: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'sum_case_of_max',
+                    label: 'sum_case_of_max',
+                    sql: 'SUM(CASE WHEN ${max_value} > 100 THEN 1 ELSE 0 END)',
+                    compiledSql:
+                        'SUM(CASE WHEN MAX("my_table".value) > 100 THEN 1 ELSE 0 END)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                ratio_of_sum_case: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'ratio_of_sum_case',
+                    label: 'ratio_of_sum_case',
+                    sql: '${sum_case_of_max} / NULLIF(${count_records}, 0)',
+                    compiledSql:
+                        'SUM(CASE WHEN MAX("my_table".value) > 100 THEN 1 ELSE 0 END) / NULLIF(COUNT("my_table".id), 0)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+                // Product of aggregates - NO outer aggregation, valid SQL without CTE
+                product_of_aggregates: {
+                    type: MetricType.NUMBER,
+                    fieldType: FieldType.METRIC,
+                    table: 'my_table',
+                    tableLabel: 'my_table',
+                    name: 'product_of_aggregates',
+                    label: 'product_of_aggregates',
+                    sql: '${max_value} * ${count_records}',
+                    compiledSql: 'MAX("my_table".value) * COUNT("my_table".id)',
+                    tablesReferences: ['my_table'],
+                    hidden: false,
+                },
+            },
+            lineageGraph: {},
+        },
+    },
+};
+
+export const METRIC_QUERY_NESTED_AGG_WITH_DIMS: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_sum_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_NESTED_AGG_NO_DIMS: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: [],
+    metrics: ['my_table_sum_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_NESTED_AGG_COMPLEX: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_avg_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_avg_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_NESTED_AGG_COUNT_DISTINCT: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_count_distinct_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_count_distinct_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_NESTED_AGG_CONDITIONAL: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_conditional_sum_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_conditional_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+export const METRIC_QUERY_NESTED_AGG_PRODUCT: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_product_of_aggregates'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_product_of_aggregates', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Raw column aggregation + metric reference: sum(raw_col) / ${aggregate_metric}
+// This is NOT a nested aggregate — both aggregations are at the same level.
+// The sum() wraps a raw column (not a metric ref), so it should NOT be
+// routed through the nested_agg CTE.
+export const METRIC_QUERY_NESTED_AGG_RAW_COL: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_raw_agg_with_ref', 'my_table_sum_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_raw_agg_with_ref', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Mixed: nested agg metric + non-nested metric together (reproduces GROUP BY issue)
+export const METRIC_QUERY_NESTED_AGG_MIXED: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: [],
+    metrics: ['my_table_sum_of_max', 'my_table_product_of_aggregates'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Window function metric with ${TABLE} reference wrapping aggregate metric
+// Reproduces GH-21089: ${TABLE} resolves to base table inside nested_agg_results CTE
+export const METRIC_QUERY_NESTED_AGG_WINDOW_TABLE_REF: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_window_sum_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_window_sum_of_max', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Transitive nested aggregate: type:number → type:number (with agg) → type:max
+// The outer metric (ratio_of_sum_case) has no SQL aggregation itself,
+// but its compiledSql contains SUM(CASE WHEN MAX(...)) via transitive inlining.
+// Only ratio_of_sum_case is selected — sum_case_of_max is NOT directly selected.
+export const METRIC_QUERY_NESTED_AGG_TRANSITIVE: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: ['my_table_category'],
+    metrics: ['my_table_ratio_of_sum_case'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_ratio_of_sum_case', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};
+
+// Transitive nested aggregate mixed with other nested metrics.
+// Reproduces bug where ratio_of_sum_case fails when combined with
+// other nested metrics like conditional_sum_of_max.
+export const METRIC_QUERY_NESTED_AGG_TRANSITIVE_MIXED: CompiledMetricQuery = {
+    exploreName: 'my_table',
+    dimensions: [],
+    metrics: ['my_table_ratio_of_sum_case', 'my_table_conditional_sum_of_max'],
+    filters: {},
+    sorts: [{ fieldId: 'my_table_ratio_of_sum_case', descending: true }],
+    limit: 10,
+    tableCalculations: [],
+    compiledTableCalculations: [],
+    compiledAdditionalMetrics: [],
+    compiledCustomDimensions: [],
+};

@@ -1,6 +1,6 @@
 import {
-    FilterInteractivityValues,
     assertUnreachable,
+    FilterInteractivityValues,
     getFilterInteractivityValue,
     getItemId,
     isDashboardChartTileType,
@@ -16,12 +16,13 @@ import {
     Text,
 } from '@mantine-8/core';
 import { useCallback, useMemo } from 'react';
-import { type FieldsWithSuggestions } from '../../../../components/Explorer/FiltersCard/useFieldsWithSuggestions';
 import { getConditionalRuleLabelFromItem } from '../../../../components/common/Filters/FilterInputs/utils';
+import { type FieldsWithSuggestions } from '../../../../components/Explorer/FiltersCard/useFieldsWithSuggestions';
 import {
     useDashboardQuery,
     useDashboardsAvailableFilters,
 } from '../../../../hooks/dashboard/useDashboard';
+import { useProjectUuid } from '../../../../hooks/useProjectUuid';
 
 type Props = {
     dashboardUuid?: string;
@@ -52,7 +53,11 @@ const EmbedFiltersInteractivity: React.FC<Props> = ({
     interactivityOptions,
     onInteractivityOptionsChange,
 }) => {
-    const { data: dashboard } = useDashboardQuery(dashboardUuid);
+    const projectUuid = useProjectUuid();
+    const { data: dashboard } = useDashboardQuery({
+        uuidOrSlug: dashboardUuid,
+        projectUuid,
+    });
     const dashboardFilters = useMemo(() => {
         return Object.values(dashboard?.filters || {}).flat();
     }, [dashboard]);

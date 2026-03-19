@@ -12,32 +12,34 @@ import {
     CatalogType,
     ChartSummary,
     CompiledDimension,
+    convertToAiHints,
     DEFAULT_METRICS_EXPLORER_TIME_INTERVAL,
     Explore,
     ExploreError,
-    FeatureFlags,
     FieldType,
     ForbiddenError,
-    InlineErrorType,
-    MetricWithAssociatedTimeDimension,
-    NotFoundError,
-    ParameterError,
-    SessionUser,
-    SummaryExplore,
-    TableSelectionType,
-    TablesConfiguration,
-    TimeFrames,
-    UserAttributeValueMap,
-    convertToAiHints,
+    generateSlug,
     getAvailableCompareMetrics,
     getAvailableTimeDimensionsFromTables,
     getDefaultTimeDimension,
     getTypeValidFilterDimensions,
     getTypeValidSegmentDimensions,
     hasIntersection,
+    InlineErrorType,
     isExploreError,
+    MetricWithAssociatedTimeDimension,
+    NotFoundError,
+    ParameterError,
+    SessionUser,
+    SummaryExplore,
+    TablesConfiguration,
+    TableSelectionType,
+    TimeFrames,
+    UserAttributeValueMap,
+    type ApiCreateMetricsTreePayload,
     type ApiMetricsTreeEdgePayload,
     type ApiSort,
+    type ApiUpdateMetricsTreePayload,
     type CatalogFieldMap,
     type CatalogItem,
     type CatalogItemWithTagUuids,
@@ -45,6 +47,11 @@ import {
     type ChartUsageIn,
     type KnexPaginateArgs,
     type KnexPaginatedData,
+    type MetricsTree,
+    type MetricsTreeLockInfo,
+    type MetricsTreeSummary,
+    type MetricsTreeWithDetails,
+    type PrevMetricsTreeNode,
 } from '@lightdash/common';
 import { uniqBy } from 'lodash';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
@@ -52,6 +59,7 @@ import { LightdashConfig } from '../../config/parseConfig';
 import type {
     DbCatalogTagsMigrateIn,
     DbMetricsTreeEdgeIn,
+    DbMetricsTreeNodeIn,
 } from '../../database/entities/catalog';
 import {
     CatalogModel,
@@ -59,7 +67,6 @@ import {
 } from '../../models/CatalogModel/CatalogModel';
 import { parseFieldsFromCompiledTable } from '../../models/CatalogModel/utils/parser';
 import { ChangesetModel } from '../../models/ChangesetModel';
-import { FeatureFlagModel } from '../../models/FeatureFlagModel/FeatureFlagModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { SavedChartModel } from '../../models/SavedChartModel';
 import { SpaceModel } from '../../models/SpaceModel';
@@ -67,10 +74,11 @@ import type { TagsModel } from '../../models/TagsModel';
 import { UserAttributesModel } from '../../models/UserAttributesModel';
 import { wrapSentryTransaction } from '../../utils';
 import { BaseService } from '../BaseService';
+import { SpacePermissionService } from '../SpaceService/SpacePermissionService';
 import {
+    checkUserAttributesAccess,
     doesExploreMatchRequiredAttributes,
     getFilteredExplore,
-    hasUserAttributes,
 } from '../UserAttributesService/UserAttributeUtils';
 
 export type CatalogArguments<T extends CatalogModel = CatalogModel> = {
@@ -83,7 +91,7 @@ export type CatalogArguments<T extends CatalogModel = CatalogModel> = {
     spaceModel: SpaceModel;
     tagsModel: TagsModel;
     changesetModel: ChangesetModel;
-    featureFlagModel: FeatureFlagModel;
+    spacePermissionService: SpacePermissionService;
 };
 
 export class CatalogService<
@@ -107,7 +115,7 @@ export class CatalogService<
 
     changesetModel: ChangesetModel;
 
-    featureFlagModel: FeatureFlagModel;
+    spacePermissionService: SpacePermissionService;
 
     constructor({
         lightdashConfig,
@@ -119,7 +127,7 @@ export class CatalogService<
         spaceModel,
         tagsModel,
         changesetModel,
-        featureFlagModel,
+        spacePermissionService,
     }: CatalogArguments<T>) {
         super();
         this.lightdashConfig = lightdashConfig;
@@ -131,7 +139,7 @@ export class CatalogService<
         this.spaceModel = spaceModel;
         this.tagsModel = tagsModel;
         this.changesetModel = changesetModel;
-        this.featureFlagModel = featureFlagModel;
+        this.spacePermissionService = spacePermissionService;
     }
 
     private async getUserAttributesWithOrgUuid(
@@ -162,6 +170,7 @@ export class CatalogService<
             if (
                 doesExploreMatchRequiredAttributes(
                     explore.tables[explore.baseTable].requiredAttributes,
+                    explore.tables[explore.baseTable].anyAttributes,
                     userAttributes,
                 )
             ) {
@@ -247,6 +256,7 @@ export class CatalogService<
             if (
                 doesExploreMatchRequiredAttributes(
                     explore.tables[explore.baseTable].requiredAttributes,
+                    explore.tables[explore.baseTable].anyAttributes,
                     userAttributes,
                 )
             ) {
@@ -364,6 +374,7 @@ export class CatalogService<
                 if (
                     !doesExploreMatchRequiredAttributes(
                         explore.tables[explore.baseTable].requiredAttributes,
+                        explore.tables[explore.baseTable].anyAttributes,
                         userAttributes,
                     )
                 ) {
@@ -632,6 +643,64 @@ export class CatalogService<
         return this.catalogModel.migrateMetricsTreeEdges(metricEdgesMigrateIn);
     }
 
+    async migrateMetricsTreeNodes(
+        projectUuid: string,
+        prevMetricsTreeNodes: PrevMetricsTreeNode[],
+    ) {
+        if (prevMetricsTreeNodes.length === 0) {
+            this.logger.debug(
+                `No metrics tree nodes to migrate for project ${projectUuid}`,
+            );
+            return;
+        }
+
+        this.logger.info(
+            `Migrating ${prevMetricsTreeNodes.length} metrics tree nodes for project ${projectUuid}`,
+        );
+
+        const currentCatalogItems =
+            await this.catalogModel.getCatalogItemsSummary(projectUuid);
+
+        const nodesMigrateIn: DbMetricsTreeNodeIn[] =
+            prevMetricsTreeNodes.reduce<DbMetricsTreeNodeIn[]>((acc, node) => {
+                const catalogItem = currentCatalogItems.find(
+                    (item) =>
+                        item.name === node.name &&
+                        item.tableName === node.tableName &&
+                        item.type === CatalogType.Field &&
+                        item.fieldType === FieldType.METRIC,
+                );
+
+                if (catalogItem) {
+                    return [
+                        ...acc,
+                        {
+                            metrics_tree_uuid: node.metricsTreeUuid,
+                            catalog_search_uuid: catalogItem.catalogSearchUuid,
+                            x_position: node.xPosition,
+                            y_position: node.yPosition,
+                            source: node.source,
+                            created_at: node.createdAt,
+                        },
+                    ];
+                }
+
+                this.logger.debug(
+                    `Dropping metrics tree node "${node.tableName}.${node.name}" — metric no longer exists in catalog`,
+                );
+                return acc;
+            }, []);
+
+        const droppedCount =
+            prevMetricsTreeNodes.length - nodesMigrateIn.length;
+
+        this.logger.info(
+            `Migrating ${nodesMigrateIn.length} metrics tree nodes for project ${projectUuid} (${droppedCount} dropped)`,
+        );
+
+        await this.catalogModel.migrateMetricsTreeNodes(nodesMigrateIn);
+    }
+
     async getCatalog(
         user: SessionUser,
         projectUuid: string,
@@ -709,6 +778,7 @@ export class CatalogService<
         if (
             !doesExploreMatchRequiredAttributes(
                 explore.tables[explore.baseTable].requiredAttributes,
+                explore.tables[explore.baseTable].anyAttributes,
                 userAttributes,
             )
         ) {
@@ -720,7 +790,11 @@ export class CatalogService<
         const baseTable = explore.tables?.[explore.baseTable];
         const fields = parseFieldsFromCompiledTable(baseTable);
         const filteredFields = fields.filter((field) =>
-            hasUserAttributes(field.requiredAttributes, userAttributes),
+            checkUserAttributesAccess(
+                field.requiredAttributes,
+                field.anyAttributes,
+                userAttributes,
+            ),
         );
 
         const metadata: CatalogMetadata = {
@@ -747,34 +821,12 @@ export class CatalogService<
         const spaces = await this.spaceModel.find({ projectUuid });
         const spaceUuids = spaces.map((s) => s.uuid);
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user: {
-                userUuid: user.userUuid,
-                organizationUuid: user.organizationUuid,
-                organizationName: user.organizationName,
-            },
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
-
-        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
-            user.userUuid,
-            spaceUuids,
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
-
-        const allowedSpaceUuids = spaces
-            .filter((space) =>
-                user.ability.can(
-                    'view',
-                    subject('Space', {
-                        organizationUuid: space.organizationUuid,
-                        projectUuid,
-                        isPrivate: space.isPrivate,
-                        access: spacesAccess[space.uuid] ?? [],
-                    }),
-                ),
-            )
-            .map(({ uuid }) => uuid);
+        const allowedSpaceUuids =
+            await this.spacePermissionService.getAccessibleSpaceUuids(
+                'view',
+                user,
+                spaceUuids,
+            );
 
         return chatSummaries.filter((chart) =>
             allowedSpaceUuids.includes(chart.spaceUuid),
@@ -1074,7 +1126,6 @@ export class CatalogService<
         user,
         projectUuid,
         metrics,
-        timeIntervalOverride,
         userAttributes,
         addDefaultTimeDimension = true,
     }: {
@@ -1084,7 +1135,6 @@ export class CatalogService<
             tableName: string;
             metricName: string;
         }[];
-        timeIntervalOverride?: TimeFrames;
         userAttributes?: UserAttributeValueMap;
         addDefaultTimeDimension?: boolean;
     }): Promise<MetricWithAssociatedTimeDimension[]> {
@@ -1147,7 +1197,7 @@ export class CatalogService<
                     | undefined;
 
                 // If no default time dimension is defined, we can use the available time dimensions so the user can see what time dimensions are available
-                if (!defaultTimeDimension || timeIntervalOverride) {
+                if (!defaultTimeDimension) {
                     availableTimeDimensions =
                         getAvailableTimeDimensionsFromTables(tables);
                 }
@@ -1156,7 +1206,7 @@ export class CatalogService<
                     | MetricWithAssociatedTimeDimension['timeDimension']
                     | undefined;
 
-                if (defaultTimeDimension && !timeIntervalOverride) {
+                if (defaultTimeDimension) {
                     timeDimension = {
                         field: defaultTimeDimension.field,
                         interval: defaultTimeDimension.interval,
@@ -1178,9 +1228,7 @@ export class CatalogService<
 
                     timeDimension = {
                         field: firstAvailableTimeDimension.name,
-                        interval:
-                            timeIntervalOverride ??
-                            DEFAULT_METRICS_EXPLORER_TIME_INTERVAL,
+                        interval: DEFAULT_METRICS_EXPLORER_TIME_INTERVAL,
                         table: firstAvailableTimeDimension.table,
                     };
                 }
@@ -1206,17 +1254,17 @@ export class CatalogService<
         projectUuid: string,
         tableName: string,
         metricName: string,
-        timeIntervalOverride?: TimeFrames,
     ) {
         const metrics = await this.getMetrics({
             user,
             projectUuid,
             metrics: [{ tableName, metricName }],
-            timeIntervalOverride,
         });
 
         if (metrics.length === 0) {
-            throw new NotFoundError('Metric not found');
+            throw new NotFoundError(
+                `Metric not found for ${tableName}.${metricName}`,
+            );
         }
 
         return metrics[0];
@@ -1240,6 +1288,24 @@ export class CatalogService<
         }
 
         return this.catalogModel.getMetricsTree(projectUuid, metricUuids);
+    }
+
+    async getAllMetricsTreeEdges(user: SessionUser, projectUuid: string) {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'view',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        const edges =
+            await this.catalogModel.getAllMetricsTreeEdges(projectUuid);
+        return { edges };
     }
 
     private async validateMetricsTreeEdge(
@@ -1348,6 +1414,7 @@ export class CatalogService<
             },
             tablesConfiguration:
                 await this.projectModel.getTablesConfiguration(projectUuid),
+            hasTimeDimension: true,
         });
 
         const filteredMetrics = allCatalogMetrics.data.filter(
@@ -1366,6 +1433,77 @@ export class CatalogService<
         });
 
         return getAvailableCompareMetrics(allMetrics);
+    }
+
+    async getPaginatedMetricsWithTimeDimensions(
+        user: SessionUser,
+        projectUuid: string,
+        context: CatalogSearchContext,
+        paginateArgs: KnexPaginateArgs,
+        sortArgs?: ApiSort,
+        tableName?: string,
+        categoryNames?: string[],
+        tags?: string[],
+    ): Promise<KnexPaginatedData<CatalogField[]>> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+        if (
+            user.ability.cannot(
+                'view',
+                subject('Project', { organizationUuid, projectUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        const userAttributes =
+            await this.userAttributesModel.getAttributeValuesForOrgMember({
+                organizationUuid,
+                userUuid: user.userUuid,
+            });
+
+        const catalogTags =
+            categoryNames && categoryNames.length > 0
+                ? await this.tagsModel.getUuidsByYamlReferences(
+                      projectUuid,
+                      categoryNames,
+                  )
+                : undefined;
+
+        // Categories were requested but none matched — no results possible
+        if (catalogTags && catalogTags.length === 0) {
+            return {
+                data: [],
+                pagination: {
+                    page: paginateArgs.page,
+                    pageSize: paginateArgs.pageSize,
+                    totalResults: 0,
+                    totalPageCount: 0,
+                },
+            };
+        }
+
+        const results = await this.catalogModel.search({
+            projectUuid,
+            userAttributes,
+            ...(tableName ? { exploreName: tableName } : {}),
+            context,
+            catalogSearch: {
+                type: CatalogType.Field,
+                filter: CatalogFilter.Metrics,
+                catalogTags,
+            },
+            tablesConfiguration:
+                await this.projectModel.getTablesConfiguration(projectUuid),
+            hasTimeDimension: true,
+            tags,
+            paginateArgs,
+            sortArgs,
+        });
+
+        // Safe cast: search is called with type: CatalogType.Field + filter: CatalogFilter.Metrics,
+        // so the DB only returns CatalogField items.
+        return results as KnexPaginatedData<CatalogField[]>;
     }
 
     async getFilterDimensions(
@@ -1530,5 +1668,230 @@ export class CatalogService<
         }
 
         return this.catalogModel.getDistinctOwners(projectUuid);
+    }
+
+    // --- Saved Metrics Trees ---
+
+    async getMetricsTrees(
+        user: SessionUser,
+        projectUuid: string,
+        paginateArgs?: KnexPaginateArgs,
+    ): Promise<KnexPaginatedData<MetricsTreeSummary[]>> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'view',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        return this.catalogModel.getMetricsTrees(projectUuid, paginateArgs);
+    }
+
+    async getMetricsTreeDetails(
+        user: SessionUser,
+        projectUuid: string,
+        metricsTreeUuidOrSlug: string,
+    ): Promise<MetricsTreeWithDetails> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'view',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError(
+                `User ${user.userUuid} is not authorized to view metrics tree ${metricsTreeUuidOrSlug}`,
+            );
+        }
+
+        return this.catalogModel.getMetricsTreeByUuidOrSlug(
+            projectUuid,
+            metricsTreeUuidOrSlug,
+        );
+    }
+
+    async createMetricsTree(
+        user: SessionUser,
+        projectUuid: string,
+        payload: ApiCreateMetricsTreePayload,
+    ): Promise<MetricsTree> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError(
+                `User ${user.userUuid} does not have permission to create a metrics tree in project ${projectUuid}`,
+            );
+        }
+
+        const slug = payload.slug ?? generateSlug(payload.name);
+        const source = payload.source ?? 'ui';
+
+        return this.catalogModel.createMetricsTree(
+            {
+                project_uuid: projectUuid,
+                slug,
+                name: payload.name,
+                description: payload.description ?? null,
+                source,
+                created_by_user_uuid: user.userUuid,
+            },
+            payload.nodes,
+            payload.edges,
+        );
+    }
+
+    async acquireTreeLock(
+        user: SessionUser,
+        projectUuid: string,
+        metricsTreeUuid: string,
+    ): Promise<MetricsTreeLockInfo> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError(
+                `User ${user.userUuid} does not have permission to edit metrics tree ${metricsTreeUuid}`,
+            );
+        }
+
+        return this.catalogModel.acquireTreeLock(
+            metricsTreeUuid,
+            user.userUuid,
+        );
+    }
+
+    async refreshTreeLockHeartbeat(
+        user: SessionUser,
+        projectUuid: string,
+        metricsTreeUuid: string,
+    ): Promise<boolean> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        return this.catalogModel.refreshTreeLockHeartbeat(
+            metricsTreeUuid,
+            user.userUuid,
+        );
+    }
+
+    async releaseTreeLock(
+        user: SessionUser,
+        projectUuid: string,
+        metricsTreeUuid: string,
+    ): Promise<void> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        await this.catalogModel.releaseTreeLock(metricsTreeUuid, user.userUuid);
+    }
+
+    async updateMetricsTree(
+        user: SessionUser,
+        projectUuid: string,
+        metricsTreeUuid: string,
+        payload: ApiUpdateMetricsTreePayload,
+    ): Promise<MetricsTreeWithDetails> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError(
+                `User ${user.userUuid} does not have permission to update metrics tree ${metricsTreeUuid}`,
+            );
+        }
+
+        const lock = await this.catalogModel.getTreeLock(metricsTreeUuid);
+        if (!lock || lock.lockedByUserUuid !== user.userUuid) {
+            throw new ForbiddenError(
+                'You must hold the edit lock to update this tree',
+            );
+        }
+
+        const result = await this.catalogModel.updateMetricsTree(
+            projectUuid,
+            metricsTreeUuid,
+            user.userUuid,
+            {
+                name: payload.name,
+                description: payload.description,
+            },
+            payload.nodes,
+            payload.edges,
+            payload.expectedGeneration,
+        );
+
+        await this.catalogModel.releaseTreeLock(metricsTreeUuid, user.userUuid);
+
+        return result;
+    }
+
+    async deleteMetricsTree(
+        user: SessionUser,
+        projectUuid: string,
+        metricsTreeUuid: string,
+    ): Promise<void> {
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+
+        if (
+            user.ability.cannot(
+                'manage',
+                subject('MetricsTree', { projectUuid, organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError(
+                `User ${user.userUuid} does not have permission to delete metrics tree ${metricsTreeUuid}`,
+            );
+        }
+
+        const lock = await this.catalogModel.getTreeLock(metricsTreeUuid);
+        if (lock) {
+            throw new ForbiddenError(
+                'Cannot delete a metrics tree while it is being edited',
+            );
+        }
+
+        await this.catalogModel.deleteMetricsTree(projectUuid, metricsTreeUuid);
     }
 }

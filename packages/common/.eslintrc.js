@@ -1,7 +1,6 @@
 module.exports = {
     parserOptions: {
         project: './tsconfig.json',
-        createDefaultProgram: true,
     },
     extends: [
         './../../.eslintrc.js',
@@ -23,6 +22,7 @@ module.exports = {
                 fixStyle: 'inline-type-imports',
             },
         ],
+        '@typescript-eslint/only-throw-error': 'warn',
         '@typescript-eslint/no-unused-vars': [
             'error',
             {

@@ -16,12 +16,12 @@ import {
 import { type FC } from 'react';
 import { useNavigate } from 'react-router';
 import { useIntercom } from 'react-use-intercom';
+import MantineModal from '../components/common/MantineModal';
+import Page from '../components/common/Page/Page';
 import LightdashLogo from '../components/LightdashLogo/LightdashLogo';
 import PageSpinner from '../components/PageSpinner';
 import { SuccessIconBounce } from '../components/RegisterForms/ProjectConnectFlow.styles';
 import VerifyEmailForm from '../components/RegisterForms/VerifyEmailForm';
-import MantineModal from '../components/common/MantineModal';
-import Page from '../components/common/Page/Page';
 import { useEmailStatus } from '../hooks/useEmailVerification';
 import useApp from '../providers/App/useApp';
 const BratraxLogo = '/images/logo-text.png';
@@ -91,10 +91,10 @@ const VerifyEmailPage: FC = () => {
                         statusLoading={statusLoading}
                     />
                 </Card>
-                <Text c="ldGray.6" ta="center" px="xs">
+                <Text c="ldGray.6" ta="center" px="xs" fz="sm" fw={500}>
                     You need to verify your email to get access to Lightdash. If
                     you need help, you can{' '}
-                    <Anchor onClick={() => showIntercom()}>
+                    <Anchor onClick={() => showIntercom()} fz="sm" fw={500}>
                         chat to support here.
                     </Anchor>
                 </Text>

@@ -1,8 +1,6 @@
 import { getItemLabel, getItemMap, isField } from '@lightdash/common';
-import { Box, Loader, Text } from '@mantine/core';
+import { Box, Loader, Text } from '@mantine-8/core';
 import { memo, useCallback, useMemo, useState, type FC } from 'react';
-import { ResultsViewMode } from './types';
-
 import {
     explorerActions,
     selectAdditionalMetrics,
@@ -33,9 +31,11 @@ import {
     EmptyStateExploreLoading,
     EmptyStateNoColumns,
     EmptyStateNoTableData,
+    ExploreLoadingState,
     MissingRequiredParameters,
     NoTableSelected,
 } from './ExplorerResultsNonIdealStates';
+import { ResultsViewMode } from './types';
 import { useGroupedResultsAvailability } from './useGroupedResultsAvailability';
 import { usePivotTableData } from './usePivotTableData';
 
@@ -123,6 +123,7 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
                 fetchMoreRows: () => {},
                 status: 'loading' as const,
                 apiError: undefined,
+                queryStatus: unpivotedQueryResults.queryStatus,
             };
         }
 
@@ -136,6 +137,7 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
                 fetchMoreRows: unpivotedQueryResults.fetchMoreRows,
                 status: getQueryStatus(unpivotedQuery, unpivotedQueryResults),
                 apiError: unpivotedQuery.error ?? unpivotedQueryResults.error,
+                queryStatus: unpivotedQueryResults.queryStatus,
             };
         }
 
@@ -147,6 +149,7 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
             fetchMoreRows: queryResults.fetchMoreRows,
             status: finalStatus,
             apiError: query.error ?? queryResults.error,
+            queryStatus: queryResults.queryStatus,
         };
 
         return result;
@@ -167,6 +170,7 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
         fetchMoreRows,
         status,
         apiError,
+        queryStatus,
     } = resultsData;
 
     // Grouped results data - uses the main query which has pivoted data when backend pivoting is enabled
@@ -280,7 +284,7 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
             dimensions.length <= 0 ? (
                 <>
                     Pick one or more{' '}
-                    <Text span color="blue.9">
+                    <Text span c="blue.9" fz="sm" fw="bold">
                         dimensions
                     </Text>{' '}
                     to split your selected metric by.
@@ -288,7 +292,7 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
             ) : metrics.length <= 0 ? (
                 <>
                     Pick a{' '}
-                    <Text span color="yellow.9">
+                    <Text span c="yellow.9" fz="sm" fw="bold">
                         metric
                     </Text>{' '}
                     to make calculations across your selected dimensions.
@@ -408,6 +412,9 @@ export const ExplorerResults = memo(({ viewMode }: ExplorerResultsProps) => {
                         headerContextMenu={
                             isEditMode ? ColumnHeaderContextMenu : undefined
                         }
+                        loadingState={() => (
+                            <ExploreLoadingState queryStatus={queryStatus} />
+                        )}
                         idleState={IdleState}
                         pagination={pagination}
                         footer={footer}

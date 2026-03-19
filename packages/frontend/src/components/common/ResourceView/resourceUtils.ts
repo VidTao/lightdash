@@ -1,8 +1,8 @@
 import {
+    assertUnreachable,
     ChartKind,
     ChartSourceType,
     ResourceViewItemType,
-    assertUnreachable,
     type ResourceViewChartItem,
     type ResourceViewItem,
 } from '@lightdash/common';
@@ -45,6 +45,8 @@ export const getResourceTypeName = (item: ResourceViewItem) => {
                     return 'Custom visualization';
                 case ChartKind.MAP:
                     return 'Map';
+                case ChartKind.SANKEY:
+                    return 'Sankey';
                 default:
                     return assertUnreachable(
                         item.data.chartKind,

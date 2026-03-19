@@ -96,9 +96,15 @@ export const lightdashConfigMock: LightdashConfig = {
         enabled: false,
         port: 9090,
         path: '/metrics',
+        eventMetricsEnabled: false,
+        allQueryMetricsEnabled: false,
     },
     chart: { versionHistory: { daysLimit: 0 } },
-    dashboard: { maxTilesPerTab: 50, maxTabsPerDashboard: 20 },
+    dashboard: {
+        maxTilesPerTab: 50,
+        maxTabsPerDashboard: 20,
+        versionHistory: { daysLimit: 0 },
+    },
     database: {
         connectionUri: undefined,
         maxConnections: undefined,
@@ -143,6 +149,12 @@ export const lightdashConfigMock: LightdashConfig = {
             region: 'mock_region',
         },
     },
+    natsWorker: {
+        enabled: false,
+        url: undefined,
+        workerConcurrency: 1,
+        queueTimeoutMs: 180000,
+    },
     rudder: {
         writeKey: '',
         dataPlaneUrl: '',
@@ -150,6 +162,7 @@ export const lightdashConfigMock: LightdashConfig = {
     scheduler: {
         concurrency: 0,
         enabled: false,
+        pollInterval: 1000,
         jobTimeout: 0,
         tasks: ALL_TASK_NAMES,
         queryHistory: {
@@ -175,6 +188,7 @@ export const lightdashConfigMock: LightdashConfig = {
         release: '',
         environment: '',
         tracesSampleRate: 0,
+        queryTracesSampleRate: null,
         profilesSampleRate: 0,
         anr: {
             enabled: false,
@@ -205,6 +219,7 @@ export const lightdashConfigMock: LightdashConfig = {
         timezone: undefined,
         useSqlPivotResults: false,
         showExecutionTime: false,
+        retryQueryOnTransientErrors: true,
     },
     ai: {
         copilot: {
@@ -219,7 +234,7 @@ export const lightdashConfigMock: LightdashConfig = {
             providers: {
                 openai: {
                     apiKey: 'mock_api_key',
-                    modelName: 'gpt-4.1-2025-04-14',
+                    modelName: 'gpt-5.2-2025-12-11',
                     embeddingModelName: 'text-embedding-3-small',
                     zeroDataRetention: false,
                 },
@@ -272,10 +287,19 @@ export const lightdashConfigMock: LightdashConfig = {
     microsoftTeams: {
         enabled: false,
     },
+    googleChat: {
+        enabled: false,
+    },
     serviceAccount: {
         enabled: false,
     },
     organizationWarehouseCredentials: {
+        enabled: false,
+    },
+    athenaWarehouseIamRoleAuth: {
+        enabled: false,
+    },
+    saveCredentialsForm: {
         enabled: false,
     },
     googleCloudPlatform: {
@@ -297,7 +321,7 @@ export const lightdashConfigMock: LightdashConfig = {
         enabled: false,
     },
     partialCompilation: {
-        enabled: false,
+        enabled: true,
     },
     funnelBuilder: {
         enabled: false,
@@ -305,7 +329,33 @@ export const lightdashConfigMock: LightdashConfig = {
     maps: {
         enabled: false,
     },
-    nestedSpacesPermissions: {
+    savedMetricsTree: {
+        enabled: undefined,
+    },
+    defaultUserSpaces: {
+        enabled: undefined,
+    },
+    persistentDownloadUrls: {
         enabled: false,
+        expirationSeconds: 259200,
+        expirationSecondsEmail: undefined,
+        expirationSecondsSlack: undefined,
+        expirationSecondsMsTeams: undefined,
+    },
+    softDelete: {
+        enabled: false,
+        retentionDays: 30,
+    },
+    preAggregates: {
+        enabled: false,
+        parquetEnabled: false,
+        s3: {
+            endpoint: 'mock_endpoint',
+            bucket: 'mock_preagg_bucket',
+            region: 'mock_region',
+        },
+    },
+    userImpersonation: {
+        enabled: undefined,
     },
 };

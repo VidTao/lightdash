@@ -1,8 +1,9 @@
 import { subject } from '@casl/ability';
 import {
+    ContentType,
+    ResourceViewItemType,
     type Dashboard,
     type FeatureFlags,
-    ResourceViewItemType,
 } from '@lightdash/common';
 import {
     ActionIcon,
@@ -19,19 +20,25 @@ import {
 } from '@mantine-8/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+    IconAlertTriangle,
+    IconBolt,
     IconCopy,
     IconDatabase,
     IconDatabaseExport,
     IconDots,
     IconFolderPlus,
     IconFolderSymlink,
+    IconHistory,
     IconInfoCircle,
     IconMaximize,
     IconMinimize,
     IconPencil,
     IconPin,
     IconPinnedOff,
+    IconRefresh,
     IconSend,
+    IconStar,
+    IconStarFilled,
     IconTrash,
     IconUpload,
 } from '@tabler/icons-react';
@@ -47,26 +54,33 @@ import {
 } from '../../../features/promotion/hooks/usePromoteDashboard';
 import { DashboardSchedulersModal } from '../../../features/scheduler';
 import { getSchedulerUuidFromUrlParams } from '../../../features/scheduler/utils';
+import useDashboardPerformanceWarning from '../../../hooks/dashboard/useDashboardPerformanceWarning';
+import { useFavoriteMutation } from '../../../hooks/favorites/useFavoriteMutation';
+import { useFavorites } from '../../../hooks/favorites/useFavorites';
 import { useDashboardPinningMutation } from '../../../hooks/pinning/useDashboardPinningMutation';
 import { useProject } from '../../../hooks/useProject';
 import { useClientFeatureFlag } from '../../../hooks/useServerOrClientFeatureFlag';
 import useApp from '../../../providers/App/useApp';
+import { type TilePreAggregateStatus } from '../../../providers/Dashboard/types';
 import useTracking from '../../../providers/Tracking/useTracking';
 import { EventName } from '../../../types/Events';
 import AddTileButton from '../../DashboardTiles/AddTileButton';
 import MantineIcon from '../MantineIcon';
+import DashboardUpdateModal from '../modal/DashboardUpdateModal';
 import PageHeader from '../Page/PageHeader';
 import DashboardInfoOverlay from '../PageHeader/DashboardInfoOverlay';
+import { ShareLinkButton } from '../ShareLinkButton';
 import SpaceActionModal from '../SpaceActionModal';
 import { ActionType } from '../SpaceActionModal/types';
 import TransferItemsModal from '../TransferItemsModal/TransferItemsModal';
-import DashboardUpdateModal from '../modal/DashboardUpdateModal';
-import { DashboardRefreshButton } from './DashboardRefreshButton';
-import { ShareLinkButton } from './ShareLinkButton';
 import {
     DASHBOARD_HEADER_HEIGHT,
     DASHBOARD_HEADER_ZINDEX,
 } from './dashboard.constants';
+import headerClasses from './DashboardHeader.module.css';
+import DashboardPreAggRefreshModal from './DashboardPreAggRefreshModal';
+import { DashboardRefreshButton } from './DashboardRefreshButton';
+import { PreAggregateAuditDrawer } from './PreAggregateAuditIndicator';
 
 type DashboardHeaderProps = {
     dashboard: Dashboard;
@@ -77,9 +91,13 @@ type DashboardHeaderProps = {
     isFullScreenFeatureEnabled?: boolean;
     isFullscreen: boolean;
     oldestCacheTime?: Date;
+    preAggregateStatuses?: Record<string, TilePreAggregateStatus>;
+    allTilesLoaded?: boolean;
     activeTabUuid?: string;
     dashboardTabs?: Dashboard['tabs'];
+    dashboardTiles?: Dashboard['tiles'];
     isMovingDashboardToSpace: boolean;
+    onSwitchTab?: (tab: Dashboard['tabs'][number] | undefined) => void;
     onAddTiles: (tiles: Dashboard['tiles'][number][]) => void;
     onCancel: () => void;
     onSaveDashboard: () => void;
@@ -100,11 +118,15 @@ const DashboardHeader = ({
     isEditMode,
     isSaving,
     isMovingDashboardToSpace,
+    onSwitchTab,
     isFullScreenFeatureEnabled,
     isFullscreen,
     oldestCacheTime,
+    preAggregateStatuses,
+    allTilesLoaded,
     activeTabUuid,
     dashboardTabs,
+    dashboardTiles,
     onAddTiles,
     onCancel,
     onSaveDashboard,
@@ -117,6 +139,10 @@ const DashboardHeader = ({
     onEditClicked,
     className,
 }: DashboardHeaderProps) => {
+    const performanceWarning = useDashboardPerformanceWarning(
+        dashboardTiles,
+        dashboardTabs,
+    );
     const isDashboardSummariesEnabled = useClientFeatureFlag(
         'ai-dashboard-summary' as FeatureFlags,
     );
@@ -138,6 +164,19 @@ const DashboardHeader = ({
         useToggle(false);
     const [isTransferToSpaceModalOpen, transferToSpaceModalHandlers] =
         useDisclosure(false);
+    const [isPreAggAuditOpen, preAggAuditHandlers] = useDisclosure(false);
+    const [isPreAggRefreshOpen, preAggRefreshHandlers] = useDisclosure(false);
+
+    const uniquePreAggregateNames = useMemo(() => {
+        if (!preAggregateStatuses) return [];
+        return [
+            ...new Set(
+                Object.values(preAggregateStatuses)
+                    .filter((s) => s.hit && s.preAggregateName !== null)
+                    .map((s) => s.preAggregateName as string),
+            ),
+        ];
+    }, [preAggregateStatuses]);
     const handleEditClick = () => {
         setIsUpdating(true);
         track({ name: EventName.UPDATE_DASHBOARD_NAME_CLICKED });
@@ -201,11 +240,24 @@ const DashboardHeader = ({
         toggleDashboardPinning({ uuid: dashboardUuid });
     }, [dashboardUuid, toggleDashboardPinning]);
 
-    const { user } = useApp();
+    const { data: favorites } = useFavorites(projectUuid);
+    const { mutate: toggleFavorite } = useFavoriteMutation(projectUuid);
+    const isDashboardFavorited = useMemo(
+        () => favorites?.some((f) => f.data.uuid === dashboardUuid) ?? false,
+        [favorites, dashboardUuid],
+    );
+
+    const { user, health } = useApp();
+    const preAggregatesEnabled = health.data?.preAggregates.enabled ?? false;
     const userCanManageDashboard = user.data?.ability.can(
         'manage',
         subject('Dashboard', dashboard),
     );
+    const userCanRefreshPreAggregates =
+        user.data?.ability.can(
+            'create',
+            subject('Job', { organizationUuid, projectUuid }),
+        ) && user.data?.ability.can('manage', 'CompileProject');
     const userCanCreateDeliveries = user.data?.ability?.can(
         'create',
         subject('ScheduledDeliveries', {
@@ -270,6 +322,27 @@ const DashboardHeader = ({
         >
             <Group gap="xs" flex={1} wrap="nowrap">
                 <Title order={6}>{dashboard.name}</Title>
+
+                {dashboardUuid && (
+                    <ActionIcon
+                        variant="subtle"
+                        size="md"
+                        radius="md"
+                        color={isDashboardFavorited ? 'orange' : 'ldGray.6'}
+                        onClick={() => {
+                            toggleFavorite({
+                                contentType: ContentType.DASHBOARD,
+                                contentUuid: dashboardUuid,
+                            });
+                        }}
+                    >
+                        {isDashboardFavorited ? (
+                            <IconStarFilled size={16} />
+                        ) : (
+                            <IconStar size={16} />
+                        )}
+                    </ActionIcon>
+                )}
 
                 <Popover
                     withinPortal
@@ -351,6 +424,45 @@ const DashboardHeader = ({
 
             {userCanManageDashboard && isEditMode ? (
                 <Group gap="xs">
+                    {performanceWarning.hasWarning && (
+                        <Tooltip
+                            label={
+                                <Box>
+                                    <Text size="sm" fw={500} mb={6}>
+                                        Speed up this dashboard
+                                    </Text>
+                                    <Text size="xs">
+                                        With{' '}
+                                        {performanceWarning.totalChartCount}{' '}
+                                        charts, load times can be slower
+                                        depending on the user's machine.{' '}
+                                        {performanceWarning.totalTabs <= 1
+                                            ? `We recommend splitting this into multiple dashboard tabs, limited to ${performanceWarning.tabsExceedingLimit[0]?.limit ?? 10} charts per tab to keep things snappy for your team.`
+                                            : `We recommend splitting this into multiple dashboards to keep things snappy for your team.`}
+                                    </Text>
+                                </Box>
+                            }
+                            withinPortal
+                            position="bottom"
+                            multiline
+                            maw={320}
+                            openDelay={200}
+                            transitionProps={{
+                                transition: 'fade',
+                                duration: 150,
+                            }}
+                        >
+                            <ActionIcon
+                                variant="subtle"
+                                size="md"
+                                radius="md"
+                                color="orange.6"
+                            >
+                                <MantineIcon icon={IconAlertTriangle} />
+                            </ActionIcon>
+                        </Tooltip>
+                    )}
+
                     <AddTileButton
                         onAddTiles={onAddTiles}
                         disabled={isSaving}
@@ -416,6 +528,7 @@ const DashboardHeader = ({
                             }}
                         >
                             <ActionIcon
+                                aria-label="Edit dashboard"
                                 radius="md"
                                 onClick={onEditClicked}
                                 bg="foreground"
@@ -510,7 +623,10 @@ const DashboardHeader = ({
                         )}
 
                     {userCanExportData && !isFullscreen && (
-                        <ShareLinkButton url={`${window.location.href}`} />
+                        <ShareLinkButton
+                            url={`${window.location.href}`}
+                            label="Copy link to the dashboard"
+                        />
                     )}
 
                     {!isFullscreen && (
@@ -525,18 +641,76 @@ const DashboardHeader = ({
                             }
                         >
                             <Menu.Target>
-                                <ActionIcon
-                                    variant="default"
-                                    size="md"
-                                    radius="md"
+                                <Box
+                                    className={headerClasses.menuTargetWrapper}
                                 >
-                                    <MantineIcon icon={IconDots} />
-                                </ActionIcon>
+                                    {preAggregatesEnabled && (
+                                        <Box
+                                            className={
+                                                headerClasses.zapIndicator
+                                            }
+                                            data-settled={
+                                                allTilesLoaded || undefined
+                                            }
+                                        >
+                                            <MantineIcon
+                                                icon={IconBolt}
+                                                size={9}
+                                            />
+                                        </Box>
+                                    )}
+                                    <ActionIcon
+                                        variant="default"
+                                        size="md"
+                                        radius="md"
+                                    >
+                                        <MantineIcon icon={IconDots} />
+                                    </ActionIcon>
+                                </Box>
                             </Menu.Target>
 
                             <Menu.Dropdown>
                                 {!!userCanManageDashboard && (
                                     <>
+                                        {preAggregatesEnabled &&
+                                            preAggregateStatuses &&
+                                            Object.keys(preAggregateStatuses)
+                                                .length > 0 && (
+                                                <>
+                                                    <Menu.Item
+                                                        leftSection={
+                                                            <MantineIcon
+                                                                icon={IconBolt}
+                                                            />
+                                                        }
+                                                        onClick={
+                                                            preAggAuditHandlers.open
+                                                        }
+                                                    >
+                                                        Pre-aggregation audit
+                                                    </Menu.Item>
+                                                    {userCanRefreshPreAggregates &&
+                                                        uniquePreAggregateNames.length >
+                                                            0 && (
+                                                            <Menu.Item
+                                                                leftSection={
+                                                                    <MantineIcon
+                                                                        icon={
+                                                                            IconRefresh
+                                                                        }
+                                                                    />
+                                                                }
+                                                                onClick={
+                                                                    preAggRefreshHandlers.open
+                                                                }
+                                                            >
+                                                                Refresh
+                                                                pre-aggregates
+                                                            </Menu.Item>
+                                                        )}
+                                                    <Menu.Divider />
+                                                </>
+                                            )}
                                         <Menu.Item
                                             leftSection={
                                                 <MantineIcon icon={IconCopy} />
@@ -631,6 +805,21 @@ const DashboardHeader = ({
                                     </Tooltip>
                                 )}
 
+                                {userCanManageDashboard && dashboardUuid && (
+                                    <Menu.Item
+                                        leftSection={
+                                            <MantineIcon icon={IconHistory} />
+                                        }
+                                        onClick={() =>
+                                            navigate(
+                                                `/projects/${projectUuid}/dashboards/${dashboardUuid}/history`,
+                                            )
+                                        }
+                                    >
+                                        Version history
+                                    </Menu.Item>
+                                )}
+
                                 {(userCanExportData ||
                                     userCanManageDashboard) && (
                                     <Menu.Item
@@ -705,6 +894,26 @@ const DashboardHeader = ({
                         )}
                 </Group>
             )}
+            {preAggregatesEnabled && preAggregateStatuses && (
+                <PreAggregateAuditDrawer
+                    opened={isPreAggAuditOpen}
+                    onClose={preAggAuditHandlers.close}
+                    statuses={preAggregateStatuses}
+                    activeTabUuid={activeTabUuid}
+                    dashboardTabs={dashboardTabs ?? []}
+                    onSwitchTab={(tab) => onSwitchTab?.(tab)}
+                />
+            )}
+            {preAggregatesEnabled &&
+                projectUuid &&
+                uniquePreAggregateNames.length > 0 && (
+                    <DashboardPreAggRefreshModal
+                        opened={isPreAggRefreshOpen}
+                        onClose={preAggRefreshHandlers.close}
+                        projectUuid={projectUuid}
+                        preAggregateNames={uniquePreAggregateNames}
+                    />
+                )}
         </PageHeader>
     );
 };

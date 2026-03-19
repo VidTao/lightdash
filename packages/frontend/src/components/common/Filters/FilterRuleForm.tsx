@@ -1,15 +1,14 @@
 import {
-    FilterType,
     createFilterRuleFromField,
+    FilterType,
     getFilterRuleFromFieldWithDefaultValue,
     getFilterTypeFromItem,
     getItemId,
     isDateItem,
-    type FilterRule,
     type FilterableField,
+    type FilterRule,
 } from '@lightdash/common';
-import { Menu } from '@mantine-8/core';
-import { ActionIcon, Box, Group, Select, Tooltip } from '@mantine/core';
+import { ActionIcon, Box, Group, Menu, Select, Tooltip } from '@mantine-8/core';
 import { IconDots, IconX } from '@tabler/icons-react';
 import { memo, useCallback, useMemo, type FC } from 'react';
 import FieldSelect from '../FieldSelect';
@@ -87,8 +86,22 @@ const FilterRuleForm: FC<Props> = memo(
         );
         const isRequired = filterRule.required;
         const isRequiredLabel = isRequired
-            ? "This filter is a required filter.\n It can't be deleted, but the value can be changed."
+            ? 'This is a required filter defined in the model configuration and cannot be removed.'
             : '';
+
+        const availableFields = useMemo(() => {
+            if (!isRequired) return fields;
+            // For required filters, restrict to same-type sub-dimensions
+            const baseFieldId = filterRule.target.fieldId;
+            return fields.filter(
+                (field) =>
+                    getItemId(field).startsWith(baseFieldId) &&
+                    getFilterTypeFromItem(field) === filterType,
+            );
+        }, [isRequired, fields, filterRule.target.fieldId, filterType]);
+
+        const isFieldSelectDisabled =
+            !isEditMode || (isRequired && availableFields.length <= 1);
 
         if (!activeField) {
             return null;
@@ -96,32 +109,43 @@ const FilterRuleForm: FC<Props> = memo(
 
         return (
             <Group
-                noWrap
+                wrap="nowrap"
                 align="start"
-                spacing="xs"
+                gap="xs"
                 data-testid="FilterRuleForm/filter-rule"
             >
-                <FieldSelect
-                    size="xs"
-                    disabled={!isEditMode}
-                    withinPortal={popoverProps?.withinPortal}
-                    onDropdownOpen={popoverProps?.onOpen}
-                    onDropdownClose={popoverProps?.onClose}
-                    hasGrouping
-                    item={activeField}
-                    items={fields}
-                    onChange={(field) => {
-                        if (!field) return;
-                        onFieldChange(getItemId(field));
-                    }}
-                    baseTable={baseTable}
-                />
+                <Tooltip
+                    label={isRequiredLabel}
+                    disabled={!isFieldSelectDisabled}
+                    withinPortal
+                    variant="xs"
+                    multiline
+                >
+                    <Box>
+                        <FieldSelect
+                            size="xs"
+                            disabled={isFieldSelectDisabled}
+                            comboboxProps={{
+                                withinPortal: popoverProps?.withinPortal,
+                            }}
+                            onDropdownOpen={popoverProps?.onOpen}
+                            onDropdownClose={popoverProps?.onClose}
+                            hasGrouping
+                            item={activeField}
+                            items={availableFields}
+                            onChange={(field) => {
+                                if (!field) return;
+                                onFieldChange(getItemId(field));
+                            }}
+                            baseTable={baseTable}
+                        />
+                    </Box>
+                </Tooltip>
                 <Select
                     limit={FILTER_SELECT_LIMIT}
                     size="xs"
                     w="175px"
-                    sx={{ flexShrink: 0 }}
-                    withinPortal={popoverProps?.withinPortal}
+                    style={{ flexShrink: 0 }}
                     onDropdownOpen={popoverProps?.onOpen}
                     onDropdownClose={popoverProps?.onClose}
                     disabled={!isEditMode}
@@ -162,11 +186,26 @@ const FilterRuleForm: FC<Props> = memo(
                         >
                             <span>
                                 <ActionIcon
+                                    variant="subtle"
+                                    color="gray"
                                     onClick={onDelete}
                                     disabled={isRequired}
                                     data-testid="delete-filter-rule-button"
                                 >
                                     <MantineIcon icon={IconX} size="sm" />
+                                </ActionIcon>
+                            </span>
+                        </Tooltip>
+                    ) : isRequired ? (
+                        <Tooltip
+                            label={isRequiredLabel}
+                            withinPortal
+                            variant="xs"
+                            multiline
+                        >
+                            <span>
+                                <ActionIcon variant="subtle" disabled>
+                                    <IconDots size="20" />
                                 </ActionIcon>
                             </span>
                         </Tooltip>
@@ -191,23 +230,9 @@ const FilterRuleForm: FC<Props> = memo(
                                 <Menu.Item onClick={onConvertToGroup}>
                                     Convert to group
                                 </Menu.Item>
-                                <Tooltip
-                                    label={isRequiredLabel}
-                                    disabled={!isRequired}
-                                    withinPortal
-                                    variant="xs"
-                                    multiline
-                                >
-                                    <span>
-                                        <Menu.Item
-                                            color="red"
-                                            disabled={isRequired}
-                                            onClick={onDelete}
-                                        >
-                                            Remove
-                                        </Menu.Item>
-                                    </span>
-                                </Tooltip>
+                                <Menu.Item color="red" onClick={onDelete}>
+                                    Remove
+                                </Menu.Item>
                             </Menu.Dropdown>
                         </Menu>
                     ))}

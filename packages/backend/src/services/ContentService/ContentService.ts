@@ -6,12 +6,15 @@ import {
     ChartSourceType,
     ContentActionMove,
     ContentType,
-    FeatureFlags,
+    DeletedContentFilters,
+    DeletedContentItem,
+    DeletedContentWithDescendants,
     ForbiddenError,
     KnexPaginateArgs,
     KnexPaginatedData,
     NotFoundError,
     SessionUser,
+    SpaceContentBase,
     SummaryContent,
 } from '@lightdash/common';
 import { intersection } from 'lodash';
@@ -21,7 +24,6 @@ import {
     ContentArgs,
     ContentFilters,
 } from '../../models/ContentModel/ContentModelTypes';
-import { FeatureFlagModel } from '../../models/FeatureFlagModel/FeatureFlagModel';
 import { ProjectModel } from '../../models/ProjectModel/ProjectModel';
 import { SpaceModel } from '../../models/SpaceModel';
 import { wrapSentryTransaction } from '../../utils';
@@ -29,10 +31,8 @@ import { BaseService } from '../BaseService';
 import { DashboardService } from '../DashboardService/DashboardService';
 import { SavedChartService } from '../SavedChartsService/SavedChartService';
 import { SavedSqlService } from '../SavedSqlService/SavedSqlService';
-import {
-    hasViewAccessToSpace,
-    SpaceService,
-} from '../SpaceService/SpaceService';
+import type { SpacePermissionService } from '../SpaceService/SpacePermissionService';
+import { SpaceService } from '../SpaceService/SpaceService';
 
 type ContentServiceArguments = {
     analytics: LightdashAnalytics;
@@ -43,7 +43,7 @@ type ContentServiceArguments = {
     dashboardService: DashboardService;
     savedChartService: SavedChartService;
     savedSqlService: SavedSqlService;
-    featureFlagModel: FeatureFlagModel;
+    spacePermissionService: SpacePermissionService;
 };
 
 export class ContentService extends BaseService {
@@ -63,7 +63,7 @@ export class ContentService extends BaseService {
 
     savedSqlService: SavedSqlService;
 
-    featureFlagModel: FeatureFlagModel;
+    spacePermissionService: SpacePermissionService;
 
     constructor(args: ContentServiceArguments) {
         super();
@@ -77,7 +77,7 @@ export class ContentService extends BaseService {
         this.dashboardService = args.dashboardService;
         this.savedChartService = args.savedChartService;
         this.savedSqlService = args.savedSqlService;
-        this.featureFlagModel = args.featureFlagModel;
+        this.spacePermissionService = args.spacePermissionService;
     }
 
     async find(
@@ -120,44 +120,75 @@ export class ContentService extends BaseService {
         });
         const spaceUuids = spaces.map((p) => p.uuid);
 
-        const nestedPermissionsFlag = await this.featureFlagModel.get({
-            user: {
-                userUuid: user.userUuid,
-                organizationUuid: user.organizationUuid,
-                organizationName: user.organizationName,
-            },
-            featureFlagId: FeatureFlags.NestedSpacesPermissions,
-        });
+        const allowedSpaceUuids =
+            await this.spacePermissionService.getAccessibleSpaceUuids(
+                'view',
+                user,
+                spaceUuids,
+            );
 
-        const spacesAccess = await this.spaceModel.getUserSpacesAccess(
-            user.userUuid,
-            spaceUuids,
-            { useInheritedAccess: nestedPermissionsFlag.enabled },
-        );
+        const isInsideSpace =
+            !!filters.spaceUuids && filters.spaceUuids.length > 0;
 
-        const allowedSpaceUuids = spaces
-            .filter((space) =>
-                hasViewAccessToSpace(
-                    user,
-                    space,
-                    spacesAccess[space.uuid] ?? [],
-                ),
-            )
-            .map((space) => space.uuid);
+        // When viewing contents of a space, fetch its child spaces
+        // and filter by access control so inaccessible children
+        // are excluded before pagination.
+        let accessibleChildSpaceUuids: string[] | undefined;
+        if (isInsideSpace) {
+            const childSpaceUuids =
+                await this.spaceModel.getChildSpaceUuidsForParents(
+                    allowedSpaceUuids,
+                );
+            accessibleChildSpaceUuids =
+                childSpaceUuids.length > 0
+                    ? await this.spacePermissionService.getAccessibleSpaceUuids(
+                          'view',
+                          user,
+                          childSpaceUuids,
+                      )
+                    : [];
+        }
 
-        return this.contentModel.findSummaryContents(
+        const results = await this.contentModel.findSummaryContents(
             {
                 ...filters,
                 projectUuids: allowedProjectUuids,
                 spaceUuids: allowedSpaceUuids,
                 space: {
-                    rootSpaces:
-                        !filters.spaceUuids || filters.spaceUuids.length === 0,
+                    rootSpaces: !isInsideSpace,
+                    accessibleChildSpaceUuids,
                 },
             },
             queryArgs,
             paginateArgs,
         );
+
+        // Enrich SpaceContentBase items with access data → SpaceContent
+        const spaceItems = results.data.filter(
+            (item): item is SpaceContentBase =>
+                item.contentType === ContentType.SPACE,
+        );
+
+        let directAccessMap: Record<string, string[]> = {};
+        if (spaceItems.length > 0) {
+            directAccessMap =
+                await this.spacePermissionService.getDirectAccessUserUuids(
+                    spaceItems.map((s) => s.uuid),
+                );
+        }
+
+        return {
+            ...results,
+            data: results.data.map((item): SummaryContent => {
+                if (item.contentType !== ContentType.SPACE) {
+                    return item;
+                }
+                return {
+                    ...item,
+                    access: directAccessMap[item.uuid] ?? [],
+                };
+            }),
+        };
     }
 
     async bulkMove(
@@ -316,6 +347,156 @@ export class ContentService extends BaseService {
                     moveToSpaceArgs,
                     moveToSpaceOptions,
                 );
+            default:
+                return assertUnreachable(item, 'Unknown content type');
+        }
+    }
+
+    /**
+     * Find deleted content in a project using the ContentModel UNION approach.
+     */
+    async findDeleted(
+        user: SessionUser,
+        filters: DeletedContentFilters,
+        paginateArgs?: KnexPaginateArgs,
+    ): Promise<KnexPaginatedData<DeletedContentWithDescendants[]>> {
+        const { organizationUuid } = user;
+        if (organizationUuid === undefined) {
+            throw new NotFoundError('Organization not found');
+        }
+
+        const [projectUuid] = filters.projectUuids;
+        if (!projectUuid) {
+            throw new NotFoundError('Project UUID is required');
+        }
+
+        // Check project access
+        if (
+            user.ability.cannot(
+                'view',
+                subject('Project', { organizationUuid, projectUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        // Non-admins can only see their own deleted content
+        const isAdmin = user.ability.can(
+            'manage',
+            subject('DeletedContent', { organizationUuid, projectUuid }),
+        );
+        const deletedByUserUuids = isAdmin
+            ? filters.deletedByUserUuids
+            : [user.userUuid];
+
+        const contentTypes = filters.contentTypes ?? [
+            ContentType.CHART,
+            ContentType.DASHBOARD,
+            ContentType.SPACE,
+        ];
+
+        return this.contentModel.findDeletedContents(
+            {
+                projectUuids: [projectUuid],
+                contentTypes,
+                search: filters.search,
+                deletedByUserUuids,
+            },
+            paginateArgs,
+        );
+    }
+
+    /**
+     * Restore deleted content
+     */
+    async restoreContent(
+        user: SessionUser,
+        projectUuid: string,
+        item: DeletedContentItem,
+    ): Promise<void> {
+        if (user.organizationUuid === undefined) {
+            throw new NotFoundError('Organization not found');
+        }
+
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+        if (
+            user.ability.cannot(
+                'view',
+                subject('Project', { organizationUuid, projectUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        switch (item.contentType) {
+            case ContentType.CHART:
+                switch (item.source) {
+                    case ChartSourceType.DBT_EXPLORE:
+                        return this.savedChartService.restore(user, item.uuid);
+                    case ChartSourceType.SQL:
+                        return this.savedSqlService.restore(user, item.uuid);
+                    default:
+                        return assertUnreachable(
+                            item.source,
+                            `Unknown chart source: ${item.source}`,
+                        );
+                }
+            case ContentType.DASHBOARD:
+                return this.dashboardService.restore(user, item.uuid);
+            case ContentType.SPACE:
+                return this.spaceService.restore(user, item.uuid);
+            default:
+                return assertUnreachable(item, 'Unknown content type');
+        }
+    }
+
+    /**
+     * Permanently delete content
+     */
+    async permanentlyDeleteContent(
+        user: SessionUser,
+        projectUuid: string,
+        item: DeletedContentItem,
+    ): Promise<void> {
+        if (user.organizationUuid === undefined) {
+            throw new NotFoundError('Organization not found');
+        }
+
+        const { organizationUuid } =
+            await this.projectModel.getSummary(projectUuid);
+        if (
+            user.ability.cannot(
+                'view',
+                subject('Project', { organizationUuid, projectUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+
+        switch (item.contentType) {
+            case ContentType.CHART:
+                switch (item.source) {
+                    case ChartSourceType.DBT_EXPLORE:
+                        return this.savedChartService.permanentDelete(
+                            user,
+                            item.uuid,
+                        );
+                    case ChartSourceType.SQL:
+                        return this.savedSqlService.permanentDelete(
+                            user,
+                            item.uuid,
+                        );
+                    default:
+                        return assertUnreachable(
+                            item.source,
+                            `Unknown chart source: ${item.source}`,
+                        );
+                }
+            case ContentType.DASHBOARD:
+                return this.dashboardService.permanentDelete(user, item.uuid);
+            case ContentType.SPACE:
+                return this.spaceService.permanentDelete(user, item.uuid);
             default:
                 return assertUnreachable(item, 'Unknown content type');
         }

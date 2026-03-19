@@ -25,15 +25,16 @@ import {
     DashboardAsCode,
     DbtExposure,
     DbtProjectEnvironmentVariable,
+    getRequestMethod,
+    isDuplicateDashboardParams,
     LightdashRequestMethodHeader,
     ParameterError,
     RequestMethod,
     SqlChartAsCode,
+    UpdateDefaultUserSpaces,
     UpdateMetadata,
     UpdateProjectMember,
     UserWarehouseCredentials,
-    getRequestMethod,
-    isDuplicateDashboardParams,
     type ApiCalculateSubtotalsResponse,
     type ApiCreateDashboardResponse,
     type ApiCreateDashboardWithChartsResponse,
@@ -49,6 +50,7 @@ import {
     type DuplicateDashboardParams,
     type Tag,
     type UpdateMultipleDashboards,
+    type UpdateQueryTimezoneSettings,
     type UpdateSchedulerSettings,
 } from '@lightdash/common';
 import {
@@ -474,6 +476,30 @@ export class ProjectController extends BaseController {
     }
 
     /**
+     * Get user warehouse credentials available for a project
+     * @summary List project user warehouse credentials
+     */
+    @Middlewares([allowApiKeyAuthentication, isAuthenticated])
+    @SuccessResponse('200', 'Success')
+    @Get('{projectUuid}/user-warehouse-credentials')
+    @OperationId('getProjectUserWarehouseCredentials')
+    async getProjectUserWarehouseCredentials(
+        @Path() projectUuid: string,
+        @Request() req: express.Request,
+    ): Promise<{
+        status: 'ok';
+        results: UserWarehouseCredentials[];
+    }> {
+        this.setStatus(200);
+        return {
+            status: 'ok',
+            results: await this.services
+                .getProjectService()
+                .getProjectUserWarehouseCredentials(req.user!, projectUuid),
+        };
+    }
+
+    /**
      * Update the user's warehouse credentials preference for a project
      * @summary Update user warehouse credentials preference
      */
@@ -553,6 +579,34 @@ export class ProjectController extends BaseController {
         await this.services
             .getProjectService()
             .updateMetadata(req.user!, projectUuid, body);
+        return {
+            status: 'ok',
+            results: undefined,
+        };
+    }
+
+    /**
+     * Toggle default user spaces for a project.
+     * When enabled, creates personal spaces for all eligible users.
+     * @summary Update default user spaces setting
+     */
+    @Middlewares([
+        allowApiKeyAuthentication,
+        isAuthenticated,
+        unauthorisedInDemo,
+    ])
+    @SuccessResponse('200', 'Success')
+    @Patch('{projectUuid}/hasDefaultUserSpaces')
+    @OperationId('updateDefaultUserSpaces')
+    async updateDefaultUserSpaces(
+        @Path() projectUuid: string,
+        @Body() body: UpdateDefaultUserSpaces,
+        @Request() req: express.Request,
+    ): Promise<ApiSuccessEmpty> {
+        this.setStatus(200);
+        await this.services
+            .getProjectService()
+            .updateDefaultUserSpaces(req.user!, projectUuid, body);
         return {
             status: 'ok',
             results: undefined,
@@ -805,6 +859,35 @@ export class ProjectController extends BaseController {
     }
 
     /**
+     * Update query timezone settings for a project
+     * @summary Update query timezone settings
+     */
+    @Middlewares([
+        allowApiKeyAuthentication,
+        isAuthenticated,
+        unauthorisedInDemo,
+    ])
+    @SuccessResponse('200', 'Updated')
+    @Patch('{projectUuid}/queryTimezoneSettings')
+    @OperationId('updateQueryTimezoneSettings')
+    async updateQueryTimezoneSettings(
+        @Path() projectUuid: string,
+        @Body() body: UpdateQueryTimezoneSettings,
+        @Request() req: express.Request,
+    ): Promise<ApiSuccessEmpty> {
+        this.setStatus(200);
+
+        await this.services
+            .getProjectService()
+            .updateQueryTimezone(req.user!, projectUuid, body.queryTimezone);
+
+        return {
+            status: 'ok',
+            results: undefined,
+        };
+    }
+
+    /**
      * Create a new tag in a project
      * @summary Create tag
      */
@@ -1014,6 +1097,7 @@ export class ProjectController extends BaseController {
         chart: Omit<ChartAsCode, 'chartConfig' | 'description'> & {
             skipSpaceCreate?: boolean;
             publicSpaceCreate?: boolean;
+            force?: boolean;
             chartConfig: AnyType;
             description?: string | null; // Allow both undefined and null
         },
@@ -1032,6 +1116,7 @@ export class ProjectController extends BaseController {
                 },
                 chart.skipSpaceCreate,
                 chart.publicSpaceCreate,
+                chart.force,
             ),
         };
     }
@@ -1074,6 +1159,7 @@ export class ProjectController extends BaseController {
         sqlChart: Omit<SqlChartAsCode, 'config' | 'description'> & {
             skipSpaceCreate?: boolean;
             publicSpaceCreate?: boolean;
+            force?: boolean;
             config: AnyType;
             description?: string | null;
         },
@@ -1092,6 +1178,7 @@ export class ProjectController extends BaseController {
                 },
                 sqlChart.skipSpaceCreate,
                 sqlChart.publicSpaceCreate,
+                sqlChart.force,
             ),
         };
     }
@@ -1111,6 +1198,7 @@ export class ProjectController extends BaseController {
         dashboard: Omit<DashboardAsCode, 'tiles' | 'description'> & {
             skipSpaceCreate?: boolean;
             publicSpaceCreate?: boolean;
+            force?: boolean;
             tiles: AnyType;
             description?: string | null; // Allow both undefined and null
         }, // Simplify filter type for tsoa
@@ -1129,6 +1217,7 @@ export class ProjectController extends BaseController {
                 },
                 dashboard.skipSpaceCreate,
                 dashboard.publicSpaceCreate,
+                dashboard.force,
             ),
         };
     }
@@ -1189,6 +1278,63 @@ export class ProjectController extends BaseController {
         return {
             status: 'ok',
             results,
+        };
+    }
+
+    /**
+     * Refresh all pre-aggregates in a project
+     * @summary Refresh project pre-aggregates
+     */
+    @Middlewares([
+        allowApiKeyAuthentication,
+        isAuthenticated,
+        unauthorisedInDemo,
+    ])
+    @SuccessResponse('200', 'Success')
+    @Post('{projectUuid}/pre-aggregates/refresh')
+    @OperationId('refreshProjectPreAggregates')
+    async refreshPreAggregates(
+        @Path() projectUuid: string,
+        @Request() req: express.Request,
+    ): Promise<ApiSuccess<{ jobIds: string[] }>> {
+        this.setStatus(200);
+        return {
+            status: 'ok',
+            results: await this.services
+                .getProjectService()
+                .refreshPreAggregates(req.user!, projectUuid),
+        };
+    }
+
+    /**
+     * Refresh a single pre-aggregate by its definition name
+     * @summary Refresh pre-aggregate by definition name
+     */
+    @Middlewares([
+        allowApiKeyAuthentication,
+        isAuthenticated,
+        unauthorisedInDemo,
+    ])
+    @SuccessResponse('200', 'Success')
+    @Post(
+        '{projectUuid}/pre-aggregates/definitions/{preAggregateDefinitionName}/refresh',
+    )
+    @OperationId('refreshProjectPreAggregateByDefinitionName')
+    async refreshPreAggregateByDefinitionName(
+        @Path() projectUuid: string,
+        @Path() preAggregateDefinitionName: string,
+        @Request() req: express.Request,
+    ): Promise<ApiSuccess<{ jobIds: string[] }>> {
+        this.setStatus(200);
+        return {
+            status: 'ok',
+            results: await this.services
+                .getProjectService()
+                .refreshPreAggregateByDefinitionName(
+                    req.user!,
+                    projectUuid,
+                    preAggregateDefinitionName,
+                ),
         };
     }
 }

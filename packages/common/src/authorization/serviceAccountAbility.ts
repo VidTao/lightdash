@@ -1,5 +1,4 @@
 import { type AbilityBuilder } from '@casl/ability';
-
 import { ServiceAccountScope } from '../ee/serviceAccounts/types';
 import { ProjectType } from '../types/projects';
 import { type MemberAbility } from './types';
@@ -29,11 +28,11 @@ const applyServiceAccountStaticAbilities: Record<
 
         can('view', 'Dashboard', {
             organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('view', 'SavedChart', {
             organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('view', 'Dashboard', {
             organizationUuid,
@@ -50,7 +49,7 @@ const applyServiceAccountStaticAbilities: Record<
         });
         can('view', 'Space', {
             organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('view', 'Space', {
             organizationUuid,
@@ -182,7 +181,7 @@ const applyServiceAccountStaticAbilities: Record<
         });
         can('manage', 'Space', {
             organizationUuid,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
         });
         can('create', 'Space', {
             organizationUuid,
@@ -214,6 +213,9 @@ const applyServiceAccountStaticAbilities: Record<
         applyServiceAccountStaticAbilities[ServiceAccountScope.ORG_EDIT]({
             organizationUuid,
             builder: { can },
+        });
+        can('manage', 'PreAggregation', {
+            organizationUuid,
         });
         can('manage', 'VirtualView', {
             organizationUuid,
@@ -251,6 +253,9 @@ const applyServiceAccountStaticAbilities: Record<
         can('create', 'Project', {
             organizationUuid,
             type: ProjectType.PREVIEW,
+        });
+        can('manage', 'DeployProject', {
+            organizationUuid,
         });
         can('update', 'Project', {
             organizationUuid,

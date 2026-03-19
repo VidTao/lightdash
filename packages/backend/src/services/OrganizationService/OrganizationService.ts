@@ -7,6 +7,7 @@ import {
     CreateColorPalette,
     CreateGroup,
     CreateOrganization,
+    FeatureFlags,
     CreateProject,
     DbtProjectType,
     DbtVersionOptionLatest,
@@ -43,6 +44,7 @@ import fs from 'fs';
 import { groupBy } from 'lodash';
 import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../../config/parseConfig';
+import { FeatureFlagModel } from '../../models/FeatureFlagModel/FeatureFlagModel';
 import { GroupsModel } from '../../models/GroupsModel';
 import { OnboardingModel } from '../../models/OnboardingModel/OnboardingModel';
 import { OrganizationAllowedEmailDomainsModel } from '../../models/OrganizationAllowedEmailDomainsModel';
@@ -64,6 +66,7 @@ type OrganizationServiceArguments = {
     userModel: UserModel;
     groupsModel: GroupsModel;
     organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
+    featureFlagModel: FeatureFlagModel;
     projectService: ProjectService;
 };
 
@@ -78,6 +81,8 @@ export class OrganizationService extends BaseService {
     private readonly userModel: UserModel;
     private readonly organizationAllowedEmailDomainsModel: OrganizationAllowedEmailDomainsModel;
     private readonly groupsModel: GroupsModel;
+
+    private readonly featureFlagModel: FeatureFlagModel;
     private readonly projectService: ProjectService;
 
     constructor({
@@ -90,6 +95,7 @@ export class OrganizationService extends BaseService {
         userModel,
         groupsModel,
         organizationAllowedEmailDomainsModel,
+        featureFlagModel,
         projectService,
     }: OrganizationServiceArguments) {
         super();
@@ -103,6 +109,7 @@ export class OrganizationService extends BaseService {
         this.organizationAllowedEmailDomainsModel =
             organizationAllowedEmailDomainsModel;
         this.groupsModel = groupsModel;
+        this.featureFlagModel = featureFlagModel;
         this.projectService = projectService;
     }
 
@@ -802,5 +809,59 @@ export class OrganizationService extends BaseService {
         );
 
         return palette;
+    }
+
+    async getImpersonationEnabled(user: SessionUser): Promise<boolean> {
+        const { organizationUuid } = user;
+        if (
+            user.ability.cannot(
+                'update',
+                subject('Organization', { organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+        if (organizationUuid === undefined) {
+            throw new NotFoundError('Organization not found');
+        }
+        const flag = await this.featureFlagModel.get({
+            user,
+            featureFlagId: FeatureFlags.UserImpersonation,
+        });
+        if (!flag.enabled) {
+            return false;
+        }
+        return this.organizationModel.getImpersonationEnabled(organizationUuid);
+    }
+
+    async updateImpersonationEnabled(
+        user: SessionUser,
+        enabled: boolean,
+    ): Promise<void> {
+        const { organizationUuid } = user;
+        if (
+            user.ability.cannot(
+                'update',
+                subject('Organization', { organizationUuid }),
+            )
+        ) {
+            throw new ForbiddenError();
+        }
+        if (organizationUuid === undefined) {
+            throw new NotFoundError('Organization not found');
+        }
+        const flag = await this.featureFlagModel.get({
+            user,
+            featureFlagId: FeatureFlags.UserImpersonation,
+        });
+        if (!flag.enabled) {
+            throw new ForbiddenError(
+                'User impersonation is not enabled for this instance',
+            );
+        }
+        await this.organizationModel.updateImpersonationEnabled(
+            organizationUuid,
+            enabled,
+        );
     }
 }

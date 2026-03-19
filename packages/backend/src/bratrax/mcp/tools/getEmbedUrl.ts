@@ -97,14 +97,14 @@ async function generateEmbedUrl(
                     args.resource_uuid,
                 );
 
-                const space = await ctx.spaceModel.getSpaceSummary(
-                    chart.spaceUuid,
-                );
-                const access = await ctx.spaceModel.getUserSpaceAccess(
-                    user.userUuid,
-                    chart.spaceUuid,
-                    { useInheritedAccess: true },
-                );
+                const spaceAccessContext =
+                    await ctx.services
+                        .getSpacePermissionService()
+                        .getSpaceAccessContext(
+                            user.userUuid,
+                            chart.spaceUuid,
+                        );
+                const { access, inheritsFromOrgOrProject } = spaceAccessContext;
 
                 if (
                     user.ability.cannot(
@@ -112,7 +112,7 @@ async function generateEmbedUrl(
                         subject('SavedChart', {
                             organizationUuid,
                             projectUuid: chart.projectUuid,
-                            isPrivate: space.isPrivate,
+                            inheritsFromOrgOrProject,
                             access,
                         }),
                     )

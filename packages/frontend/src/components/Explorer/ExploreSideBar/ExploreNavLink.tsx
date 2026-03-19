@@ -1,4 +1,5 @@
 import {
+    friendlyName,
     InlineErrorType,
     isSummaryExploreError,
     type SummaryExplore,
@@ -9,8 +10,9 @@ import {
     Highlight,
     HoverCard,
     NavLink,
+    Paper,
     Text,
-} from '@mantine/core';
+} from '@mantine-8/core';
 import { useToggle } from '@mantine/hooks';
 import {
     IconAlertTriangle,
@@ -20,7 +22,10 @@ import {
 import React from 'react';
 import MantineIcon from '../../common/MantineIcon';
 import { TableItemDetailPreview } from '../ExploreTree/TableTree/ItemDetailPreview';
-import WarningsHoverCardContent from '../WarningsHoverCard';
+import WarningsHoverCardContent from '../WarningsHoverCardContent';
+
+const getPreAggregateSource = (explore: SummaryExplore) =>
+    'preAggregateSource' in explore ? explore.preAggregateSource : undefined;
 
 type ExploreNavLinkProps = {
     explore: SummaryExplore;
@@ -47,6 +52,15 @@ const ExploreNavLink: React.FC<ExploreNavLinkProps> = ({
         explore.errors.every(
             (error) => error.type === InlineErrorType.NO_DIMENSIONS_FOUND,
         );
+    const preAggregateSource = getPreAggregateSource(explore);
+    const displayLabel =
+        explore.type === 'pre_aggregate' && preAggregateSource
+            ? friendlyName(preAggregateSource.preAggregateName)
+            : explore.label;
+    const displayDescription =
+        explore.type === 'pre_aggregate' && preAggregateSource
+            ? `Pre-aggregate for ${preAggregateSource.sourceExploreName}`
+            : explore.description;
 
     // Determine rightSection
     let rightSection;
@@ -73,7 +87,22 @@ const ExploreNavLink: React.FC<ExploreNavLinkProps> = ({
         <NavLink
             role="listitem"
             disabled={isError}
-            icon={<MantineIcon icon={IconTable} size="lg" color="ldGray.7" />}
+            leftSection={
+                <Paper
+                    radius="sm"
+                    bg="ldGray.0"
+                    p={0}
+                    shadow="none"
+                    withBorder={false}
+                >
+                    <MantineIcon
+                        icon={IconTable}
+                        size="md"
+                        color="ldGray.7"
+                        stroke={1.5}
+                    />
+                </Paper>
+            }
             onClick={isError ? undefined : onClick}
             onMouseEnter={needsHoverCard ? undefined : () => toggleHover(true)}
             onMouseLeave={needsHoverCard ? undefined : () => toggleHover(false)}
@@ -84,12 +113,12 @@ const ExploreNavLink: React.FC<ExploreNavLinkProps> = ({
                         highlight={query ?? ''}
                         truncate
                     >
-                        {explore.label}
+                        {displayLabel}
                     </Highlight>
                 ) : (
                     <TableItemDetailPreview
-                        label={explore.label}
-                        description={explore.description}
+                        label={displayLabel}
+                        description={displayDescription}
                         showPreview={needsHoverCard ? false : isHover}
                         closePreview={() => toggleHover(false)}
                         offset={0}
@@ -98,8 +127,11 @@ const ExploreNavLink: React.FC<ExploreNavLinkProps> = ({
                             component={Text}
                             highlight={query ?? ''}
                             truncate
+                            fz="sm"
+                            fw={500}
+                            c="ldDark.8"
                         >
-                            {explore.label}
+                            {displayLabel}
                         </Highlight>
                     </TableItemDetailPreview>
                 )
@@ -118,8 +150,7 @@ const ExploreNavLink: React.FC<ExploreNavLinkProps> = ({
             position="right"
             withArrow
             radius="md"
-            shadow="subtle"
-            variant="xs"
+            shadow="sm"
         >
             <HoverCard.Target>
                 <Box>{navLink}</Box>

@@ -9,7 +9,6 @@ import {
 import { InvalidArgumentError, Option, program } from 'commander';
 import { validate } from 'uuid';
 import {
-    CLI_VERSION,
     DEFAULT_DBT_PROFILES_DIR as defaultProfilesDir,
     DEFAULT_DBT_PROJECT_DIR as defaultProjectDir,
     NODE_VERSION,
@@ -22,10 +21,14 @@ import { dbtRunHandler } from './handlers/dbt/run';
 import { deployHandler } from './handlers/deploy';
 import { diagnosticsHandler } from './handlers/diagnostics';
 import { downloadHandler, uploadHandler } from './handlers/download';
+import { exportChartImageHandler } from './handlers/exportChartImage';
 import { generateHandler } from './handlers/generate';
 import { generateExposuresHandler } from './handlers/generateExposures';
 import { getProjectHandler } from './handlers/getProject';
-import { installSkillsHandler } from './handlers/installSkills';
+import {
+    getVersionWithSkills,
+    installSkillsHandler,
+} from './handlers/installSkills';
 import { lintHandler } from './handlers/lint';
 import { listProjectsHandler } from './handlers/listProjects';
 import { login } from './handlers/login';
@@ -35,6 +38,7 @@ import {
     stopPreviewHandler,
 } from './handlers/preview';
 import { renameHandler } from './handlers/renameHandler';
+import { runChartHandler } from './handlers/runChart';
 import { setProjectHandler } from './handlers/setProject';
 import { sqlHandler } from './handlers/sql';
 import { validateHandler } from './handlers/validate';
@@ -92,7 +96,7 @@ function parseProjectArgument(value: string | undefined): string | undefined {
 }
 
 program
-    .version(CLI_VERSION)
+    .version(getVersionWithSkills())
     .name(styles.title('⚡️lightdash'))
     .description(
         'Developer tools for dbt and Lightdash.\nSee https://docs.lightdash.com for more help and examples',
@@ -222,6 +226,18 @@ ${styles.bold('Examples:')}
         undefined,
     )
     .option('--email <email>', 'Login with email and password', undefined)
+    .option(
+        '--oauth-port <port>',
+        'Port for the local OAuth callback server (default: random available port)',
+        (value: string) => {
+            const port = parseInt(value, 10);
+            if (Number.isNaN(port) || port < 1 || port > 65535) {
+                throw new Error('Port must be a number between 1 and 65535');
+            }
+            return port;
+        },
+        undefined,
+    )
     .option('--verbose', undefined, false)
     .action(login);
 
@@ -522,14 +538,27 @@ program
         false,
     )
     .option(
+        '--no-warehouse-credentials',
+        'Create preview without warehouse credentials. Copies credentials from upstream project.',
+    )
+    .option(
         '--organization-credentials <name>',
         'Use organization warehouse credentials with the specified name (Enterprise Edition feature)',
     )
     .option(
-        '--disable-timestamp-conversion [true|false]',
-        'Disable timestamp conversion to UTC for Snowflake warehouses. Only use this if your timestamp values are already in UTC.',
-        parseDisableTimestampConversionOption,
+        '--use-batched-deploy',
+        'Use the new batched deploy feature to upload explores in batches',
         false,
+    )
+    .option(
+        '--batch-size <number>',
+        'Number of explores to deploy in each batch (default: 50)',
+        '50',
+    )
+    .option(
+        '--parallel-batches <number>',
+        'Number of batches to send in parallel (default: 1, use higher values with caution)',
+        '1',
     )
     .action(previewHandler);
 
@@ -630,7 +659,26 @@ program
         parseDisableTimestampConversionOption,
         false,
     )
+    .option(
+        '--no-warehouse-credentials',
+        'Create preview without warehouse credentials. Copies credentials from upstream project.',
+    )
     .option('-y, --assume-yes', 'assume yes to prompts', false)
+    .option(
+        '--use-batched-deploy',
+        'Use the new batched deploy feature to upload explores in batches',
+        false,
+    )
+    .option(
+        '--batch-size <number>',
+        'Number of explores to deploy in each batch (default: 50)',
+        '50',
+    )
+    .option(
+        '--parallel-batches <number>',
+        'Number of batches to send in parallel (default: 1, use higher values with caution)',
+        '1',
+    )
     .action(startPreviewHandler);
 
 program
@@ -717,10 +765,17 @@ program
     )
     .option('--public', 'Create new spaces as public instead of private', false)
     .option(
+        '--concurrency <number>',
+        'Number of parallel uploads (default: 1)',
+        '1',
+    )
+    .option(
         '--include-charts',
         'Include charts updates when uploading dashboards',
         false,
     )
+    .option('--validate', 'Validate charts and dashboards after upload', false)
+    .option('--gzip', 'Enable gzip compression for request bodies', false)
     .action(uploadHandler);
 
 program
@@ -821,6 +876,22 @@ program
         false,
     )
     .option('-y, --assume-yes', 'assume yes to prompts', false)
+    .option(
+        '--use-batched-deploy',
+        'Use batched deploy for large projects (sends explores in batches)',
+        false,
+    )
+    .option(
+        '--batch-size <number>',
+        'Number of explores per batch (default: 50)',
+        '50',
+    )
+    .option(
+        '--parallel-batches <number>',
+        'Number of batches to send in parallel (default: 1, use higher values with caution)',
+        '1',
+    )
+    .option('--gzip', 'Enable gzip compression for request bodies', false)
     .action(deployHandler);
 
 program
@@ -1152,6 +1223,30 @@ program
     )
     .option('--verbose', 'Show detailed output', false)
     .action(sqlHandler);
+
+program
+    .command('run-chart')
+    .description('Execute a chart YAML to verify the query runs')
+    .requiredOption('-p, --path <path>', 'Path to chart YAML file')
+    .option('-o, --output <file>', 'Output file path for CSV results')
+    .option('-l, --limit <number>', 'Row limit for query', parseIntArgument)
+    .option(
+        '--page-size <number>',
+        'Number of rows per page (default: 500)',
+        parseIntArgument,
+    )
+    .option('--verbose', 'Show detailed output', false)
+    .action(runChartHandler);
+
+program
+    .command('export-chart-image')
+    .description(
+        'Export a deployed chart as a PNG image. The chart must already exist on the server.',
+    )
+    .argument('<chart>', 'Chart slug')
+    .requiredOption('-o, --output <file>', 'Output file path for the PNG image')
+    .option('--verbose', 'Show detailed output', false)
+    .action(exportChartImageHandler);
 
 program
     .command('install-skills')

@@ -29,6 +29,7 @@ import {
     formatRawRows,
     formatRows,
     getDashboardFiltersForTileAndTables,
+    getDimensionMapFromTables,
     getDimensions,
     getFilterInteractivityValue,
     getItemId,
@@ -538,7 +539,7 @@ export class EmbedService extends BaseService {
         });
         return {
             ...dashboard,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
             access: [],
             dashboardFiltersInteractivity: account.access.filtering,
             parameterInteractivity: account.access.parameters,
@@ -583,15 +584,18 @@ export class EmbedService extends BaseService {
             ({ savedChartUuid }) => savedChartUuid,
         );
 
-        if (checkPermissions)
-            savedQueryUuids.map(async (chartUuid) =>
-                this._permissionsGetChartAndResults(
-                    { dashboardUuids, allowAllDashboards },
-                    projectUuid,
-                    chartUuid,
-                    dashboardUuid,
+        if (checkPermissions) {
+            await Promise.all(
+                savedQueryUuids.map((chartUuid) =>
+                    this._permissionsGetChartAndResults(
+                        { dashboardUuids, allowAllDashboards },
+                        projectUuid,
+                        chartUuid,
+                        dashboardUuid,
+                    ),
                 ),
             );
+        }
 
         const savedCharts =
             await this.savedChartModel.getInfoForAvailableFilters(
@@ -804,6 +808,7 @@ export class EmbedService extends BaseService {
         explore,
         queryTags,
         account,
+        timezone,
         dateZoomGranularity,
         combinedParameters,
     }: {
@@ -820,7 +825,8 @@ export class EmbedService extends BaseService {
             dashboard_uuid?: string; // optional for standalone chart embeds
         };
         account: AnonymousAccount;
-        dateZoomGranularity?: DateGranularity;
+        timezone: string;
+        dateZoomGranularity?: DateGranularity | string;
         combinedParameters?: ParametersValuesMap;
     }) {
         const { warehouseClient, sshTunnel } = await this._getWarehouseClient(
@@ -845,7 +851,7 @@ export class EmbedService extends BaseService {
             warehouseSqlBuilder: warehouseClient,
             intrinsicUserAttributes,
             userAttributes,
-            timezone: this.lightdashConfig.query.timezone || 'UTC',
+            timezone,
             dateZoom: dateZoomGranularity
                 ? {
                       granularity: dateZoomGranularity,
@@ -934,6 +940,7 @@ export class EmbedService extends BaseService {
         dashboardSorts,
         parameters,
         pivotResults,
+        limit,
     }: {
         account: AnonymousAccount;
         projectUuid: string;
@@ -946,6 +953,7 @@ export class EmbedService extends BaseService {
         | 'invalidateCache'
         | 'dateZoom'
         | 'parameters'
+        | 'limit'
     >): Promise<ApiExecuteAsyncDashboardChartQueryResults> {
         const { dashboardUuids, allowAllDashboards, user } =
             await this.embedModel.get(projectUuid);
@@ -1031,7 +1039,7 @@ export class EmbedService extends BaseService {
             dashboardFilters: appliedDashboardFilters,
             dateZoom,
             invalidateCache,
-            limit: undefined,
+            limit,
             context: QueryExecutionContext.EMBED,
             parameters: combinedParameters,
             pivotResults,
@@ -1043,7 +1051,7 @@ export class EmbedService extends BaseService {
         account: AnonymousAccount,
         tileUuid: string,
         dashboardFilters?: DashboardFilters,
-        dateZoomGranularity?: DateGranularity,
+        dateZoomGranularity?: DateGranularity | string,
         dashboardSorts?: SortField[],
         userParameters?: ParametersValuesMap,
         checkPermissions: boolean = true,
@@ -1141,6 +1149,9 @@ export class EmbedService extends BaseService {
             dashboardParameters,
         );
 
+        const timezone =
+            await this.projectService.getQueryTimezoneForProject(projectUuid);
+
         const { rows, cacheMetadata, fields } = await this._runEmbedQuery({
             projectUuid,
             metricQuery: metricQueryWithDashboardOverrides,
@@ -1156,6 +1167,7 @@ export class EmbedService extends BaseService {
                 query_context: QueryExecutionContext.EMBED,
             },
             account,
+            timezone,
             dateZoomGranularity,
             combinedParameters,
         });
@@ -1164,7 +1176,7 @@ export class EmbedService extends BaseService {
             appliedDashboardFilters: undefined,
             chart: {
                 ...chart,
-                isPrivate: false,
+                inheritsFromOrgOrProject: true,
                 access: [],
             },
             explore,
@@ -1339,9 +1351,13 @@ export class EmbedService extends BaseService {
             explore,
         );
 
+        const timezone =
+            await this.projectService.getQueryTimezoneForProject(projectUuid);
+
         try {
             const { totalQuery: totalMetricQuery } =
-                await this.projectService._getCalculateTotalQuery(
+                await ProjectService._getCalculateTotalQuery(
+                    timezone,
                     userAttributes,
                     intrinsicUserAttributes,
                     explore,
@@ -1366,6 +1382,7 @@ export class EmbedService extends BaseService {
                     query_context: QueryExecutionContext.CALCULATE_TOTAL,
                 },
                 account,
+                timezone,
                 combinedParameters,
             });
 
@@ -1479,6 +1496,9 @@ export class EmbedService extends BaseService {
             },
         });
 
+        const timezone =
+            await this.projectService.getQueryTimezoneForProject(projectUuid);
+
         // Run the query for each dimension group using embed query runner
         const subtotalsPromises = dimensionGroupsToSubtotal.map<
             Promise<[string, Record<string, unknown>[]]>
@@ -1509,6 +1529,7 @@ export class EmbedService extends BaseService {
                         query_context: QueryExecutionContext.CALCULATE_SUBTOTAL,
                     },
                     account,
+                    timezone,
                     combinedParameters,
                     dateZoomGranularity: dateZoom?.granularity,
                 });
@@ -1585,9 +1606,13 @@ export class EmbedService extends BaseService {
             explore,
         );
 
+        const timezone =
+            await this.projectService.getQueryTimezoneForProject(projectUuid);
+
         try {
             const { totalQuery: totalMetricQuery } =
-                await this.projectService._getCalculateTotalQuery(
+                await ProjectService._getCalculateTotalQuery(
+                    timezone,
                     userAttributes,
                     intrinsicUserAttributes,
                     explore,
@@ -1611,6 +1636,7 @@ export class EmbedService extends BaseService {
                     query_context: QueryExecutionContext.CALCULATE_TOTAL,
                 },
                 account,
+                timezone,
                 combinedParameters,
             });
 
@@ -1687,6 +1713,8 @@ export class EmbedService extends BaseService {
         limit,
         filters,
         forceRefresh,
+        tableName: fallbackTableName,
+        fieldId: fallbackFieldId,
     }: {
         account: AnonymousAccount;
         projectUuid: string;
@@ -1695,6 +1723,8 @@ export class EmbedService extends BaseService {
         limit: number;
         filters: AndFilterGroup | undefined;
         forceRefresh: boolean;
+        tableName?: string;
+        fieldId?: string;
     }): Promise<FieldValueSearchResult> {
         const { dashboardUuids, allowAllDashboards } =
             await this.embedModel.get(projectUuid);
@@ -1717,20 +1747,74 @@ export class EmbedService extends BaseService {
             await this.dashboardModel.getByIdOrSlug(dashboardUuid);
         const dashboardFilters = dashboard.filters.dimensions;
         const filter = dashboardFilters.find((f) => f.id === filterUuid);
-        if (!filter) {
-            throw new ParameterError(`Filter ${filterUuid} not found`);
+
+        // For SDK-injected filters, the UUID is dynamically generated and
+        // won't exist in saved dashboard filters. Fall back to tableName/fieldId
+        // from the request body, but only if the field is within the dashboard's
+        // explores (to prevent arbitrary field enumeration).
+        let resolvedTableName = filter?.target.tableName;
+        let resolvedFieldId = filter?.target.fieldId;
+
+        if (!resolvedTableName || !resolvedFieldId) {
+            if (!fallbackTableName || !fallbackFieldId) {
+                throw new ParameterError(
+                    `Filter ${filterUuid} not found and no fallback field provided`,
+                );
+            }
+
+            // Validate the fallback field is within the dashboard's explores
+            const chartTiles = dashboard.tiles.filter(isDashboardChartTileType);
+            const savedChartUuids = [
+                ...new Set(
+                    chartTiles
+                        .map((tile) => tile.properties.savedChartUuid)
+                        .filter(Boolean),
+                ),
+            ];
+            const savedCharts =
+                await this.savedChartModel.getInfoForAvailableFilters(
+                    savedChartUuids as string[],
+                );
+            const explores = await Promise.all(
+                [...new Set(savedCharts.map((chart) => chart.tableName))].map(
+                    (tableName) =>
+                        this.projectModel.getExploreFromCache(
+                            projectUuid,
+                            tableName,
+                        ),
+                ),
+            );
+
+            const isFieldInDashboardExplores = explores.some(
+                (explore) =>
+                    !isExploreError(explore) &&
+                    fallbackTableName in explore.tables &&
+                    fallbackFieldId in
+                        getDimensionMapFromTables(explore.tables),
+            );
+
+            if (!isFieldInDashboardExplores) {
+                throw new ParameterError(
+                    `Field ${fallbackFieldId} is not available on this dashboard`,
+                );
+            }
+
+            resolvedTableName = fallbackTableName;
+            resolvedFieldId = fallbackFieldId;
         }
 
-        const initialFieldId = filter.target.fieldId;
         const { metricQuery, explore, field } =
             await this.projectService._getFieldValuesMetricQuery({
                 projectUuid,
-                table: filter.target.tableName,
-                initialFieldId,
+                table: resolvedTableName,
+                initialFieldId: resolvedFieldId,
                 search,
                 limit,
                 filters,
             });
+
+        const timezone =
+            await this.projectService.getQueryTimezoneForProject(projectUuid);
 
         const { rows, cacheMetadata } = await this._runEmbedQuery({
             projectUuid: dashboard.projectUuid,
@@ -1746,6 +1830,7 @@ export class EmbedService extends BaseService {
                 query_context: QueryExecutionContext.FILTER_AUTOCOMPLETE,
             },
             account,
+            timezone,
         });
 
         return {

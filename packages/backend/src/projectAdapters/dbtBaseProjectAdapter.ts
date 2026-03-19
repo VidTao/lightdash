@@ -1,34 +1,35 @@
 import {
     AnyType,
-    DEFAULT_SPOTLIGHT_CONFIG,
+    attachTypesToModels,
+    convertExplores,
     DbtManifestVersion,
     DbtMetric,
     DbtModelNode,
     DbtPackages,
     DbtRawModelNode,
+    DEFAULT_SPOTLIGHT_CONFIG,
     Explore,
     ExploreError,
-    InlineError,
-    InlineErrorType,
-    ManifestValidator,
-    MissingCatalogEntryError,
-    NotFoundError,
-    ParseError,
-    SupportedDbtAdapter,
-    SupportedDbtVersions,
-    attachTypesToModels,
-    convertExplores,
     friendlyName,
     getCompiledModels,
     getDbtManifestVersion,
     getModelsFromManifest,
     getSchemaStructureFromDbtModels,
+    InlineError,
+    InlineErrorType,
     isSupportedDbtAdapter,
     loadLightdashProjectConfig,
+    ManifestValidator,
+    MissingCatalogEntryError,
     normaliseModelDatabase,
+    NotFoundError,
+    ParseError,
+    SupportedDbtAdapter,
+    SupportedDbtVersions,
     type LightdashProjectConfig,
 } from '@lightdash/common';
 import { WarehouseClient } from '@lightdash/warehouses';
+import * as Sentry from '@sentry/node';
 import fs from 'fs/promises';
 import path from 'path';
 import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
@@ -166,9 +167,8 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
             await this.dbtClient.installDeps();
         }
         Logger.debug('Get dbt manifest');
-        
-        const { manifest } = await this.dbtClient.getDbtManifest();
-        
+        const { manifest, selectedModelIds } =
+            await this.dbtClient.getDbtManifest();
         // Type of the target warehouse
         if (!isSupportedDbtAdapter(manifest.metadata)) {
             throw new ParseError(
@@ -176,10 +176,10 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                 {},
             );
         }
-        let models: DbtRawModelNode[] = [];
 
         const selector = this.dbtClient.getSelector();
-        
+        let models: DbtRawModelNode[];
+
         if (selector) {
             // If selector is provided, filter models by the path selector
             const manifestModels = getModelsFromManifest(manifest);

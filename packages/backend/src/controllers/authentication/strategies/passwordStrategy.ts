@@ -17,7 +17,7 @@ export const localPassportStrategy = ({
                     email,
                     password,
                 );
-                return done(null, user);
+                return done(null, user as Express.User);
             } catch (e) {
                 return done(
                     e instanceof LightdashError

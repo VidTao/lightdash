@@ -442,6 +442,8 @@ export const getUpdateSetupConfig = (): LightdashConfig['updateSetup'] => {
     }
 
     return {
+        organizationUuid: process.env.LD_SETUP_ORGANIZATION_UUID,
+        projectUuid: process.env.LD_SETUP_PROJECT_UUID,
         organization: {
             admin: {
                 email: process.env.LD_SETUP_ADMIN_EMAIL,
@@ -565,6 +567,53 @@ export const parseResultsS3Config = (): LightdashConfig['results']['s3'] => {
         accessKey,
         secretKey,
         useCredentialsFrom: baseUseCredentialsFrom,
+    };
+};
+
+export const parsePreAggregateResultsS3Config = ():
+    | Omit<S3Config, 'expirationTime'>
+    | undefined => {
+    const baseS3Config = parseBaseS3Config();
+
+    if (!baseS3Config) {
+        return undefined;
+    }
+
+    const bucket = process.env.PRE_AGGREGATE_RESULTS_S3_BUCKET;
+    const region = process.env.PRE_AGGREGATE_RESULTS_S3_REGION;
+    const accessKey = process.env.PRE_AGGREGATE_RESULTS_S3_ACCESS_KEY;
+    const secretKey = process.env.PRE_AGGREGATE_RESULTS_S3_SECRET_KEY;
+
+    const hasAnyPreAggregateS3Config =
+        bucket || region || accessKey || secretKey;
+
+    if (!hasAnyPreAggregateS3Config) {
+        return undefined;
+    }
+
+    const {
+        endpoint,
+        forcePathStyle,
+        useCredentialsFrom,
+        accessKey: baseAccessKey,
+        secretKey: baseSecretKey,
+    } = baseS3Config;
+
+    if (!endpoint || !bucket || !region) {
+        throw new ParseError(
+            'PRE_AGGREGATE_RESULTS_S3_BUCKET, PRE_AGGREGATE_RESULTS_S3_REGION, and S3_ENDPOINT must be set when configuring pre-aggregate result storage.',
+            {},
+        );
+    }
+
+    return {
+        endpoint,
+        forcePathStyle,
+        bucket,
+        region,
+        accessKey: accessKey || baseAccessKey,
+        secretKey: secretKey || baseSecretKey,
+        useCredentialsFrom,
     };
 };
 
@@ -812,6 +861,9 @@ export type LightdashConfig = {
         gcDurationBuckets?: number[];
         eventLoopMonitoringPrecision?: number;
         labels?: Object;
+        eventMetricsEnabled: boolean;
+        eventMetricsConfigPath?: string;
+        allQueryMetricsEnabled: boolean;
     };
     database: {
         connectionUri: string | undefined;
@@ -828,6 +880,7 @@ export type LightdashConfig = {
         maxPageSize: number;
         useSqlPivotResults: boolean | undefined;
         showExecutionTime: boolean | undefined;
+        retryQueryOnTransientErrors: boolean;
     };
     pivotTable: {
         maxColumnLimit: number;
@@ -840,6 +893,9 @@ export type LightdashConfig = {
     dashboard: {
         maxTilesPerTab: number;
         maxTabsPerDashboard: number;
+        versionHistory: {
+            daysLimit: number;
+        };
     };
     // This is the override color palette for the organization
     // TODO: allow override for dark theme
@@ -855,10 +911,17 @@ export type LightdashConfig = {
         cacheStateTimeSeconds: number;
         s3?: Omit<S3Config, 'expirationTime'>;
     };
+    natsWorker: {
+        enabled: boolean;
+        url: string | undefined;
+        workerConcurrency: number;
+        queueTimeoutMs: number;
+    };
     slack?: SlackConfig;
     scheduler: {
         enabled: boolean;
         concurrency: number;
+        pollInterval: number;
         jobTimeout: number;
         screenshotTimeout?: number;
         tasks: Array<SchedulerTaskName>;
@@ -875,6 +938,13 @@ export type LightdashConfig = {
     };
     groups: {
         enabled: boolean | undefined;
+    };
+    persistentDownloadUrls: {
+        enabled: boolean;
+        expirationSeconds: number;
+        expirationSecondsEmail: number | undefined;
+        expirationSecondsSlack: number | undefined;
+        expirationSecondsMsTeams: number | undefined;
     };
     extendedUsageAnalytics: {
         enabled: boolean;
@@ -910,6 +980,12 @@ export type LightdashConfig = {
     organizationWarehouseCredentials: {
         enabled: boolean;
     };
+    athenaWarehouseIamRoleAuth: {
+        enabled: boolean;
+    };
+    saveCredentialsForm: {
+        enabled: boolean;
+    };
     github: {
         appName: string;
         redirectDomain: string;
@@ -923,6 +999,9 @@ export type LightdashConfig = {
         maxDownloads: number;
     };
     microsoftTeams: {
+        enabled: boolean;
+    };
+    googleChat: {
         enabled: boolean;
     };
     googleCloudPlatform: {
@@ -954,6 +1033,8 @@ export type LightdashConfig = {
         dbt: DbtGithubProjectConfig;
     };
     updateSetup?: {
+        organizationUuid?: string;
+        projectUuid?: string;
         organization?: {
             admin: {
                 email?: string;
@@ -1013,8 +1094,23 @@ export type LightdashConfig = {
     maps: {
         enabled: boolean | undefined;
     };
-    nestedSpacesPermissions: {
+    savedMetricsTree: {
+        enabled: boolean | undefined;
+    };
+    defaultUserSpaces: {
+        enabled: boolean | undefined;
+    };
+    softDelete: {
         enabled: boolean;
+        retentionDays: number;
+    };
+    preAggregates: {
+        enabled: boolean;
+        parquetEnabled: boolean;
+        s3?: Omit<S3Config, 'expirationTime'>;
+    };
+    userImpersonation: {
+        enabled: boolean | undefined;
     };
 };
 
@@ -1213,6 +1309,7 @@ export type SmtpConfig = {
         name: string;
         email: string;
     };
+    inlineImageCid: boolean;
 };
 
 const DEFAULT_JOB_TIMEOUT = 1000 * 60 * 10; // 10 minutes
@@ -1283,12 +1380,42 @@ export const parseConfig = (): LightdashConfig => {
         copilotConfig = copilotConfigParse.data;
     }
 
+    const licenseKey = process.env.LIGHTDASH_LICENSE_KEY || null;
+    const preAggregatesEnabled =
+        licenseKey !== null && process.env.PRE_AGGREGATES_ENABLED === 'true';
+    const preAggregatesS3 = parsePreAggregateResultsS3Config();
+    const natsWorkerEnabled = process.env.NATS_ENABLED === 'true';
+    const natsWorkerUrl = process.env.NATS_URL;
+    const natsWorkerConcurrency =
+        getIntegerFromEnvironmentVariable('NATS_WORKER_CONCURRENCY') ?? 1;
+    const natsWorkerQueueTimeoutMs =
+        getIntegerFromEnvironmentVariable('NATS_QUEUE_TIMEOUT_MS') ?? 180000;
+
+    if (preAggregatesEnabled && !preAggregatesS3) {
+        throw new ParseError('Pre-aggregates require S3 configuration', {});
+    }
+    if (natsWorkerEnabled && !natsWorkerUrl) {
+        throw new ParseError('NATS_URL is required when NATS_ENABLED=true', {});
+    }
+    if (natsWorkerConcurrency <= 0) {
+        throw new ParseError(
+            'NATS_WORKER_CONCURRENCY must be greater than 0',
+            {},
+        );
+    }
+    if (natsWorkerQueueTimeoutMs <= 0) {
+        throw new ParseError(
+            'NATS_QUEUE_TIMEOUT_MS must be greater than 0',
+            {},
+        );
+    }
+
     return {
         mode,
         cookieSameSite: iframeEmbeddingEnabled ? 'none' : 'lax',
         cookieDomain: process.env.COOKIE_DOMAIN,
         license: {
-            licenseKey: process.env.LIGHTDASH_LICENSE_KEY || null,
+            licenseKey,
         },
         security: {
             contentSecurityPolicy: {
@@ -1323,6 +1450,8 @@ export const parseConfig = (): LightdashConfig => {
                       name: process.env.EMAIL_SMTP_SENDER_NAME || 'Lightdash',
                       email: process.env.EMAIL_SMTP_SENDER_EMAIL || '',
                   },
+                  inlineImageCid:
+                      process.env.EMAIL_SMTP_IMAGE_INLINE_CID === 'true',
               }
             : undefined,
         posthog: process.env.POSTHOG_PROJECT_API_KEY
@@ -1363,6 +1492,10 @@ export const parseConfig = (): LightdashConfig => {
             tracesSampleRate:
                 getFloatFromEnvironmentVariable('SENTRY_TRACES_SAMPLE_RATE') ||
                 0.1,
+            queryTracesSampleRate:
+                getFloatFromEnvironmentVariable(
+                    'SENTRY_QUERY_TRACES_SAMPLE_RATE',
+                ) ?? null, // defaults to null (use global tracesSampleRate), set to 1.0 to capture all query traces
             profilesSampleRate:
                 getFloatFromEnvironmentVariable(
                     'SENTRY_PROFILES_SAMPLE_RATE',
@@ -1546,6 +1679,15 @@ export const parseConfig = (): LightdashConfig => {
             labels: getObjectFromEnvironmentVariable(
                 'LIGHTDASH_PROMETHEUS_LABELS',
             ),
+            eventMetricsEnabled:
+                process.env.LIGHTDASH_PROMETHEUS_EVENT_METRICS_ENABLED ===
+                'true', // defaults to false
+            eventMetricsConfigPath:
+                process.env.LIGHTDASH_CUSTOM_METRICS_CONFIG_PATH ||
+                process.env.CUSTOM_METRICS_CONFIG_PATH,
+            allQueryMetricsEnabled:
+                process.env.LIGHTDASH_PROMETHEUS_ALL_QUERY_METRICS_ENABLED ===
+                'true', // defaults to false, tracks execution duration & S3 upload for all queries (not just pre-aggregate)
         },
         allowMultiOrgs: process.env.ALLOW_MULTIPLE_ORGS === 'true',
         maxPayloadSize: process.env.LIGHTDASH_MAX_PAYLOAD || '5mb',
@@ -1568,11 +1710,16 @@ export const parseConfig = (): LightdashConfig => {
                     'LIGHTDASH_QUERY_MAX_PAGE_SIZE',
                 ) || 2500, // Defaults to default limit * 5
             useSqlPivotResults: process.env.USE_SQL_PIVOT_RESULTS
-                ? process.env.USE_SQL_PIVOT_RESULTS === 'true'
+                ? process.env.USE_SQL_PIVOT_RESULTS !== 'false'
                 : undefined,
             showExecutionTime: process.env.SHOW_EXECUTION_TIME
                 ? process.env.SHOW_EXECUTION_TIME === 'true'
                 : undefined,
+            retryQueryOnTransientErrors: process.env
+                .LIGHTDASH_QUERY_RETRY_ON_TRANSIENT_ERRORS
+                ? process.env.LIGHTDASH_QUERY_RETRY_ON_TRANSIENT_ERRORS ===
+                  'true'
+                : false,
         },
         chart: {
             versionHistory: {
@@ -1591,6 +1738,12 @@ export const parseConfig = (): LightdashConfig => {
                 getIntegerFromEnvironmentVariable(
                     'LIGHTDASH_DASHBOARD_MAX_TABS_PER_DASHBOARD',
                 ) || 20,
+            versionHistory: {
+                daysLimit:
+                    getIntegerFromEnvironmentVariable(
+                        'LIGHTDASH_DASHBOARD_VERSION_HISTORY_DAYS_LIMIT',
+                    ) || 3,
+            },
         },
         pivotTable: {
             maxColumnLimit:
@@ -1624,6 +1777,12 @@ export const parseConfig = (): LightdashConfig => {
             ),
             s3: parseResultsS3Config(),
         },
+        natsWorker: {
+            enabled: natsWorkerEnabled,
+            url: natsWorkerUrl,
+            workerConcurrency: natsWorkerConcurrency,
+            queueTimeoutMs: natsWorkerQueueTimeoutMs,
+        },
         slack: {
             signingSecret: process.env.SLACK_SIGNING_SECRET,
             clientId: process.env.SLACK_CLIENT_ID,
@@ -1645,6 +1804,9 @@ export const parseConfig = (): LightdashConfig => {
         scheduler: {
             enabled: process.env.SCHEDULER_ENABLED !== 'false',
             concurrency: parseInt(process.env.SCHEDULER_CONCURRENCY || '3', 10),
+            pollInterval:
+                getIntegerFromEnvironmentVariable('SCHEDULER_POLL_INTERVAL') ||
+                1000,
             jobTimeout: process.env.SCHEDULER_JOB_TIMEOUT
                 ? parseInt(process.env.SCHEDULER_JOB_TIMEOUT, 10)
                 : DEFAULT_JOB_TIMEOUT,
@@ -1682,6 +1844,22 @@ export const parseConfig = (): LightdashConfig => {
             enabled: process.env.GROUPS_ENABLED
                 ? process.env.GROUPS_ENABLED === 'true'
                 : undefined,
+        },
+        persistentDownloadUrls: {
+            enabled: process.env.PERSISTENT_DOWNLOAD_URLS_ENABLED === 'true',
+            expirationSeconds:
+                getIntegerFromEnvironmentVariable(
+                    'PERSISTENT_DOWNLOAD_URL_EXPIRATION_SECONDS',
+                ) ?? 259200, // 3 days, matches S3_EXPIRATION_TIME default
+            expirationSecondsEmail: getIntegerFromEnvironmentVariable(
+                'PERSISTENT_DOWNLOAD_URL_EXPIRATION_SECONDS_EMAIL',
+            ),
+            expirationSecondsSlack: getIntegerFromEnvironmentVariable(
+                'PERSISTENT_DOWNLOAD_URL_EXPIRATION_SECONDS_SLACK',
+            ),
+            expirationSecondsMsTeams: getIntegerFromEnvironmentVariable(
+                'PERSISTENT_DOWNLOAD_URL_EXPIRATION_SECONDS_MSTEAMS',
+            ),
         },
         extendedUsageAnalytics: {
             enabled: process.env.EXTENDED_USAGE_ANALYTICS === 'true',
@@ -1765,6 +1943,12 @@ export const parseConfig = (): LightdashConfig => {
                 process.env.ORGANIZATION_WAREHOUSE_CREDENTIALS_ENABLED ===
                 'true',
         },
+        athenaWarehouseIamRoleAuth: {
+            enabled: process.env.ATHENA_WAREHOUSE_IAM_ROLE_AUTH === 'true',
+        },
+        saveCredentialsForm: {
+            enabled: process.env.SAVE_CREDENTIALS_FORM_ENABLED === 'true',
+        },
         github: {
             appName: process.env.GITHUB_APP_NAME || 'lightdash-app-dev',
             redirectDomain:
@@ -1793,6 +1977,9 @@ export const parseConfig = (): LightdashConfig => {
         microsoftTeams: {
             enabled: process.env.MICROSOFT_TEAMS_ENABLED === 'true',
         },
+        googleChat: {
+            enabled: process.env.GOOGLE_CHAT_ENABLED === 'true',
+        },
         googleCloudPlatform: {
             projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
         },
@@ -1815,7 +2002,7 @@ export const parseConfig = (): LightdashConfig => {
             enabled: process.env.EDIT_YAML_IN_UI_ENABLED === 'true',
         },
         partialCompilation: {
-            enabled: process.env.PARTIAL_COMPILATION_ENABLED === 'true',
+            enabled: process.env.PARTIAL_COMPILATION_ENABLED !== 'false',
         },
         funnelBuilder: {
             enabled:
@@ -1828,8 +2015,36 @@ export const parseConfig = (): LightdashConfig => {
                     ? true
                     : undefined,
         },
-        nestedSpacesPermissions: {
-            enabled: process.env.NESTED_SPACES_PERMISSIONS_ENABLED === 'true',
+        savedMetricsTree: {
+            enabled:
+                process.env.SAVED_METRICS_TREE_ENABLED === 'true'
+                    ? true
+                    : undefined,
+        },
+        defaultUserSpaces: {
+            enabled:
+                process.env.LIGHTDASH_DEFAULT_USER_SPACES_ENABLED === 'true'
+                    ? true
+                    : undefined,
+        },
+        softDelete: {
+            enabled: process.env.SOFT_DELETE_ENABLED === 'true',
+            retentionDays:
+                getIntegerFromEnvironmentVariable(
+                    'SOFT_DELETE_RETENTION_DAYS',
+                ) ?? 30,
+        },
+        preAggregates: {
+            enabled: preAggregatesEnabled,
+            parquetEnabled:
+                process.env.PRE_AGGREGATES_PARQUET_ENABLED === 'true',
+            s3: preAggregatesS3,
+        },
+        userImpersonation: {
+            enabled:
+                process.env.USER_IMPERSONATION_ENABLED === 'true'
+                    ? true
+                    : undefined,
         },
     };
 };

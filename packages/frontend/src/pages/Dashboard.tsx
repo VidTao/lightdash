@@ -1,5 +1,6 @@
 import {
     ContentType,
+    DateGranularity,
     type DashboardTile,
     type Dashboard as IDashboard,
 } from '@lightdash/common';
@@ -49,6 +50,7 @@ const Dashboard: FC = () => {
 
     const isDashboardLoading = useDashboardContext((c) => c.isDashboardLoading);
     const dashboard = useDashboardContext((c) => c.dashboard);
+
     const dashboardError = useDashboardContext((c) => c.dashboardError);
     const dashboardFilters = useDashboardContext((c) => c.dashboardFilters);
     const dashboardTemporaryFilters = useDashboardContext(
@@ -70,6 +72,7 @@ const Dashboard: FC = () => {
     const dashboardTabs = useDashboardContext((c) => c.dashboardTabs);
     const setDashboardTabs = useDashboardContext((c) => c.setDashboardTabs);
     const activeTab = useDashboardContext((c) => c.activeTab);
+    const setActiveTab = useDashboardContext((c) => c.setActiveTab);
     const setDashboardFilters = useDashboardContext(
         (c) => c.setDashboardFilters,
     );
@@ -80,6 +83,9 @@ const Dashboard: FC = () => {
         (c) => c.setDashboardTemporaryFilters,
     );
     const isDateZoomDisabled = useDashboardContext((c) => c.isDateZoomDisabled);
+    const isAddFilterDisabled = useDashboardContext(
+        (c) => c.isAddFilterDisabled,
+    );
     const areAllChartsLoaded = useDashboardContext((c) => c.areAllChartsLoaded);
     const missingRequiredParameters = useDashboardContext(
         (c) => c.missingRequiredParameters,
@@ -102,7 +108,16 @@ const Dashboard: FC = () => {
             isDateZoomDisabled
         );
     }, [dashboard, isDateZoomDisabled]);
+    const hasAddFilterDisabledChanged = useMemo(() => {
+        return (
+            (dashboard?.config?.isAddFilterDisabled || false) !==
+            isAddFilterDisabled
+        );
+    }, [dashboard, isAddFilterDisabled]);
     const oldestCacheTime = useDashboardContext((c) => c.oldestCacheTime);
+    const preAggregateStatuses = useDashboardContext(
+        (c) => c.preAggregateStatuses,
+    );
     const dashboardParameters = useDashboardContext(
         (c) => c.dashboardParameters,
     );
@@ -116,6 +131,30 @@ const Dashboard: FC = () => {
     );
     const setPinnedParameters = useDashboardContext(
         (c) => c.setPinnedParameters,
+    );
+    const dateZoomGranularities = useDashboardContext(
+        (c) => c.dateZoomGranularities,
+    );
+    const haveDateZoomGranularitiesChanged = useDashboardContext(
+        (c) => c.haveDateZoomGranularitiesChanged,
+    );
+    const setDateZoomGranularities = useDashboardContext(
+        (c) => c.setDateZoomGranularities,
+    );
+    const setHaveDateZoomGranularitiesChanged = useDashboardContext(
+        (c) => c.setHaveDateZoomGranularitiesChanged,
+    );
+    const defaultDateZoomGranularity = useDashboardContext(
+        (c) => c.defaultDateZoomGranularity,
+    );
+    const hasDefaultDateZoomGranularityChanged = useDashboardContext(
+        (c) => c.hasDefaultDateZoomGranularityChanged,
+    );
+    const setDefaultDateZoomGranularity = useDashboardContext(
+        (c) => c.setDefaultDateZoomGranularity,
+    );
+    const setHasDefaultDateZoomGranularityChanged = useDashboardContext(
+        (c) => c.setHasDefaultDateZoomGranularityChanged,
     );
 
     const parameterDefinitions = useDashboardContext(
@@ -163,7 +202,12 @@ const Dashboard: FC = () => {
         isSuccess,
         reset,
         isLoading: isSaving,
-    } = useUpdateDashboard(dashboardUuid, false, handleDashboardUpdateSuccess);
+    } = useUpdateDashboard(
+        dashboardUuid,
+        projectUuid,
+        false,
+        handleDashboardUpdateSuccess,
+    );
 
     const { mutateAsync: contentAction, isLoading: isContentActionLoading } =
         useContentAction(projectUuid);
@@ -267,6 +311,8 @@ const Dashboard: FC = () => {
             setHaveTilesChanged(false);
             setHaveFiltersChanged(false);
             setHavePinnedParametersChanged(false);
+            setHaveDateZoomGranularitiesChanged(false);
+            setHasDefaultDateZoomGranularityChanged(false);
             setDashboardTemporaryFilters({
                 dimensions: [],
                 metrics: [],
@@ -295,6 +341,8 @@ const Dashboard: FC = () => {
         setHaveFiltersChanged,
         setHaveTilesChanged,
         setHavePinnedParametersChanged,
+        setHaveDateZoomGranularitiesChanged,
+        setHasDefaultDateZoomGranularityChanged,
         dashboardTabs,
         activeTab,
     ]);
@@ -444,6 +492,15 @@ const Dashboard: FC = () => {
         setSavedParameters(dashboard.parameters ?? {});
         setPinnedParameters(dashboard.config?.pinnedParameters ?? []);
         setHavePinnedParametersChanged(false);
+        setDateZoomGranularities(
+            dashboard.config?.dateZoomGranularities ??
+                Object.values(DateGranularity),
+        );
+        setHaveDateZoomGranularitiesChanged(false);
+        setDefaultDateZoomGranularity(
+            dashboard.config?.defaultDateZoomGranularity,
+        );
+        setHasDefaultDateZoomGranularityChanged(false);
 
         if (dashboardTabs.length > 0) {
             void navigate(
@@ -472,6 +529,10 @@ const Dashboard: FC = () => {
         setSavedParameters,
         setPinnedParameters,
         setHavePinnedParametersChanged,
+        setDateZoomGranularities,
+        setHaveDateZoomGranularitiesChanged,
+        setDefaultDateZoomGranularity,
+        setHasDefaultDateZoomGranularityChanged,
     ]);
 
     const handleMoveDashboardToSpace = useCallback(
@@ -608,7 +669,14 @@ const Dashboard: FC = () => {
             tabs: dashboardTabs,
             config: {
                 isDateZoomDisabled,
+                isAddFilterDisabled,
                 pinnedParameters,
+                dateZoomGranularities: haveDateZoomGranularitiesChanged
+                    ? dateZoomGranularities
+                    : dashboard.config?.dateZoomGranularities,
+                defaultDateZoomGranularity: hasDefaultDateZoomGranularityChanged
+                    ? defaultDateZoomGranularity
+                    : dashboard.config?.defaultDateZoomGranularity,
             },
             parameters: dashboardParameters,
         });
@@ -620,9 +688,12 @@ const Dashboard: FC = () => {
         isEditMode,
         isSaving,
         oldestCacheTime,
+        preAggregateStatuses,
+        allTilesLoaded: areAllChartsLoaded,
         isFullscreen,
         activeTabUuid: activeTab?.uuid,
         dashboardTabs,
+        dashboardTiles,
         isFullScreenFeatureEnabled,
         onToggleFullscreen: handleToggleFullscreen,
         hasDashboardChanged:
@@ -631,8 +702,11 @@ const Dashboard: FC = () => {
             hasTemporaryFilters ||
             haveTabsChanged ||
             hasDateZoomDisabledChanged ||
+            hasAddFilterDisabledChanged ||
             parametersHaveChanged ||
-            havePinnedParametersChanged,
+            havePinnedParametersChanged ||
+            haveDateZoomGranularitiesChanged ||
+            hasDefaultDateZoomGranularityChanged,
         onAddTiles: handleAddTiles,
         onSaveDashboard: handleSaveDashboard,
         onCancel: handleCancel,
@@ -642,6 +716,7 @@ const Dashboard: FC = () => {
         onDelete: deleteModalHandlers.open,
         onExport: exportDashboardModalHandlers.open,
         setAddingTab,
+        onSwitchTab: setActiveTab,
         onEditClicked: handleEnterEditMode,
         ...(isEditMode && { className: styles.stickyHeader }),
     };
@@ -747,12 +822,16 @@ const Dashboard: FC = () => {
 };
 
 const DashboardPage: FC = () => {
-    const { projectUuid } = useParams<{ projectUuid: string }>();
+    const { projectUuid, dashboardUuid } = useParams<{
+        projectUuid: string;
+        dashboardUuid: string;
+    }>();
     const { user } = useApp();
     const dashboardCommentsCheck = useDashboardCommentsCheck(user?.data);
 
     return (
         <DashboardProvider
+            key={dashboardUuid}
             projectUuid={projectUuid}
             dashboardCommentsCheck={dashboardCommentsCheck}
         >

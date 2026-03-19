@@ -1,12 +1,14 @@
 import merge from 'lodash/merge';
+import { parseDbtPreAggregates } from '../preAggregates/definition';
+import { generatePreAggregateExplores } from '../preAggregates/generatePreAggregateExplores';
 import {
-    SupportedDbtAdapter,
     buildModelGraph,
     convertColumnMetric,
     convertModelMetric,
     convertToAiHints,
     convertToGroups,
     isV9MetricRef,
+    SupportedDbtAdapter,
     type DbtColumnLightdashDimension,
     type DbtColumnMetadata,
     type DbtExploreLightdashAdditionalDimension,
@@ -24,14 +26,15 @@ import {
     InlineErrorType,
     type Explore,
     type ExploreError,
+    type InlineError,
     type Table,
 } from '../types/explore';
 import {
+    defaultSql,
     DimensionType,
     FieldType,
-    MetricType,
-    defaultSql,
     friendlyName,
+    MetricType,
     parseMetricType,
     type Dimension,
     type Metric,
@@ -41,13 +44,18 @@ import {
     parseFilters,
     parseModelRequiredFilters,
 } from '../types/filterGrammar';
-import { type LightdashProjectConfig } from '../types/lightdashProjectConfig';
+import {
+    type CustomGranularity,
+    type LightdashProjectConfig,
+} from '../types/lightdashProjectConfig';
+import { type PreAggregateDef } from '../types/preAggregate';
 import { OrderFieldsByStrategy, type GroupType } from '../types/table';
 import { type TimeFrames } from '../types/timeFrames';
 import { type WarehouseSqlBuilder } from '../types/warehouse';
 import assertUnreachable from '../utils/assertUnreachable';
 import {
     getDefaultTimeFrames,
+    isTimeInterval,
     timeFrameConfigs,
     validateTimeFrames,
     type WeekDay,
@@ -84,6 +92,8 @@ const convertTimezone = (
         case SupportedDbtAdapter.POSTGRES:
             // TIMESTAMP WITH TIME ZONE: stored as utc. returns in session tz. convert from session tz to target tz
             // TIMESTAMP WITHOUT TIME ZONE: no tz. assume default_source_tz. convert from default_source_tz to target_tz
+            return timestampSql;
+        case SupportedDbtAdapter.DUCKDB:
             return timestampSql;
         case SupportedDbtAdapter.DATABRICKS:
             return timestampSql;
@@ -191,9 +201,13 @@ const convertDimension = (
         round: meta.dimension?.round,
         compact: meta.dimension?.compact,
         requiredAttributes: meta.dimension?.required_attributes,
+        anyAttributes: meta.dimension?.any_attributes,
         colors: meta.dimension?.colors,
         ...(meta.dimension?.urls ? { urls: meta.dimension.urls } : {}),
         ...(meta.dimension?.image ? { image: meta.dimension.image } : {}),
+        ...(meta.dimension?.richText
+            ? { richText: meta.dimension.richText }
+            : {}),
         ...(isAdditionalDimension ? { isAdditionalDimension } : {}),
         groups,
         isIntervalBase,
@@ -206,6 +220,9 @@ const convertDimension = (
             : {}),
         ...(meta.dimension?.ai_hint
             ? { aiHint: convertToAiHints(meta.dimension.ai_hint) }
+            : {}),
+        ...(meta.dimension?.case_sensitive !== undefined
+            ? { caseSensitive: meta.dimension.case_sensitive }
             : {}),
         ...(meta.dimension?.spotlight?.filter_by === false ||
         meta.dimension?.spotlight?.segment_by === false
@@ -439,41 +456,67 @@ function validateSets(
     allMetrics: Record<string, Metric>,
     model: DbtModelNode,
     meta: DbtModelNode['meta'],
-) {
+    allowPartialCompilation?: boolean,
+): InlineError[] {
+    const warnings: InlineError[] = [];
     const allFieldNames = new Set([
         ...Object.keys(dimensions),
         ...Object.keys(allMetrics),
     ]);
 
-    if (!meta.sets) return;
+    if (!meta.sets) return warnings;
 
     Object.entries(meta.sets).forEach(([setName, setDef]) => {
         // Validate set name doesn't conflict with field names
         if (allFieldNames.has(setName)) {
-            throw new ParseError(
-                `Set name "${setName}" in model "${model.name}" conflicts with an existing field name. Set names must be unique from dimension and metric names.`,
-            );
+            const errorMessage = `Set name "${setName}" in model "${model.name}" conflicts with an existing field name. Set names must be unique from dimension and metric names.`;
+            if (allowPartialCompilation) {
+                warnings.push({
+                    type: InlineErrorType.SET_VALIDATION_ERROR,
+                    message: errorMessage,
+                });
+                return; // Skip this set
+            }
+            throw new ParseError(errorMessage);
         }
 
         // Validate set definition structure
         if (!setDef.fields || !Array.isArray(setDef.fields)) {
-            throw new ParseError(
-                `Set "${setName}" in model "${model.name}" must have a "fields" array`,
-            );
+            const errorMessage = `Set "${setName}" in model "${model.name}" must have a "fields" array`;
+            if (allowPartialCompilation) {
+                warnings.push({
+                    type: InlineErrorType.SET_VALIDATION_ERROR,
+                    message: errorMessage,
+                });
+                return; // Skip this set
+            }
+            throw new ParseError(errorMessage);
         }
 
         if (setDef.fields.length === 0) {
-            throw new ParseError(
-                `Set "${setName}" in model "${model.name}" cannot be empty`,
-            );
+            const errorMessage = `Set "${setName}" in model "${model.name}" cannot be empty`;
+            if (allowPartialCompilation) {
+                warnings.push({
+                    type: InlineErrorType.SET_VALIDATION_ERROR,
+                    message: errorMessage,
+                });
+                return; // Skip this set
+            }
+            throw new ParseError(errorMessage);
         }
 
         // Validate field names don't have invalid characters
         setDef.fields.forEach((field) => {
             if (typeof field !== 'string') {
-                throw new ParseError(
-                    `Set "${setName}" in model "${model.name}" contains non-string field: ${field}`,
-                );
+                const errorMessage = `Set "${setName}" in model "${model.name}" contains non-string field: ${field}`;
+                if (allowPartialCompilation) {
+                    warnings.push({
+                        type: InlineErrorType.SET_VALIDATION_ERROR,
+                        message: errorMessage,
+                    });
+                    return; // Skip this field
+                }
+                throw new ParseError(errorMessage);
             }
 
             // Allow field references ending with * (set references)
@@ -483,9 +526,15 @@ function validateSets(
             // Validate that the clean field name follows the lightdash variable pattern
             // (letters, numbers, underscores, and dots only)
             if (cleanField && !/^[a-zA-Z0-9_.]+$/.test(cleanField)) {
-                throw new ParseError(
-                    `Set "${setName}" in model "${model.name}" contains invalid field name "${field}". Field names must contain only letters, numbers, underscores, and dots.`,
-                );
+                const errorMessage = `Set "${setName}" in model "${model.name}" contains invalid field name "${field}". Field names must contain only letters, numbers, underscores, and dots.`;
+                if (allowPartialCompilation) {
+                    warnings.push({
+                        type: InlineErrorType.SET_VALIDATION_ERROR,
+                        message: errorMessage,
+                    });
+                    return; // Skip this field
+                }
+                throw new ParseError(errorMessage);
             }
 
             const isModelFieldName =
@@ -502,14 +551,26 @@ function validateSets(
                     const allJoinNames = joins.map((j) => j.alias || j.join);
 
                     if (!allJoinNames.includes(joinName)) {
-                        throw new ParseError(
-                            `Set "${setName}" in model "${model.name}" references non-existent join model "${joinName}".`,
-                        );
+                        const errorMessage = `Set "${setName}" in model "${model.name}" references non-existent join model "${joinName}".`;
+                        if (allowPartialCompilation) {
+                            warnings.push({
+                                type: InlineErrorType.SET_VALIDATION_ERROR,
+                                message: errorMessage,
+                            });
+                            return; // Skip this field
+                        }
+                        throw new ParseError(errorMessage);
                     }
                 } else if (!allFieldNames.has(fieldName)) {
-                    throw new ParseError(
-                        `Set "${setName}" in model "${model.name}" references non-existent model field "${field}". Fields must correspond to actual dimensions or metrics in the model.`,
-                    );
+                    const errorMessage = `Set "${setName}" in model "${model.name}" references non-existent model field "${field}". Fields must correspond to actual dimensions or metrics in the model.`;
+                    if (allowPartialCompilation) {
+                        warnings.push({
+                            type: InlineErrorType.SET_VALIDATION_ERROR,
+                            message: errorMessage,
+                        });
+                        return; // Skip this field
+                    }
+                    throw new ParseError(errorMessage);
                 }
             }
 
@@ -520,9 +581,15 @@ function validateSets(
                 depth: number,
             ) => {
                 if (depth > 3) {
-                    throw new ParseError(
-                        `Set "${setName}" in model "${model.name}" exceeds the maximum nesting level of 3.`,
-                    );
+                    const errorMessage = `Set "${setName}" in model "${model.name}" exceeds the maximum nesting level of 3.`;
+                    if (allowPartialCompilation) {
+                        warnings.push({
+                            type: InlineErrorType.SET_VALIDATION_ERROR,
+                            message: errorMessage,
+                        });
+                        return; // Stop checking nesting
+                    }
+                    throw new ParseError(errorMessage);
                 }
 
                 fields.forEach((f) => {
@@ -551,6 +618,8 @@ function validateSets(
             }
         });
     });
+
+    return warnings;
 }
 
 export const convertTable = (
@@ -560,10 +629,13 @@ export const convertTable = (
     spotlightConfig: LightdashProjectConfig['spotlight'],
     startOfWeek?: WeekDay | null,
     disableTimestampConversion?: boolean,
+    customGranularities?: Record<string, CustomGranularity>,
+    allowPartialCompilation?: boolean,
 ): Omit<Table, 'lineageGraph'> => {
     // Config block takes priority, then meta block
     const meta = merge({}, model.meta, model.config?.meta);
     const tableLabel = meta.label || friendlyName(model.name);
+    const tableWarnings: string[] = [];
 
     const [dimensions, metrics]: [
         Record<string, Dimension>,
@@ -591,24 +663,28 @@ export const convertTable = (
                 overrideTimeIntervals: DbtColumnLightdashDimension['time_intervals'],
             ) => {
                 if (dim.isIntervalBase) {
-                    let intervals: TimeFrames[] = [];
+                    let allIntervals: (TimeFrames | string)[] = [];
 
                     if (
                         !dim.isAdditionalDimension &&
                         columnMeta.dimension?.time_intervals &&
                         Array.isArray(columnMeta?.dimension.time_intervals)
                     ) {
-                        intervals = validateTimeFrames(
-                            columnMeta.dimension.time_intervals,
-                        );
+                        allIntervals = columnMeta.dimension.time_intervals;
                     } else if (
                         dim.isAdditionalDimension &&
                         Array.isArray(overrideTimeIntervals)
                     ) {
-                        intervals = validateTimeFrames(overrideTimeIntervals);
+                        allIntervals = overrideTimeIntervals;
                     } else {
-                        intervals = getDefaultTimeFrames(dim.type);
+                        allIntervals = getDefaultTimeFrames(dim.type);
                     }
+
+                    // Split into standard TimeFrames and custom granularity names
+                    const intervals = validateTimeFrames(allIntervals);
+                    const customIntervalNames = allIntervals.filter(
+                        (v) => !isTimeInterval(v.toUpperCase()),
+                    );
 
                     const dimensionMeta = {
                         ...columnMeta.dimension,
@@ -620,7 +696,10 @@ export const convertTable = (
                         hidden: dim.hidden,
                     };
 
-                    return intervals.reduce(
+                    // Generate standard interval dimensions
+                    const standardDims = intervals.reduce<
+                        Record<string, Dimension>
+                    >(
                         (acc, interval) => ({
                             ...acc,
                             [`${dim.name}_${interval.toLowerCase()}`]:
@@ -660,6 +739,63 @@ export const convertTable = (
                         }),
                         {},
                     );
+
+                    // Generate custom granularity dimensions
+                    const customDims = customIntervalNames.reduce<
+                        Record<string, Dimension>
+                    >((acc, customName) => {
+                        const granularity = customGranularities?.[customName];
+                        if (!granularity) {
+                            tableWarnings.push(
+                                `Unknown time interval "${customName}" on column "${dim.name}" in model "${model.name}". It is not a standard time frame or a custom granularity defined in lightdash.config.yml.`,
+                            );
+                            return acc;
+                        }
+
+                        const customSql = granularity.sql.replace(
+                            /\$\{COLUMN\}/g,
+                            () => dim.sql,
+                        );
+                        const customType =
+                            granularity.type || DimensionType.DATE;
+                        const customDimName = `${dim.name}_${customName}`;
+
+                        const groups: string[] = [...(dim.groups || [])];
+                        if (!groups.includes(dim.label)) {
+                            groups.push(dim.label);
+                        }
+
+                        return {
+                            ...acc,
+                            [customDimName]: {
+                                index,
+                                fieldType: FieldType.DIMENSION,
+                                name: customDimName,
+                                label: granularity.label,
+                                sql: customSql,
+                                table: model.name,
+                                tableLabel,
+                                type: customType,
+                                description: dim.description,
+                                source: undefined,
+                                timeInterval: undefined,
+                                timeIntervalBaseDimensionName: dim.name,
+                                customTimeInterval: customName,
+                                hidden: dim.hidden,
+                                format: undefined,
+                                round: undefined,
+                                compact: undefined,
+                                requiredAttributes: dim.requiredAttributes,
+                                anyAttributes: dim.anyAttributes,
+                                groups,
+                                isIntervalBase: false,
+                                isAdditionalDimension:
+                                    dim.isAdditionalDimension,
+                            } satisfies Dimension,
+                        };
+                    }, {});
+
+                    return { ...standardDims, ...customDims };
                 }
                 return {};
             };
@@ -718,6 +854,7 @@ export const convertTable = (
                             metric,
                             tableLabel,
                             requiredAttributes: dimension.requiredAttributes, // TODO Join dimension required_attributes with metric required_attributes
+                            anyAttributes: dimension.anyAttributes, // TODO Join dimension any_attributes with metric any_attributes
                             spotlightConfig: {
                                 ...spotlightConfig,
                                 default_visibility:
@@ -819,7 +956,17 @@ export const convertTable = (
     }
 
     if (meta.sets) {
-        validateSets(dimensions, allMetrics, model, meta);
+        const warnings = validateSets(
+            dimensions,
+            allMetrics,
+            model,
+            meta,
+            allowPartialCompilation,
+        );
+        // Add set validation warnings to table warnings
+        warnings.forEach((warning) => {
+            tableWarnings.push(warning.message);
+        });
     }
 
     const sqlTable = meta.sql_from || model.relation_name;
@@ -850,6 +997,7 @@ export const convertTable = (
             defaultFilters: meta.default_filters,
         }),
         requiredAttributes: meta.required_attributes,
+        anyAttributes: meta.any_attributes,
         groupDetails,
         ...(meta.default_time_dimension
             ? {
@@ -862,6 +1010,7 @@ export const convertTable = (
         ...(meta.ai_hint ? { aiHint: convertToAiHints(meta.ai_hint) } : {}),
         ...(meta.parameters ? { parameters: meta.parameters } : {}),
         ...(meta.sets ? { sets: meta.sets } : {}),
+        ...(tableWarnings.length > 0 ? { warnings: tableWarnings } : {}),
     };
 };
 
@@ -948,6 +1097,8 @@ export const convertExplores = async (
                     lightdashProjectConfig.spotlight,
                     warehouseSqlBuilder.getStartOfWeek(),
                     disableTimestampConversion,
+                    lightdashProjectConfig.custom_granularities,
+                    allowPartialCompilation,
                 );
 
                 // add lineage
@@ -1013,6 +1164,7 @@ export const convertExplores = async (
                 groupLabel: meta.group_label,
                 joins: meta?.joins || [],
                 description: meta.description,
+                caseSensitive: meta.case_sensitive,
                 tables: tableLookup,
             },
             ...(meta.explores
@@ -1062,6 +1214,7 @@ export const convertExplores = async (
                               // Inherit joins from base model if not specified in explore config
                               joins: exploreConfig.joins || meta?.joins || [],
                               description: exploreConfig.description,
+                              caseSensitive: exploreConfig.case_sensitive,
                               tables: {
                                   ...tableLookup,
                                   // Override the base table with required filters and explore-scoped dimensions
@@ -1087,10 +1240,37 @@ export const convertExplores = async (
                 : []),
         ];
 
+        let parsedPreAggregates: PreAggregateDef[] = [];
+        try {
+            parsedPreAggregates = parseDbtPreAggregates(
+                meta.pre_aggregates,
+                model.name,
+            );
+        } catch (error) {
+            const preAggregateErrors = exploresToCreate.map(
+                (exploreToCreate) =>
+                    ({
+                        name: exploreToCreate.name,
+                        label: exploreToCreate.label,
+                        groupLabel: exploreToCreate.groupLabel,
+                        errors: [
+                            {
+                                type: InlineErrorType.METADATA_PARSE_ERROR,
+                                message:
+                                    error instanceof Error
+                                        ? error.message
+                                        : `Could not parse pre-aggregates for model "${model.name}"`,
+                            },
+                        ],
+                    }) as ExploreError,
+            );
+            return [...acc, ...preAggregateErrors];
+        }
+
         // Multiple explores can be created from a single model. The base explore + additional explores
         // Properties created from `model` are the same across all explores. e.g. all explores will have the same base table & warehouse
         // Properties created from `exploreToCreate` are specific to each explore. e.g. each explore can have a different name, label & joins
-        const newExplores = exploresToCreate.map((exploreToCreate) => {
+        const compiledExplores = exploresToCreate.map((exploreToCreate) => {
             try {
                 return exploreCompiler.compileExplore({
                     name: exploreToCreate.name,
@@ -1098,6 +1278,7 @@ export const convertExplores = async (
                     tags: tags || [],
                     baseTable: model.name,
                     groupLabel: exploreToCreate.groupLabel,
+                    caseSensitive: exploreToCreate.caseSensitive,
                     joinedTables: exploreToCreate.joins.map((join) => ({
                         table: join.join,
                         sqlOn: join.sql_on,
@@ -1120,6 +1301,9 @@ export const convertExplores = async (
                     ...(meta.ai_hint
                         ? { aiHint: convertToAiHints(meta.ai_hint) }
                         : {}),
+                    ...(parsedPreAggregates.length > 0
+                        ? { preAggregates: parsedPreAggregates }
+                        : {}),
                     meta: {
                         ...meta,
                         // Override description for additional explores
@@ -1128,6 +1312,7 @@ export const convertExplores = async (
                             : {}),
                     },
                     projectParameters: lightdashProjectConfig.parameters,
+                    projectDefaults: lightdashProjectConfig.defaults,
                 });
             } catch (e: unknown) {
                 return {
@@ -1160,7 +1345,14 @@ export const convertExplores = async (
             }
         });
 
-        return [...acc, ...newExplores];
+        const exploresWithGeneratedPreAggregates = generatePreAggregateExplores(
+            {
+                compiledExplores,
+                parsedPreAggregates,
+            },
+        );
+
+        return [...acc, ...exploresWithGeneratedPreAggregates];
     }, []);
 
     return [...explores, ...exploreErrors];

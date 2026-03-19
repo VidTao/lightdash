@@ -172,6 +172,11 @@ const useTableConfig = (
         [columnProperties],
     );
 
+    const getColumnWidth = useCallback(
+        (fieldId: string) => columnProperties[fieldId]?.width,
+        [columnProperties],
+    );
+
     const isPivotTableEnabled =
         resultsData?.metricQuery &&
         resultsData.metricQuery.metrics.length > 0 &&
@@ -267,6 +272,7 @@ const useTableConfig = (
             showTableNames,
             getFieldLabelOverride,
             isColumnFrozen,
+            getColumnWidth,
             columnOrder,
             totals: totalCalculations,
             groupedSubtotals,
@@ -280,6 +286,7 @@ const useTableConfig = (
         isColumnVisible,
         showTableNames,
         isColumnFrozen,
+        getColumnWidth,
         getFieldLabelOverride,
         totalCalculations,
         groupedSubtotals,
@@ -600,6 +607,8 @@ const useTableConfig = (
         resultsData,
     ]);
 
+    const exposedColumnProperties = columnProperties;
+
     const validConfig: TableChart = useMemo(
         () => ({
             showColumnCalculation,
@@ -642,7 +651,8 @@ const useTableConfig = (
             setShowResultsTotal,
             showSubtotals,
             setShowSubtotals,
-            columnProperties,
+
+            columnProperties: exposedColumnProperties,
             setColumnProperties,
             updateColumnProperty,
             columns,
@@ -678,7 +688,8 @@ const useTableConfig = (
             setShowResultsTotal,
             showSubtotals,
             setShowSubtotals,
-            columnProperties,
+
+            exposedColumnProperties,
             setColumnProperties,
             updateColumnProperty,
             columns,

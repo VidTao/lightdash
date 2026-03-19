@@ -8,15 +8,18 @@ import {
     isCustomDimension,
     isDimension,
     isField,
+    isMetric,
     isNumericItem,
     isResultValue,
     itemsInMetricQuery,
+    renderRichTextTemplate,
     renderTemplatedUrl,
     type AdditionalMetric,
     type CustomDimension,
     type Dimension,
     type Field,
     type ItemsMap,
+    type Metric,
     type ParametersValuesMap,
     type RawResultRow,
     type ResultRow,
@@ -28,12 +31,12 @@ import { IconExclamationCircle } from '@tabler/icons-react';
 import { type CellContext } from '@tanstack/react-table';
 import omit from 'lodash/omit';
 import { useMemo } from 'react';
-import { formatRowValueFromWarehouse } from '../components/DataViz/formatters/formatRowValueFromWarehouse';
 import MantineIcon from '../components/common/MantineIcon';
 import {
     BrokenImageCell,
     ImageCell,
 } from '../components/common/Table/ImageCell';
+import RichTextCell from '../components/common/Table/RichTextCell';
 import {
     TableHeaderBoldLabel,
     TableHeaderLabelContainer,
@@ -43,6 +46,7 @@ import {
     columnHelper,
     type TableColumn,
 } from '../components/common/Table/types';
+import { formatRowValueFromWarehouse } from '../components/DataViz/formatters/formatRowValueFromWarehouse';
 import useEmbed from '../ee/providers/Embed/useEmbed';
 import {
     selectAdditionalMetrics,
@@ -111,12 +115,15 @@ const formatBarDisplayCell = (
     const columnId = info.column.id;
     const columnProperties = info.table?.options.meta?.columnProperties;
     const minMaxMap = info.table?.options.meta?.minMaxMap;
-    const color = columnProperties?.[columnId]?.color;
 
     // For pivot tables, get the base field ID from the item in meta
     // This is needed because pivoted columns have different IDs than the base field
     const item = info.column.columnDef.meta?.item;
     const baseFieldId = item ? getItemId(item) : columnId;
+
+    const color =
+        columnProperties?.[baseFieldId]?.color ??
+        columnProperties?.[columnId]?.color;
 
     let formatted, value: number;
 
@@ -170,6 +177,75 @@ const formatBarDisplayCell = (
     );
 };
 
+const formatRichTextCell = (
+    item: Dimension | Metric,
+    info:
+        | CellContext<ResultRow, { value: ResultValue }>
+        | CellContext<RawResultRow, string>,
+) => {
+    const cellValue = info.getValue();
+
+    // Extract the value
+    if (!isResultValue(cellValue)) {
+        // Return empty/null display if not a proper ResultValue
+        return <span style={{ color: '#999' }}>-</span>;
+    }
+
+    const value = (cellValue as { value: ResultValue }).value;
+
+    // Build row context for templating
+    const row = info.row
+        ? info.row
+              .getAllCells()
+              .reduce<Record<string, Record<string, ResultValue>>>(
+                  (acc, rowCell) => {
+                      const cellItem = rowCell.column.columnDef.meta?.item;
+                      const rowCellValue = rowCell.getValue();
+
+                      // Handle both ResultRow and RawResultRow formats
+                      const cellResultValue = isResultValue(rowCellValue)
+                          ? (rowCellValue as { value: ResultValue }).value
+                          : {
+                                raw: rowCellValue,
+                                formatted: String(rowCellValue),
+                            };
+
+                      if (cellItem && isField(cellItem) && cellResultValue) {
+                          acc[cellItem.table] = acc[cellItem.table] || {};
+                          acc[cellItem.table][cellItem.name] = cellResultValue;
+                      }
+                      return acc;
+                  },
+                  {},
+              )
+        : {};
+
+    try {
+        // Process the template with LiquidJS
+        // eslint-disable-next-line testing-library/render-result-naming-convention
+        const processedContent = renderRichTextTemplate(
+            item.richText || '',
+            value,
+            row,
+        );
+
+        return <RichTextCell content={processedContent} />;
+    } catch (error) {
+        const errorMessage =
+            error instanceof Error ? error.message : String(error);
+        // Don't log "undefined variable" errors - these are expected when templates
+        // reference fields that don't exist in the current context
+        if (!errorMessage.includes('undefined variable')) {
+            console.error(
+                `Error processing rich text template for ${item.name}: ${errorMessage}`,
+                { template: item.richText, value, row },
+            );
+        }
+        // Fall back to plain formatted value
+        return <span>{value.formatted}</span>;
+    }
+};
+
 const formatImageCell = (
     item: Dimension,
     info:
@@ -199,26 +275,27 @@ const formatImageCell = (
     const row = needsRowContext
         ? info.row
               .getAllCells()
-              .reduce<
-                  Record<string, Record<string, ResultValue>>
-              >((acc, rowCell) => {
-                  const cellItem = rowCell.column.columnDef.meta?.item;
-                  const rowCellValue = rowCell.getValue();
+              .reduce<Record<string, Record<string, ResultValue>>>(
+                  (acc, rowCell) => {
+                      const cellItem = rowCell.column.columnDef.meta?.item;
+                      const rowCellValue = rowCell.getValue();
 
-                  // Handle both ResultRow and RawResultRow formats
-                  const cellResultValue = isResultValue(rowCellValue)
-                      ? (rowCellValue as { value: ResultValue }).value
-                      : {
-                            raw: rowCellValue,
-                            formatted: String(rowCellValue),
-                        };
+                      // Handle both ResultRow and RawResultRow formats
+                      const cellResultValue = isResultValue(rowCellValue)
+                          ? (rowCellValue as { value: ResultValue }).value
+                          : {
+                                raw: rowCellValue,
+                                formatted: String(rowCellValue),
+                            };
 
-                  if (cellItem && isField(cellItem) && cellResultValue) {
-                      acc[cellItem.table] = acc[cellItem.table] || {};
-                      acc[cellItem.table][cellItem.name] = cellResultValue;
-                  }
-                  return acc;
-              }, {})
+                      if (cellItem && isField(cellItem) && cellResultValue) {
+                          acc[cellItem.table] = acc[cellItem.table] || {};
+                          acc[cellItem.table][cellItem.name] = cellResultValue;
+                      }
+                      return acc;
+                  },
+                  {},
+              )
         : {};
 
     try {
@@ -268,6 +345,12 @@ export const getFormattedValueCell = (
         console.error(`Unable to format value for bar display cell ${error}`);
     }
 
+    // Check if this is a rich text field (highest priority for both dimensions and metrics)
+    // Skip if cellValue is null/undefined (except for explicit null handling in templates)
+    if (item && (isDimension(item) || isMetric(item)) && item.richText) {
+        return formatRichTextCell(item, info);
+    }
+
     // Check if this is an image dimension
     if (item && isDimension(item) && item.image?.url && cellValue) {
         return formatImageCell(item, info);
@@ -288,8 +371,13 @@ export const getValueCell = (
         console.error(`Unable to get value for bar display cell ${error}`);
     }
 
-    // Check if this is an image dimension
+    // Check if this is a rich text field (highest priority for both dimensions and metrics)
     const item = info.column.columnDef.meta?.item;
+    if (item && (isDimension(item) || isMetric(item)) && item.richText) {
+        return formatRichTextCell(item, info);
+    }
+
+    // Check if this is an image dimension
     if (item && isDimension(item) && item.image?.url) {
         return formatImageCell(item, info);
     }

@@ -14,9 +14,9 @@ import { Can } from '../../providers/Ability';
 import useApp from '../../providers/App/useApp';
 import LargeMenuItem from '../common/LargeMenuItem';
 import MantineIcon from '../common/MantineIcon';
+import DashboardCreateModal from '../common/modal/DashboardCreateModal';
 import SpaceActionModal from '../common/SpaceActionModal';
 import { ActionType } from '../common/SpaceActionModal/types';
-import DashboardCreateModal from '../common/modal/DashboardCreateModal';
 
 type Props = {
     projectUuid: string;
@@ -57,7 +57,7 @@ const ExploreMenu: FC<Props> = memo(({ projectUuid }) => {
                             fz="sm"
                             leftSection={
                                 <MantineIcon
-                                    color="ldGray.5"
+                                    color="ldGray.6"
                                     icon={IconSquareRoundedPlus}
                                 />
                             }

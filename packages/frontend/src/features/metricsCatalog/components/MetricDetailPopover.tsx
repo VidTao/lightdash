@@ -1,4 +1,5 @@
 import {
+    friendlyName,
     type MetricExplorerDateRange,
     type MetricTotalComparisonType,
     type MetricWithAssociatedTimeDimension,
@@ -17,7 +18,7 @@ import {
 } from '@mantine-8/core';
 import { Prism } from '@mantine/prism';
 import { IconCode, IconTable } from '@tabler/icons-react';
-import { type FC, type ReactNode, useState } from 'react';
+import { useState, type FC, type ReactNode } from 'react';
 import MantineIcon from '../../../components/common/MantineIcon';
 import { useMetric } from '../hooks/useMetricsCatalog';
 import { useCompileMetricTotalQuery } from '../hooks/useRunMetricExplorerQuery';
@@ -175,6 +176,28 @@ const MetricDetailContent: FC<MetricDetailContentProps> = ({
                     {sqlToShow}
                 </Prism>
             </Box>
+
+            {metric.timeDimension && (
+                <>
+                    <Divider />
+                    <Group justify="space-between" gap="xs">
+                        <Text size="xs" c="dimmed" fw={500} mb={4}>
+                            Time dimension
+                        </Text>
+                        <Tooltip
+                            label={`${metric.timeDimension.table}.${metric.timeDimension.field}`}
+                            withinPortal
+                        >
+                            <Text size="xs">
+                                {metric.timeDimension.table !== metric.table &&
+                                    `${friendlyName(metric.timeDimension.table)} `}
+                                {friendlyName(metric.timeDimension.field)} (
+                                {friendlyName(metric.timeDimension.interval)})
+                            </Text>
+                        </Tooltip>
+                    </Group>
+                </>
+            )}
 
             {compiledQueryConfig && (
                 <CompiledQuerySection

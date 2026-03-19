@@ -1,13 +1,14 @@
 import {
     AuthorizationError,
+    DeploySessionStatus,
     Explore,
     ExploreError,
-    ParseError,
-    Project,
-    ProjectType,
     friendlyName,
     getErrorMessage,
     isExploreError,
+    ParseError,
+    Project,
+    ProjectType,
     type LightdashProjectConfig,
     type Tag,
 } from '@lightdash/common';
@@ -20,15 +21,21 @@ import { getConfig, setProject } from '../config';
 import { getDbtContext } from '../dbt/context';
 import GlobalState from '../globalState';
 import { readAndLoadLightdashProjectConfig } from '../lightdash-config';
+import { CliProjectType, detectProjectType } from '../lightdash/projectType';
 import * as styles from '../styles';
 import { compile } from './compile';
 import {
     createProject,
     resolveOrganizationCredentialsName,
 } from './createProject';
-import { checkLightdashVersion, lightdashApi } from './dbt/apiClient';
+import {
+    checkLightdashVersion,
+    lightdashApi,
+    setGzipEnabled,
+} from './dbt/apiClient';
 import { DbtCompileOptions } from './dbt/compile';
 import { tryGetDbtVersion } from './dbt/getDbtVersion';
+import { logSelectedProject, selectProject } from './selectProject';
 
 type DeployHandlerOptions = DbtCompileOptions & {
     projectDir: string;
@@ -42,6 +49,10 @@ type DeployHandlerOptions = DbtCompileOptions & {
     warehouseCredentials?: boolean;
     organizationCredentials?: string;
     assumeYes?: boolean;
+    useBatchedDeploy?: boolean;
+    batchSize?: string;
+    parallelBatches?: string;
+    gzip?: boolean;
 };
 
 type DeployArgs = DeployHandlerOptions & {
@@ -77,6 +88,146 @@ const replaceProjectParameters = async (
         method: 'PUT',
         url: `/api/v2/projects/${projectUuid}/parameters`,
         body: JSON.stringify(lightdashProjectConfig.parameters ?? {}),
+    });
+};
+
+const replaceProjectDefaults = async (
+    projectUuid: string,
+    lightdashProjectConfig: LightdashProjectConfig,
+) => {
+    if (lightdashProjectConfig.defaults) {
+        await lightdashApi<null>({
+            method: 'PUT',
+            url: `/api/v2/projects/${projectUuid}/defaults`,
+            body: JSON.stringify(lightdashProjectConfig.defaults),
+        });
+    }
+};
+
+const deployBatched = async (
+    explores: (Explore | ExploreError)[],
+    options: DeployArgs,
+): Promise<void> => {
+    const batchSize = parseInt(options.batchSize || '50', 10);
+    if (Number.isNaN(batchSize) || batchSize < 1 || batchSize > 1000) {
+        throw new Error(
+            'batchSize must be a positive integer between 1 and 1000',
+        );
+    }
+    const parallelBatches = parseInt(options.parallelBatches || '1', 10);
+    if (
+        Number.isNaN(parallelBatches) ||
+        parallelBatches < 1 ||
+        parallelBatches > 50
+    ) {
+        throw new Error(
+            'parallelBatches must be a positive integer between 1 and 50',
+        );
+    }
+
+    GlobalState.log(
+        styles.title(
+            `Deploying ${explores.length} explores using batched deploy (batch size: ${batchSize}, parallel: ${parallelBatches})`,
+        ),
+    );
+
+    const deployStartTime = Date.now();
+
+    // Start deploy session
+    GlobalState.log(`Starting deploy session...`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const startSessionResponse = (await lightdashApi<any>({
+        method: 'POST',
+        url: `/api/v2/projects/${options.projectUuid}/deploy`,
+        body: JSON.stringify({}),
+    })) as { deploySessionUuid: string };
+
+    const sessionUuid = startSessionResponse.deploySessionUuid;
+    GlobalState.log(styles.success(`Deploy session created: ${sessionUuid}`));
+
+    // Split explores into batches
+    const batches: (Explore | ExploreError)[][] = [];
+    for (let i = 0; i < explores.length; i += batchSize) {
+        batches.push(explores.slice(i, i + batchSize));
+    }
+
+    GlobalState.log(`Uploading ${batches.length} batches...`);
+
+    // Send batches with parallelism using chunked processing
+    const uploadBatch = async (
+        batch: (Explore | ExploreError)[],
+        batchIndex: number,
+    ) => {
+        GlobalState.log(
+            `  Uploading batch ${batchIndex + 1}/${batches.length} (${batch.length} explores)...`,
+        );
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const response = (await lightdashApi<any>({
+            method: 'POST',
+            url: `/api/v2/projects/${options.projectUuid}/deploy/${sessionUuid}/batch`,
+            body: JSON.stringify({
+                explores: batch,
+                batchNumber: batchIndex,
+            }),
+        })) as { batchNumber: number; exploreCount: number };
+
+        GlobalState.log(
+            styles.success(
+                `  ✓ Batch ${batchIndex + 1} uploaded (${response.exploreCount} explores)`,
+            ),
+        );
+
+        return response;
+    };
+
+    // Process batches with controlled parallelism using recursive approach
+    const processBatchesWithParallelism = async (
+        remainingIndices: number[],
+        results: { batchNumber: number; exploreCount: number }[] = [],
+    ): Promise<{ batchNumber: number; exploreCount: number }[]> => {
+        if (remainingIndices.length === 0) {
+            return results;
+        }
+
+        const chunk = remainingIndices.slice(0, parallelBatches);
+        const remaining = remainingIndices.slice(parallelBatches);
+
+        const chunkPromises = chunk.map((index) =>
+            uploadBatch(batches[index], index),
+        );
+        const chunkResults = await Promise.all(chunkPromises);
+
+        return processBatchesWithParallelism(remaining, [
+            ...results,
+            ...chunkResults,
+        ]);
+    };
+
+    const batchIndices = Array.from({ length: batches.length }, (_, i) => i);
+    await processBatchesWithParallelism(batchIndices);
+
+    // Finalize deploy
+    GlobalState.log(`Finalizing deploy...`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const finalizeResponse = (await lightdashApi<any>({
+        method: 'POST',
+        url: `/api/v2/projects/${options.projectUuid}/deploy/${sessionUuid}/finalize`,
+        body: JSON.stringify({}),
+    })) as { exploreCount: number; status: DeploySessionStatus };
+
+    GlobalState.log(
+        styles.success(
+            `Deploy completed! ${finalizeResponse.exploreCount} explores deployed.`,
+        ),
+    );
+
+    await LightdashAnalytics.track({
+        event: 'deploy.triggered',
+        properties: {
+            projectId: options.projectUuid,
+            durationMs: Date.now() - deployStartTime,
+        },
     });
 };
 
@@ -139,17 +290,69 @@ export const deploy = async (
         );
     }
 
-    await lightdashApi<null>({
-        method: 'PUT',
-        url: `/api/v1/projects/${options.projectUuid}/explores`,
-        body: JSON.stringify(explores),
-    });
-    await LightdashAnalytics.track({
-        event: 'deploy.triggered',
-        properties: {
-            projectId: options.projectUuid,
-        },
-    });
+    try {
+        await replaceProjectDefaults(
+            options.projectUuid,
+            lightdashProjectConfig,
+        );
+    } catch (e) {
+        console.error(
+            styles.warning(
+                `\nError replacing project defaults: ${getErrorMessage(e)}\n`,
+            ),
+        );
+    }
+
+    // Use batched deploy if enabled
+    if (options.useBatchedDeploy) {
+        await deployBatched(explores, options);
+    } else {
+        const deployStartTime = Date.now();
+        const deployPayload = JSON.stringify(explores);
+        try {
+            await lightdashApi<null>({
+                method: 'PUT',
+                url: `/api/v1/projects/${options.projectUuid}/explores`,
+                body: deployPayload,
+            });
+            await LightdashAnalytics.track({
+                event: 'deploy.triggered',
+                properties: {
+                    projectId: options.projectUuid,
+                    durationMs: Date.now() - deployStartTime,
+                    payloadSizeBytes: Buffer.byteLength(deployPayload),
+                },
+            });
+        } catch (error: unknown) {
+            // Check if it's a payload too large error (413) or similar size-related errors
+            const errorStatus = (error as { status?: number }).status;
+            const errorMessage = (error as { message?: string }).message;
+            if (
+                errorStatus === 413 ||
+                errorMessage?.includes('too large') ||
+                errorMessage?.includes('payload') ||
+                errorMessage?.includes('Request Entity Too Large') ||
+                errorMessage?.includes('413')
+            ) {
+                console.error(
+                    styles.error('\n❌ Deploy failed: Payload too large\n'),
+                );
+                console.error(
+                    styles.warning(
+                        'Your project is too large to deploy in a single request.\n' +
+                            'Please use the batched deploy feature:\n\n' +
+                            `  ${styles.bold('lightdash deploy --use-batched-deploy')}\n\n` +
+                            'You can also customize batch size and parallelism:\n' +
+                            `  ${styles.bold('--batch-size <number>')}      Number of explores per batch (default: 50)\n` +
+                            `  ${styles.bold('--parallel-batches <number>')} Number of parallel batches (default: 1)\n`,
+                    ),
+                );
+                process.exit(1);
+            }
+            // Re-throw other errors to be handled by the caller
+            throw error;
+        }
+    }
 };
 
 const createNewProject = async (
@@ -196,6 +399,7 @@ const createNewProject = async (
     const spinner = GlobalState.startSpinner(
         `  Creating new project ${styles.bold(projectName)}`,
     );
+    const createStartTime = Date.now();
     await LightdashAnalytics.track({
         event: 'create.started',
         properties: {
@@ -227,6 +431,7 @@ const createNewProject = async (
                 executionId,
                 projectId: project.projectUuid,
                 projectName,
+                durationMs: Date.now() - createStartTime,
             },
         });
 
@@ -251,11 +456,20 @@ export const deployHandler = async (originalOptions: DeployHandlerOptions) => {
     };
     GlobalState.setVerbose(options.verbose);
 
-    // No warehouse credentials assumes we skip dbt compile and warehouse catalog
-    if (options.warehouseCredentials === false) {
-        options.skipDbtCompile = true;
-        options.skipWarehouseCatalog = true;
-    }
+    // Detect project type and configure options accordingly
+    const projectTypeConfig = await detectProjectType({
+        projectDir: options.projectDir,
+        userOptions: {
+            warehouseCredentials: options.warehouseCredentials,
+            skipDbtCompile: options.skipDbtCompile,
+            skipWarehouseCatalog: options.skipWarehouseCatalog,
+        },
+    });
+
+    // Apply project type configuration to options
+    options.warehouseCredentials = projectTypeConfig.warehouseCredentials;
+    options.skipDbtCompile = projectTypeConfig.skipDbtCompile;
+    options.skipWarehouseCatalog = projectTypeConfig.skipWarehouseCatalog;
 
     // Resolve organization credentials early before doing any heavy work
     if (options.organizationCredentials) {
@@ -273,18 +487,23 @@ export const deployHandler = async (originalOptions: DeployHandlerOptions) => {
         }
     }
 
-    const dbtVersionResult = await tryGetDbtVersion();
+    // Only check dbt version for dbt projects (YAML-only projects don't need dbt)
+    // For YAML-only projects, we return success: false to indicate dbt wasn't checked,
+    // with null error since this is expected behavior, not an error condition.
+    // This allows downstream code to distinguish "dbt check skipped" from "dbt check failed".
+    const dbtVersionResult =
+        projectTypeConfig.type === CliProjectType.Dbt
+            ? await tryGetDbtVersion()
+            : { success: false as const, error: null };
+    if (options.gzip) {
+        setGzipEnabled(true);
+    }
     await checkLightdashVersion();
     const executionId = uuidv4();
     const explores = await compile(options);
 
     const config = await getConfig();
     let projectUuid: string;
-
-    // Log current project info if not creating a new one
-    if (options.create === undefined) {
-        GlobalState.logProjectInfo(config);
-    }
 
     if (options.create !== undefined) {
         const project = await createNewProject(executionId, options);
@@ -305,12 +524,21 @@ export const deployHandler = async (originalOptions: DeployHandlerOptions) => {
         projectUuid = project.projectUuid;
         await setProject(projectUuid, project.name);
     } else {
-        if (!(config.context?.project && config.context.serverUrl)) {
+        if (!config.context?.serverUrl) {
             throw new AuthorizationError(
                 `No active Lightdash project. Run 'lightdash login --help'`,
             );
         }
-        projectUuid = config.context.project;
+        const projectSelection = await selectProject(config);
+        if (!projectSelection) {
+            throw new AuthorizationError(
+                `No active Lightdash project. Run 'lightdash login --help'`,
+            );
+        }
+        projectUuid = projectSelection.projectUuid;
+
+        // Log current project info
+        logSelectedProject(projectSelection, config, 'Deploying to');
     }
 
     await deploy(explores, { ...options, projectUuid });

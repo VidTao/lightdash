@@ -1,10 +1,16 @@
-Manage Docker dev environment. Args: (none) = start, `reset` = reset db, `stop` = stop services.
+Manage Docker dev environment. Args: (none) = start, `reset` = reset db from snapshot, `hard-reset` = full rebuild, `stop` = stop services, `snapshot [name]` = save named snapshot (auto-names if omitted), `list-snapshots` = list saved snapshots, `use-snapshot <name>` = restore a named snapshot.
+
+**NEVER use `scripts/reset-db.sh`** — it requires a local `psql` client which is not available. Instead, use `docker exec docker-db-dev-1 psql` to run SQL commands inside the container, then run migrate/seed via pnpm.
 
 ## Arguments
 
-- **No arguments**: Auto-detect state and run what's needed (fresh setup, migrations, or just start)
-- **`reset`**: Force reset database and rebuild dbt models
+- **No arguments**: Auto-detect state and run what's needed (fresh setup, migrations, or just start). Automatically snapshots the db volume after initial setup.
+- **`reset`**: Restore database from volume snapshot (fast, ~3 seconds). Fails if no snapshot exists — run initial setup or `hard-reset` first.
+- **`hard-reset`**: Purge the snapshot volume, then do a full database reset (drop schema, migrate, seed, dbt). Automatically takes a new snapshot when done.
 - **`stop`**: Stop Docker services (preserves data volumes)
+- **`snapshot [name]`**: Save a named snapshot of the current database state. Name is optional — if omitted, auto-generate a descriptive name based on what the user is currently working on (e.g., `pre-migration-auth-refactor`, `after-seed-with-test-orgs`). The name must be alphanumeric with hyphens/underscores only. Creates a Docker volume named `docker_postgres_data_snapshot_<name>`.
+- **`list-snapshots`**: List all named snapshots with their creation dates and sizes.
+- **`use-snapshot <name>`**: Restore the database from a named snapshot. Does NOT overwrite the default snapshot used by `reset`.
 
 ## State Detection
 
@@ -13,9 +19,9 @@ Before taking action, check the current environment state. **Run these checks in
 ### All Checks (run in parallel)
 
 ```bash
-# Check 1: All Docker services running (db, minio, headless-browser)
-RUNNING_COUNT=$(docker compose -f docker/docker-compose.dev.mini.yml ps --format json 2>/dev/null | grep -c '"State":"running"' || echo 0)
-[ "$RUNNING_COUNT" -ge 3 ] && echo "OK: All Docker services running ($RUNNING_COUNT)" || echo "NEED: Start Docker services (only $RUNNING_COUNT/3 running)"
+# Check 1: All Docker services running (db, minio, headless-browser, mailpit)
+RUNNING_COUNT=$(docker compose -f docker/docker-compose.dev.mini.yml ps --format json 2>/dev/null | grep -c '"State":"running"' || true)
+[ "$RUNNING_COUNT" -ge 4 ] && echo "OK: All Docker services running ($RUNNING_COUNT)" || echo "NEED: Start Docker services (only $RUNNING_COUNT/4 running)"
 
 # Check 2: Environment file exists
 test -f .env.development.local && echo "OK: Env file exists" || echo "NEED: Create .env.development.local"
@@ -37,9 +43,13 @@ docker exec docker-db-dev-1 psql -U postgres -tAc "SELECT CASE WHEN EXISTS(SELEC
 
 # Check 8: dbt models built (requires Docker running)
 docker exec docker-db-dev-1 psql -U postgres -tAc "SELECT CASE WHEN EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='jaffle' AND table_name='orders') THEN 'built' ELSE 'not_built' END" 2>&1 | grep -q "^built" && echo "OK: dbt models built" || echo "NEED: Build dbt models"
+
+# Check 9: Volume snapshot exists (for fast resets)
+docker volume inspect docker_postgres_data_snapshot >/dev/null 2>&1 && echo "OK: Volume snapshot exists" || echo "NEED: No volume snapshot (will be created after setup completes)"
 ```
 
 **How to interpret the output:**
+
 - Lines starting with `NEED:` indicate setup steps that must be run
 - Lines starting with `OK:` indicate that component is ready
 - If all lines show `OK:`, the environment is ready - just start the dev server
@@ -49,6 +59,7 @@ docker exec docker-db-dev-1 psql -U postgres -tAc "SELECT CASE WHEN EXISTS(SELEC
 ### Why Use `docker exec` for Database Checks?
 
 PostgreSQL runs inside a Docker container, so we use `docker exec docker-db-dev-1 psql` instead of a local `psql` client. This:
+
 - Works without requiring psql installed locally
 - Uses the exact same connection the app uses
 - Fails clearly if Docker isn't running (which is the first thing to fix anyway)
@@ -56,11 +67,13 @@ PostgreSQL runs inside a Docker container, so we use `docker exec docker-db-dev-
 ### Database Check Details
 
 **Why `information_schema` instead of direct queries?**
+
 - Checking `SELECT 1 FROM tablename` can fail with "relation does not exist" errors
 - Using `information_schema.tables` always succeeds and returns a clean result
 - The `CASE WHEN EXISTS(...)` pattern returns deterministic strings for easy parsing
 
 **Why check `emails` table for seeded status?**
+
 - The demo user's email (`demo@lightdash.com`) is in the `emails` table, not `users`
 - The `users` table doesn't have an `email` column (Lightdash separates user identity from emails)
 - There's also a `jaffle.users` dbt model that would cause ambiguity
@@ -69,10 +82,7 @@ PostgreSQL runs inside a Docker container, so we use `docker exec docker-db-dev-
 
 ### Prerequisites (macOS)
 
-If `pnpm install` fails with canvas errors:
-```bash
-brew install pkg-config cairo pango libpng jpeg giflib librsvg pixman
-```
+If `pnpm install` fails with canvas errors - read this guide: https://github.com/Automattic/node-canvas?tab=readme-ov-file#installation
 
 ### Start Docker Services
 
@@ -85,6 +95,7 @@ Wait a few seconds for PostgreSQL to be ready.
 ### Create Environment File
 
 Create `.env.development.local` with localhost overrides:
+
 ```bash
 cat > .env.development.local << 'EOF'
 # Local development overrides
@@ -93,10 +104,25 @@ S3_ENDPOINT=http://localhost:9000
 HEADLESS_BROWSER_HOST=localhost
 HEADLESS_BROWSER_PORT=3001
 INTERNAL_LIGHTDASH_HOST=http://localhost:3000
+
+# Email - Mailpit (view emails at http://localhost:8025)
+EMAIL_SMTP_HOST=localhost
+EMAIL_SMTP_PORT=1025
+EMAIL_SMTP_SECURE=false
+EMAIL_SMTP_USE_AUTH=false
+EMAIL_SMTP_ALLOW_INVALID_CERT=true
+EMAIL_SMTP_SENDER_NAME=Lightdash
+EMAIL_SMTP_SENDER_EMAIL=noreply@lightdash.local
+
+# Dev API access (auto-provisioned PAT from seed data)
+# Not used by the app — only for agent/skill convenience (e.g. debug-local curl commands)
+LIGHTDASH_API_URL=http://localhost:8080
+LDPAT=ldpat_deadbeefdeadbeefdeadbeefdeadbeef
 EOF
 ```
 
 Then add the DBT_DEMO_DIR with the actual path:
+
 ```bash
 echo "DBT_DEMO_DIR=$(pwd)/examples/full-jaffle-shop-demo" >> .env.development.local
 ```
@@ -105,12 +131,13 @@ echo "DBT_DEMO_DIR=$(pwd)/examples/full-jaffle-shop-demo" >> .env.development.lo
 
 **IMPORTANT: You MUST ask the user for permission before modifying CLAUDE.local.md.** Use AskUserQuestion to confirm:
 
-> "The docker-dev setup can add PM2 commands and debugging instructions to CLAUDE.local.md. This includes PM2 start/stop/restart commands and guidance on using the /debug skill with Spotlight. May I add these instructions?"
+> "The docker-dev setup can add PM2 commands and debugging instructions to CLAUDE.local.md. This includes PM2 start/stop/restart commands and guidance on using the /debug-local skill with Spotlight. May I add these instructions?"
 
 **Only proceed with this step after the user confirms.** If declined, skip this step and continue with the remaining setup.
 
 Once permission is granted, append local development instructions to `CLAUDE.local.md` (creates file if it doesn't exist, appends if it does):
-```bash
+
+````bash
 cat >> CLAUDE.local.md << 'EOF'
 # Local Development Environment
 
@@ -118,11 +145,11 @@ cat >> CLAUDE.local.md << 'EOF'
 
 ### Prerequisites: Docker Services
 
-Start the Docker services (PostgreSQL, MinIO, headless browser) before running the dev server:
+Start the Docker services (PostgreSQL, MinIO, headless browser, Mailpit) before running the dev server:
 
 ```bash
 /docker-dev
-```
+````
 
 ### PM2 (Recommended for LLM Development)
 
@@ -140,24 +167,48 @@ pnpm pm2:stop           # Stop all services
 
 ## Debugging
 
-**When facing problems, the first step is always to use the `/debug` skill** to understand what's happening. This skill provides a comprehensive debugging workflow.
+**When facing problems, the first step is always to use the `/debug-local` skill** to understand what's happening. This skill provides a comprehensive debugging workflow.
 
-Use the `/debug` skill for comprehensive debugging workflows combining:
+Use the `/debug-local` skill for comprehensive debugging workflows combining:
 
--   **PM2 logs**: `pnpm pm2:logs:api` to view API server logs with trace IDs
--   **Spotlight MCP**: Query traces and errors programmatically via `mcp__spotlight__search_traces`, `mcp__spotlight__get_traces`, `mcp__spotlight__search_errors`
--   **Browser automation**: Use Chrome DevTools MCP (`mcp__chrome-devtools__*`) for UI debugging
+- **PM2 logs**: `pnpm pm2:logs:api` to view API server logs with trace IDs
+- **Spotlight MCP**: Query traces and errors programmatically via `mcp__spotlight__search_traces`, `mcp__spotlight__get_traces`, `mcp__spotlight__search_errors`
+- **Browser automation**: Use Chrome DevTools MCP (`mcp__chrome-devtools__*`) for UI debugging
 
 Spotlight UI is available at http://localhost:8969 when running `pnpm pm2:start`.
-EOF
+
+## Database Snapshots
+
+Snapshots let you save and restore the exact state of the local PostgreSQL database. Use them to:
+
+- **Preserve a bug reproduction**: After reproducing a bug, snapshot the db so you can return to that exact state later.
+- **Safeguard before mutations**: Before running migrations, seed changes, or manual SQL that alters data, take a snapshot so you can revert instantly.
+
+### Quick Commands
+
+```bash
+/docker-dev snapshot bug-repro-12345   # Save current db state with a name
+/docker-dev snapshot                   # Save with auto-generated name
+/docker-dev list-snapshots             # See all saved snapshots
+/docker-dev use-snapshot bug-repro-12345  # Restore a named snapshot (~3s)
+/docker-dev reset                      # Restore the default snapshot (from initial setup)
 ```
+
+### Tips
+
+- Snapshot names must be alphanumeric with hyphens/underscores only (e.g., `pre-migration`, `with-broken-org-data`)
+- The default snapshot (used by `reset`) is separate from named snapshots — named snapshots don't overwrite it
+- The db container is briefly stopped during snapshot/restore to ensure data consistency, then automatically restarted
+EOF
+
+````
 
 ### Install Dependencies
 
 ```bash
 pnpm install
 pnpm -F common build && pnpm -F warehouses build
-```
+````
 
 ### Set Up Python/dbt
 
@@ -165,7 +216,7 @@ pnpm -F common build && pnpm -F warehouses build
 python3 -m venv venv
 source venv/bin/activate
 pip install dbt-core==1.7.0 dbt-postgres==1.7.0 'protobuf>=4.0.0,<5.0.0'
-ln -sf venv/bin/dbt venv/bin/dbt1.7
+ln -sf dbt venv/bin/dbt1.7
 ```
 
 ### Run Migrations
@@ -229,9 +280,145 @@ The `PATH` prefix ensures the CLI can find the `dbt` binary. The `--ignore-error
 
 ## Reset Steps (When `reset` Argument Provided)
 
-If the user passes `reset` as an argument, force a full database reset regardless of current state:
+Restore the database from the volume snapshot. This is fast (~3 seconds).
+
+**If no snapshot exists, tell the user** to run `/docker-dev` (initial setup) or `/docker-dev hard-reset` first. Do NOT fall back to a full reset automatically.
 
 ```bash
+# Verify snapshot exists
+if ! docker volume inspect docker_postgres_data_snapshot >/dev/null 2>&1; then
+  echo "ERROR: No snapshot volume found. Run /docker-dev (initial setup) or /docker-dev hard-reset first."
+  exit 1
+fi
+
+# Stop only the db container
+docker compose -f docker/docker-compose.dev.mini.yml stop db-dev
+
+# Wipe the live volume and restore from snapshot
+docker run --rm \
+  -v docker_postgres_data:/target \
+  -v docker_postgres_data_snapshot:/snapshot:ro \
+  alpine sh -c "rm -rf /target/* && cd /snapshot && tar cf - . | (cd /target && tar xf -)"
+
+# Restart the db container
+docker compose -f docker/docker-compose.dev.mini.yml start db-dev
+```
+
+Wait a few seconds for PostgreSQL to start accepting connections, then verify:
+
+```bash
+docker exec docker-db-dev-1 pg_isready -U postgres
+```
+
+## Named Snapshot Steps (When `snapshot [name]` Argument Provided)
+
+Save the current database state as a named snapshot. This is useful for preserving specific states (e.g., after importing test data, before a migration, etc.).
+
+**If no name is provided**, auto-generate one based on the current context. Use these signals to pick a good name:
+- The current git branch name (e.g., `charliedowler/auth-refactor` → `auth-refactor`)
+- What the user has been working on in this conversation (e.g., "after adding test orgs" → `after-test-orgs`)
+- Prefix with `pre-` or `post-` if the snapshot is being taken before/after a specific operation (e.g., `pre-migration`, `post-seed`)
+- Keep it short, descriptive, and lowercase with hyphens (e.g., `clean-seed`, `with-custom-roles`, `pre-auth-migration`)
+
+```bash
+# Validate the snapshot name (alphanumeric, hyphens, underscores only)
+SNAPSHOT_NAME="<chosen-or-provided-name>"
+if ! echo "$SNAPSHOT_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+  echo "ERROR: Snapshot name must contain only alphanumeric characters, hyphens, and underscores."
+  exit 1
+fi
+
+SNAPSHOT_VOLUME="docker_postgres_data_snapshot_${SNAPSHOT_NAME}"
+
+# Check if a snapshot with this name already exists
+if docker volume inspect "$SNAPSHOT_VOLUME" >/dev/null 2>&1; then
+  echo "ERROR: Snapshot '$SNAPSHOT_NAME' already exists. Remove it first or choose a different name."
+  echo "To overwrite, run: docker volume rm $SNAPSHOT_VOLUME"
+  exit 1
+fi
+
+# Stop the db container for a consistent snapshot
+docker compose -f docker/docker-compose.dev.mini.yml stop db-dev
+
+# Create the named snapshot volume
+docker volume create "$SNAPSHOT_VOLUME"
+
+# Clone the data
+docker run --rm \
+  -v docker_postgres_data:/source:ro \
+  -v "${SNAPSHOT_VOLUME}:/snapshot" \
+  alpine sh -c "cd /source && tar cf - . | (cd /snapshot && tar xf -)"
+
+# Restart the db container
+docker compose -f docker/docker-compose.dev.mini.yml start db-dev
+```
+
+Report the snapshot name and confirm it was created successfully.
+
+## List Snapshots Steps (When `list-snapshots` Argument Provided)
+
+List all named snapshots that have been saved.
+
+```bash
+# List all Docker volumes matching the named snapshot pattern
+docker volume ls --format '{{.Name}}' | grep '^docker_postgres_data_snapshot_' | while read vol; do
+  # Strip the prefix to get the snapshot name
+  name="${vol#docker_postgres_data_snapshot_}"
+  # Get creation date and size
+  created=$(docker volume inspect "$vol" --format '{{.CreatedAt}}' | cut -d'T' -f1)
+  # Get actual disk size using a temporary container
+  size=$(docker run --rm -v "${vol}:/data" alpine du -sh /data 2>/dev/null | cut -f1)
+  echo "  $name  (created: $created, size: $size)"
+done
+```
+
+If no snapshots are found (no output), report: "No named snapshots found. Use `/docker-dev snapshot <name>` to create one."
+
+Also note whether the default snapshot (`docker_postgres_data_snapshot`) exists, as a separate line.
+
+## Use Snapshot Steps (When `use-snapshot <name>` Argument Provided)
+
+Restore the database from a named snapshot. This does NOT affect the default snapshot used by `reset`.
+
+```bash
+SNAPSHOT_NAME="$1"
+SNAPSHOT_VOLUME="docker_postgres_data_snapshot_${SNAPSHOT_NAME}"
+
+# Verify the named snapshot exists
+if ! docker volume inspect "$SNAPSHOT_VOLUME" >/dev/null 2>&1; then
+  echo "ERROR: Snapshot '$SNAPSHOT_NAME' not found. Use /docker-dev list-snapshots to see available snapshots."
+  exit 1
+fi
+
+# Stop the db container
+docker compose -f docker/docker-compose.dev.mini.yml stop db-dev
+
+# Wipe the live volume and restore from the named snapshot
+docker run --rm \
+  -v docker_postgres_data:/target \
+  -v "${SNAPSHOT_VOLUME}:/snapshot:ro" \
+  alpine sh -c "rm -rf /target/* && cd /snapshot && tar cf - . | (cd /target && tar xf -)"
+
+# Restart the db container
+docker compose -f docker/docker-compose.dev.mini.yml start db-dev
+```
+
+Wait for PostgreSQL to be ready:
+
+```bash
+docker exec docker-db-dev-1 pg_isready -U postgres
+```
+
+Report which snapshot was restored and that the database is ready.
+
+## Hard Reset Steps (When `hard-reset` Argument Provided)
+
+Purge the snapshot volume, then do a full database reset from scratch. Automatically takes a new snapshot when done.
+
+```bash
+# Purge existing snapshot
+docker volume rm docker_postgres_data_snapshot 2>/dev/null || true
+
 # Ensure Docker is running first
 docker compose -f docker/docker-compose.dev.mini.yml --env-file .env.development up -d
 
@@ -239,8 +426,12 @@ docker compose -f docker/docker-compose.dev.mini.yml --env-file .env.development
 export PATH="$(pwd)/venv/bin:$PATH"
 export DBT_DEMO_DIR=$(pwd)/examples/full-jaffle-shop-demo
 
-# Reset database, run migrations, and seed
-PGHOST=localhost pnpx dotenv-cli -e .env.development -- ./scripts/reset-db.sh
+# Drop and recreate the public schema via docker exec (NEVER use scripts/reset-db.sh — it requires local psql)
+docker exec docker-db-dev-1 psql -U postgres -c 'drop schema public cascade; create schema public;'
+
+# Run migrations and seed
+PGHOST=localhost pnpx dotenv-cli -e .env.development -- pnpm -F backend migrate
+PGHOST=localhost pnpx dotenv-cli -e .env.development -- pnpm -F backend seed
 
 # Rebuild dbt models
 PGHOST=localhost PGPORT=5432 PGUSER=postgres PGPASSWORD=password PGDATABASE=postgres \
@@ -248,6 +439,8 @@ PGHOST=localhost PGPORT=5432 PGUSER=postgres PGPASSWORD=password PGDATABASE=post
 PGHOST=localhost PGPORT=5432 PGUSER=postgres PGPASSWORD=password PGDATABASE=postgres \
   "$(pwd)/venv/bin/dbt" run --project-dir examples/full-jaffle-shop-demo/dbt --profiles-dir examples/full-jaffle-shop-demo/profiles
 ```
+
+**After hard-reset completes, automatically take a snapshot** using the snapshot steps below.
 
 ## Stop Steps (When `stop` Argument Provided)
 
@@ -264,6 +457,7 @@ docker compose -f docker/docker-compose.dev.mini.yml down
 This stops PM2 processes (keeps them registered for quick restart) and removes Docker containers but **preserves the data volumes** (database data, MinIO files).
 
 To verify everything is stopped:
+
 ```bash
 pnpm pm2:status
 docker compose -f docker/docker-compose.dev.mini.yml ps
@@ -283,16 +477,16 @@ PM2 provides process isolation, individual service restarts, and monitoring - id
 
 **Useful PM2 commands:**
 
-| Command                      | Description                        |
-| ---------------------------- | ---------------------------------- |
-| `pnpm pm2:logs`              | Stream all process logs            |
-| `pnpm pm2:status`            | Show process status table          |
-| `pnpm pm2:restart:api`       | Restart only the API server        |
-| `pnpm pm2:restart:scheduler` | Restart only the scheduler         |
-| `pnpm pm2:restart:frontend`  | Restart only the frontend          |
-| `pnpm pm2:monit`             | Interactive monitoring dashboard   |
-| `pnpm pm2:stop`              | Stop all processes                 |
-| `pnpm pm2:delete`            | Stop and remove all processes      |
+| Command                      | Description                      |
+| ---------------------------- | -------------------------------- |
+| `pnpm pm2:logs`              | Stream all process logs          |
+| `pnpm pm2:status`            | Show process status table        |
+| `pnpm pm2:restart:api`       | Restart only the API server      |
+| `pnpm pm2:restart:scheduler` | Restart only the scheduler       |
+| `pnpm pm2:restart:frontend`  | Restart only the frontend        |
+| `pnpm pm2:monit`             | Interactive monitoring dashboard |
+| `pnpm pm2:stop`              | Stop all processes               |
+| `pnpm pm2:delete`            | Stop and remove all processes    |
 
 ### Alternative: Traditional Dev Server
 
@@ -305,14 +499,14 @@ pnpx dotenv-cli -e .env.development -- pnpm dev
 
 **Why PM2 is preferred:**
 
-| Feature                    | `pnpm dev`          | `pnpm pm2:start`               |
-| -------------------------- | ------------------- | ------------------------------ |
-| Process visibility         | Interleaved output  | Individual status/logs         |
-| Restart individual service | Not possible        | `pnpm pm2:restart:api`         |
-| Memory/CPU monitoring      | Not available       | `pnpm pm2:monit`               |
-| Log management             | Terminal only       | Persistent log files           |
-| Background running         | No                  | Yes (processes persist)        |
-| Best for                   | Quick terminal dev  | LLM control, debugging         |
+| Feature                    | `pnpm dev`         | `pnpm pm2:start`        |
+| -------------------------- | ------------------ | ----------------------- |
+| Process visibility         | Interleaved output | Individual status/logs  |
+| Restart individual service | Not possible       | `pnpm pm2:restart:api`  |
+| Memory/CPU monitoring      | Not available      | `pnpm pm2:monit`        |
+| Log management             | Terminal only      | Persistent log files    |
+| Background running         | No                 | Yes (processes persist) |
+| Best for                   | Quick terminal dev | LLM control, debugging  |
 
 ## Access the Application
 
@@ -322,28 +516,26 @@ pnpx dotenv-cli -e .env.development -- pnpm dev
 
 ## Service Ports Reference
 
-| Service           | Port      | Description                       |
-| ----------------- | --------- | --------------------------------- |
-| Frontend (Vite)   | 3000      | React development server          |
-| Backend (Express) | 8080      | API server                        |
-| Scheduler         | 8081      | Background job processor          |
-| PostgreSQL        | 5432      | Database                          |
-| MinIO             | 9000/9001 | S3-compatible storage/console     |
-| Headless Browser  | 3001      | PDF/image generation              |
+| Service           | Port      | Description                      |
+| ----------------- | --------- | -------------------------------- |
+| Frontend (Vite)   | 3000      | React development server         |
+| Backend (Express) | 8080      | API server                       |
+| Scheduler         | 8081      | Background job processor         |
+| PostgreSQL        | 5432      | Database                         |
+| MinIO             | 9000/9001 | S3-compatible storage/console    |
+| Headless Browser  | 3001      | PDF/image generation             |
+| Mailpit           | 8025/1025 | Email testing Web UI/SMTP server |
 
 ## Troubleshooting
 
 ### Canvas Installation Fails (macOS)
 
-```bash
-brew install pkg-config cairo pango libpng jpeg giflib librsvg pixman
-rm -rf node_modules
-pnpm install
-```
+If `pnpm install` fails with canvas errors - read this guide: https://github.com/Automattic/node-canvas?tab=readme-ov-file#installation
 
 ### PostgreSQL Connection Refused
 
 Wait for Docker services to fully start:
+
 ```bash
 docker compose -f docker/docker-compose.dev.mini.yml ps
 ```
@@ -353,6 +545,7 @@ All services should show "running" state.
 ### MinIO Connection Refused / Query Results Error
 
 If queries fail with `ECONNREFUSED` when uploading results, MinIO isn't running:
+
 ```bash
 # Check if MinIO is running
 docker compose -f docker/docker-compose.dev.mini.yml ps | grep minio

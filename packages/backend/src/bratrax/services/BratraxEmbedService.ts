@@ -583,7 +583,7 @@ export class BratraxEmbedService extends BaseService {
 
         return {
             ...dashboard,
-            isPrivate: false,
+            inheritsFromOrgOrProject: true,
             access: [],
             dashboardFiltersInteractivity: account.access.filtering,
             parameterInteractivity: account.access.parameters,
@@ -1223,7 +1223,7 @@ export class BratraxEmbedService extends BaseService {
                     },
                     account,
                     combinedParameters,
-                    dateZoomGranularity: dateZoom?.granularity,
+                    dateZoomGranularity: dateZoom?.granularity as DateGranularity | undefined,
                 });
 
                 subtotals = formatRawRows(rows, fields) as Record<

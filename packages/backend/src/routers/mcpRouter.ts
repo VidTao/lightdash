@@ -1,10 +1,3 @@
-// eslint-disable-next-line import/extensions
-import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-// eslint-disable-next-line import/extensions
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import express, { type Router } from 'express';
-import { IncomingMessage } from 'http';
-
 import {
     ForbiddenError,
     getErrorMessage,
@@ -15,6 +8,12 @@ import {
     ServiceAcctAccount,
     UserAttributeValueMap,
 } from '@lightdash/common';
+// eslint-disable-next-line import/extensions
+import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+// eslint-disable-next-line import/extensions
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express, { type Router } from 'express';
+import { IncomingMessage } from 'http';
 import {
     allowApiKeyAuthentication, // ← Changed from allowOauthAuthentication
 } from '../controllers/authentication';
@@ -137,17 +136,10 @@ mcpRouter.all(
         try {
             const mcpService = getMcpService(req);
 
-            // Check if MCP is enabled
-            if (req.user) {
-                const isEnabled = await mcpService.isEnabled(req.user);
-                if (!isEnabled) {
-                    throw new ForbiddenError('MCP is not enabled');
-                }
-            } else {
-                // For unauthenticated requests, check global config
-                if (!mcpService.lightdashConfig.mcp.enabled) {
-                    throw new ForbiddenError('MCP is not enabled');
-                }
+            // Check if MCP is enabled (either via config or AI Copilot flag)
+            const isEnabled = await mcpService.isEnabled(req.user!);
+            if (!isEnabled) {
+                throw new ForbiddenError('MCP is not enabled');
             }
 
             if (req.method === 'GET') {
@@ -173,10 +165,10 @@ mcpRouter.all(
             }
 
             if (req.method === 'POST') {
-                // Create a fresh McpServer per request — stateless Streamable
-                // HTTP requires this because the MCP SDK's Protocol class
-                // throws "Already connected" on a reused server instance.
-                const mcpServer = mcpService.createRequestServer();
+                // SDK 1.26.0 requires a new server+transport per request in stateless mode
+                // to prevent cross-client response data leaks (CVE-2026-25536)
+                // See: https://github.com/advisories/GHSA-345p-7cg4-v4c7
+                const mcpServer = mcpService.createServer();
                 const transport = new StreamableHTTPServerTransport({
                     enableJsonResponse: true,
                     sessionIdGenerator: undefined,

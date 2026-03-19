@@ -7,6 +7,7 @@ import svgrPlugin from 'vite-plugin-svgr';
 import { defineConfig } from 'vitest/config';
 
 const FE_PORT = process.env.FE_PORT ? parseInt(process.env.FE_PORT) : 3000;
+const FE_HOST = process.env.FE_HOST;
 const BE_PORT = process.env.PORT ? parseInt(process.env.PORT) : 8080;
 
 export default defineConfig({

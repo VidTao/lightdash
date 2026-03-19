@@ -2,8 +2,8 @@ import { type Dashboard } from '@lightdash/common';
 import {
     Button,
     Stack,
-    TextInput,
     Textarea,
+    TextInput,
     type ModalProps,
 } from '@mantine-8/core';
 import { useForm } from '@mantine/form';
@@ -13,6 +13,7 @@ import {
     useDashboardQuery,
     useUpdateDashboard,
 } from '../../../hooks/dashboard/useDashboard';
+import { useProjectUuid } from '../../../hooks/useProjectUuid';
 import MantineModal from '../MantineModal';
 
 interface DashboardUpdateModalProps {
@@ -29,8 +30,15 @@ const DashboardUpdateModal: FC<DashboardUpdateModalProps> = ({
     onConfirm,
     ...modalProps
 }) => {
-    const { data: dashboard, isInitialLoading } = useDashboardQuery(uuid);
-    const { mutateAsync, isLoading: isUpdating } = useUpdateDashboard(uuid);
+    const projectUuid = useProjectUuid();
+    const { data: dashboard, isInitialLoading } = useDashboardQuery({
+        uuidOrSlug: uuid,
+        projectUuid,
+    });
+    const { mutateAsync, isLoading: isUpdating } = useUpdateDashboard(
+        uuid,
+        projectUuid,
+    );
 
     const form = useForm<FormState>({
         initialValues: {

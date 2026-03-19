@@ -51,11 +51,21 @@ export function registerGenerateDashboardTool(ctx: McpToolContext): void {
                 );
                 const exploreCtx = new ExploreContext(explores);
 
-                const space =
-                    await ctx.spaceModel.getFirstAccessibleSpace(
+                const rootSpaceUuids =
+                    await ctx.spaceModel.getRootSpaceUuidsForProject(
                         projectUuid,
-                        user.userUuid,
                     );
+                if (rootSpaceUuids.length === 0) {
+                    return {
+                        content: [
+                            {
+                                type: 'text' as const,
+                                text: 'No spaces found in this project. Create a space first.',
+                            },
+                        ],
+                    };
+                }
+                const spaceUuid = rootSpaceUuids[0];
 
                 const vizResults = await Promise.allSettled(
                     args.visualizations.map(async (viz, idx) => {
@@ -123,7 +133,7 @@ export function registerGenerateDashboardTool(ctx: McpToolContext): void {
                 const dashboardData: CreateDashboardWithCharts = {
                     name: args.title,
                     description: args.description,
-                    spaceUuid: space.space_uuid,
+                    spaceUuid,
                     charts: validCharts,
                 };
 

@@ -1,5 +1,6 @@
+import { PRE_AGGREGATE_MATERIALIZED_TABLE_PLACEHOLDER } from '../preAggregates/buildPreAggregateExplore';
 import { SupportedDbtAdapter, type DbtModelNode } from '../types/dbt';
-import { type Explore } from '../types/explore';
+import { ExploreType, InlineErrorType, type Explore } from '../types/explore';
 import { DimensionType, FieldType } from '../types/field';
 import { DEFAULT_SPOTLIGHT_CONFIG } from '../types/lightdashProjectConfig';
 import { TimeFrames } from '../types/timeFrames';
@@ -16,8 +17,8 @@ import {
     DBT_METRIC_WITH_FILTER,
     DBT_METRIC_WITH_SQL_FIELD,
     DBT_V9_METRIC,
+    expectedModelWithType,
     LIGHTDASH_TABLE_SQL_WHERE,
-    LIGHTDASH_TABLE_WITHOUT_AUTO_METRICS,
     LIGHTDASH_TABLE_WITH_ADDITIONAL_DIMENSIONS,
     LIGHTDASH_TABLE_WITH_AI_HINT,
     LIGHTDASH_TABLE_WITH_AI_HINT_ARRAY,
@@ -33,27 +34,31 @@ import {
     LIGHTDASH_TABLE_WITH_DIMENSION_AI_HINT_ARRAY,
     LIGHTDASH_TABLE_WITH_GROUP_BLOCK,
     LIGHTDASH_TABLE_WITH_GROUP_LABEL,
-    LIGHTDASH_TABLE_WITH_METRICS,
     LIGHTDASH_TABLE_WITH_METRIC_AI_HINT,
     LIGHTDASH_TABLE_WITH_METRIC_AI_HINT_ARRAY,
     LIGHTDASH_TABLE_WITH_METRIC_LEVEL_CATEGORIES,
+    LIGHTDASH_TABLE_WITH_METRICS,
     LIGHTDASH_TABLE_WITH_MODEL_LEVEL_CATEGORIES,
     LIGHTDASH_TABLE_WITH_MODEL_METRIC_AI_HINT,
     LIGHTDASH_TABLE_WITH_NO_CATEGORIES,
     LIGHTDASH_TABLE_WITH_OFF_TIME_INTERVAL_DIMENSIONS,
     LIGHTDASH_TABLE_WITH_SINGLE_PRIMARY_KEY,
+    LIGHTDASH_TABLE_WITHOUT_AUTO_METRICS,
+    model,
     MODEL_WITH_ADDITIONAL_DIMENSIONS,
     MODEL_WITH_AI_HINT,
     MODEL_WITH_AI_HINT_ARRAY,
     MODEL_WITH_AI_HINT_IN_CONFIG,
     MODEL_WITH_COMPOSITE_PRIMARY_KEY,
+    MODEL_WITH_CUSTOM_GRANULARITY,
+    MODEL_WITH_CUSTOM_GRANULARITY_AND_REQUIRED_ATTRIBUTES,
     MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS,
     MODEL_WITH_DEFAULT_SHOW_UNDERLYING_VALUES,
     MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS,
     MODEL_WITH_DIMENSION_AI_HINT,
     MODEL_WITH_DIMENSION_AI_HINT_ARRAY,
-    MODEL_WITH_GROUPS_BLOCK,
     MODEL_WITH_GROUP_LABEL,
+    MODEL_WITH_GROUPS_BLOCK,
     MODEL_WITH_METRIC,
     MODEL_WITH_METRIC_AI_HINT,
     MODEL_WITH_METRIC_AI_HINT_ARRAY,
@@ -72,8 +77,6 @@ import {
     MODEL_WITH_WRONG_METRIC,
     MODEL_WITH_WRONG_METRICS,
     SPOTLIGHT_CONFIG_WITH_CATEGORIES_AND_HIDE,
-    expectedModelWithType,
-    model,
     warehouseSchema,
     warehouseSchemaWithMissingColumn,
     warehouseSchemaWithMissingTable,
@@ -1216,5 +1219,574 @@ describe('explore-scoped additional dimensions', () => {
         expect(table.metrics.average_revenue.showUnderlyingValues).toEqual([
             'custom_field',
         ]);
+    });
+});
+
+describe('pre-aggregates metadata parsing', () => {
+    it('attaches parsed pre-aggregates to explore', async () => {
+        const explores = await convertExplores(
+            [
+                {
+                    ...model,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: 'orders_rollup',
+                                dimensions: ['myColumnName'],
+                                metrics: ['order_count'],
+                                time_dimension: 'myColumnName',
+                                granularity: 'day',
+                            },
+                        ],
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(1);
+        expect(explores[0]).not.toHaveProperty('errors');
+        expect((explores[0] as Explore).preAggregates).toStrictEqual([
+            {
+                name: 'orders_rollup',
+                dimensions: ['myColumnName'],
+                metrics: ['order_count'],
+                timeDimension: 'myColumnName',
+                granularity: TimeFrames.DAY,
+            },
+        ]);
+    });
+
+    it('does not attach pre-aggregates when metadata is missing', async () => {
+        const explores = await convertExplores(
+            [{ ...model, meta: {} }],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(1);
+        expect((explores[0] as Explore).preAggregates).toBeUndefined();
+    });
+
+    it('uses config.meta.pre_aggregates over meta.pre_aggregates', async () => {
+        const explores = await convertExplores(
+            [
+                {
+                    ...model,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: 'from_meta',
+                                dimensions: ['myColumnName'],
+                                metrics: ['meta_metric'],
+                            },
+                        ],
+                    },
+                    config: {
+                        ...(model.config || { materialized: 'table' }),
+                        meta: {
+                            pre_aggregates: [
+                                {
+                                    name: 'from_config',
+                                    dimensions: ['customers.first_name'],
+                                    metrics: ['config_metric'],
+                                },
+                            ],
+                        },
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(1);
+        expect((explores[0] as Explore).preAggregates).toStrictEqual([
+            {
+                name: 'from_config',
+                dimensions: ['customers.first_name'],
+                metrics: ['config_metric'],
+            },
+        ]);
+    });
+
+    it('returns metadata parse errors when pre-aggregate shape is invalid', async () => {
+        const explores = await convertExplores(
+            [
+                {
+                    ...model,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: '',
+                                dimensions: ['myColumnName'],
+                                metrics: ['metric_1'],
+                            },
+                        ],
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(1);
+        expect(explores[0]).toHaveProperty('errors');
+    });
+});
+
+describe('pre-aggregate virtual explore generation', () => {
+    const previousFlagValue = process.env.PRE_AGGREGATES_ENABLED;
+
+    afterEach(() => {
+        process.env.PRE_AGGREGATES_ENABLED = previousFlagValue;
+    });
+
+    it('generates an internal pre-aggregate explore when enabled', async () => {
+        process.env.PRE_AGGREGATES_ENABLED = 'true';
+
+        const explores = await convertExplores(
+            [
+                {
+                    ...MODEL_WITH_METRIC,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: 'rollup',
+                                dimensions: ['user_id'],
+                                metrics: [
+                                    'myTable_total_num_participating_athletes',
+                                ],
+                            },
+                        ],
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(2);
+
+        const baseExplore = explores.find(
+            (explore) => !('errors' in explore) && explore.name === 'myTable',
+        ) as Explore;
+        const preAggregateExplore = explores.find(
+            (explore) =>
+                !('errors' in explore) &&
+                explore.name === '__preagg__myTable__rollup',
+        ) as Explore;
+
+        expect(baseExplore).toBeDefined();
+        expect(preAggregateExplore).toBeDefined();
+        expect(preAggregateExplore.type).toBe(ExploreType.PRE_AGGREGATE);
+        expect(preAggregateExplore.joinedTables).toEqual([]);
+        expect(preAggregateExplore.preAggregates).toEqual([]);
+        expect(
+            preAggregateExplore.tables[preAggregateExplore.baseTable].sqlTable,
+        ).toBe(PRE_AGGREGATE_MATERIALIZED_TABLE_PLACEHOLDER);
+    });
+
+    it('generates an internal pre-aggregate explore for average metrics without warnings', async () => {
+        process.env.PRE_AGGREGATES_ENABLED = 'true';
+
+        const explores = await convertExplores(
+            [
+                {
+                    ...MODEL_WITH_DEFAULT_SHOW_UNDERLYING_VALUES,
+                    meta: {
+                        ...MODEL_WITH_DEFAULT_SHOW_UNDERLYING_VALUES.meta,
+                        pre_aggregates: [
+                            {
+                                name: 'avg_rollup',
+                                dimensions: ['user_id'],
+                                metrics: ['average_revenue'],
+                            },
+                        ],
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(2);
+
+        const baseExplore = explores.find(
+            (explore) => !('errors' in explore) && explore.name === 'myTable',
+        ) as Explore;
+        const preAggregateExplore = explores.find(
+            (explore) =>
+                !('errors' in explore) &&
+                explore.name === '__preagg__myTable__avg_rollup',
+        ) as Explore;
+
+        expect(baseExplore).toBeDefined();
+        expect(preAggregateExplore).toBeDefined();
+        expect(baseExplore.warnings).toBeUndefined();
+        expect(
+            preAggregateExplore.tables.myTable.metrics.average_revenue
+                .compiledSql,
+        ).toBe(
+            'CAST(SUM(myTable.myTable_average_revenue__sum) AS DOUBLE) / CAST(NULLIF(SUM(myTable.myTable_average_revenue__count), 0) AS DOUBLE)',
+        );
+    });
+
+    it('does not generate pre-aggregate explores for additional explores', async () => {
+        process.env.PRE_AGGREGATES_ENABLED = 'true';
+
+        const explores = await convertExplores(
+            [
+                {
+                    ...MODEL_WITH_METRIC,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: 'rollup',
+                                dimensions: ['user_id'],
+                                metrics: [
+                                    'myTable_total_num_participating_athletes',
+                                ],
+                            },
+                        ],
+                        explores: {
+                            myTable_with_custom_dims: {
+                                label: 'MyTable with Custom Dims',
+                                additional_dimensions: {
+                                    athlete_band: {
+                                        type: DimensionType.STRING,
+                                        sql: "CASE WHEN ${myTable.num_participating_athletes} > 10 THEN 'high' ELSE 'low' END",
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(3);
+        expect(
+            explores.filter(
+                (explore) =>
+                    !('errors' in explore) &&
+                    explore.type === ExploreType.PRE_AGGREGATE,
+            ),
+        ).toHaveLength(1);
+        expect(explores).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ name: 'myTable' }),
+                expect.objectContaining({ name: 'myTable_with_custom_dims' }),
+                expect.objectContaining({
+                    name: '__preagg__myTable__rollup',
+                }),
+            ]),
+        );
+        expect(explores).not.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    name: '__preagg__myTable_with_custom_dims__rollup',
+                }),
+            ]),
+        );
+    });
+
+    it('keeps the base explore when pre-aggregate generation fails', async () => {
+        process.env.PRE_AGGREGATES_ENABLED = 'true';
+
+        const explores = await convertExplores(
+            [
+                {
+                    ...MODEL_WITH_METRIC,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: 'broken_rollup',
+                                dimensions: ['user_id'],
+                                metrics: ['myTable_missing_metric'],
+                            },
+                        ],
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(1);
+        expect((explores[0] as Explore).name).toBe('myTable');
+        expect(
+            (explores[0] as Explore).warnings?.some(
+                (warning) => warning.type === InlineErrorType.FIELD_ERROR,
+            ),
+        ).toBe(true);
+    });
+
+    it('surfaces unsupported pre-aggregate metric types in explore warnings', async () => {
+        process.env.PRE_AGGREGATES_ENABLED = 'true';
+
+        const explores = await convertExplores(
+            [
+                {
+                    ...MODEL_WITH_METRIC,
+                    meta: {
+                        pre_aggregates: [
+                            {
+                                name: 'broken_rollup',
+                                dimensions: ['user_id'],
+                                metrics: ['myTable_user_count'],
+                            },
+                        ],
+                    },
+                },
+            ],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            },
+        );
+
+        expect(explores).toHaveLength(1);
+        expect((explores[0] as Explore).name).toBe('myTable');
+        expect((explores[0] as Explore).warnings).toContainEqual({
+            type: InlineErrorType.FIELD_ERROR,
+            message:
+                'Pre-aggregate "broken_rollup" references unsupported metrics: "myTable_user_count" (count_distinct). Supported metric types: sum, count, min, max, average',
+        });
+    });
+});
+
+describe('custom granularities', () => {
+    const customGranularities = {
+        slt_week: {
+            label: 'SLT Week',
+            sql: "DATE_TRUNC('week', ${COLUMN} + INTERVAL '2 days') - INTERVAL '2 days'",
+        },
+    };
+
+    it('should generate dimensions for custom granularities in time_intervals', () => {
+        const result = convertTable(
+            SupportedDbtAdapter.POSTGRES,
+            MODEL_WITH_CUSTOM_GRANULARITY,
+            [],
+            DEFAULT_SPOTLIGHT_CONFIG,
+            undefined,
+            undefined,
+            customGranularities,
+        );
+
+        // Should have the custom granularity dimension
+        expect(result.dimensions.created_at_slt_week).toBeDefined();
+        expect(result.dimensions.created_at_slt_week.label).toBe('SLT Week');
+        expect(
+            result.dimensions.created_at_slt_week.timeIntervalBaseDimensionName,
+        ).toBe('created_at');
+        expect(result.dimensions.created_at_slt_week.sql).toContain(
+            "DATE_TRUNC('week',",
+        );
+        expect(result.dimensions.created_at_slt_week.sql).not.toContain(
+            '${COLUMN}',
+        );
+        expect(result.dimensions.created_at_slt_week.type).toBe(
+            DimensionType.DATE,
+        );
+    });
+
+    it('should also generate standard interval dimensions alongside custom ones', () => {
+        const result = convertTable(
+            SupportedDbtAdapter.POSTGRES,
+            MODEL_WITH_CUSTOM_GRANULARITY,
+            [],
+            DEFAULT_SPOTLIGHT_CONFIG,
+            undefined,
+            undefined,
+            customGranularities,
+        );
+
+        // Should have standard day dimension
+        expect(result.dimensions.created_at_day).toBeDefined();
+        // Should have custom slt_week dimension
+        expect(result.dimensions.created_at_slt_week).toBeDefined();
+    });
+
+    it('should inherit requiredAttributes and anyAttributes from base dimension', () => {
+        const result = convertTable(
+            SupportedDbtAdapter.POSTGRES,
+            MODEL_WITH_CUSTOM_GRANULARITY_AND_REQUIRED_ATTRIBUTES,
+            [],
+            DEFAULT_SPOTLIGHT_CONFIG,
+            undefined,
+            undefined,
+            customGranularities,
+        );
+
+        expect(
+            result.dimensions.created_at_slt_week.requiredAttributes,
+        ).toEqual({ department: 'finance' });
+
+        // Standard interval should also have it
+        expect(result.dimensions.created_at_day.requiredAttributes).toEqual({
+            department: 'finance',
+        });
+    });
+
+    it('should skip unknown custom granularity names without throwing', () => {
+        // time_intervals has 'slt_week' but no custom granularity defined for it
+        const result = convertTable(
+            SupportedDbtAdapter.POSTGRES,
+            MODEL_WITH_CUSTOM_GRANULARITY,
+            [],
+            DEFAULT_SPOTLIGHT_CONFIG,
+            undefined,
+            undefined,
+            {}, // empty custom granularities
+        );
+
+        // Should not have the unrecognized custom granularity dimension
+        expect(result.dimensions.created_at_slt_week).toBeUndefined();
+        // Should still have the standard day dimension
+        expect(result.dimensions.created_at_day).toBeDefined();
+    });
+
+    it('should produce warnings for unresolved custom granularities in convertExplores', async () => {
+        const result = await convertExplores(
+            [MODEL_WITH_CUSTOM_GRANULARITY],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+                custom_granularities: {}, // slt_week is not defined
+            },
+        );
+
+        expect(result).toHaveLength(1);
+        const explore = result[0];
+        expect('errors' in explore).toBe(false);
+        expect('warnings' in explore).toBe(true);
+        if ('warnings' in explore && explore.warnings) {
+            expect(explore.warnings).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        type: InlineErrorType.FIELD_ERROR,
+                        message: expect.stringContaining(
+                            'Unknown time interval "slt_week"',
+                        ),
+                    }),
+                ]),
+            );
+        }
+    });
+
+    it('should not produce warnings when all custom granularities are defined', async () => {
+        const result = await convertExplores(
+            [MODEL_WITH_CUSTOM_GRANULARITY],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+                custom_granularities: customGranularities,
+            },
+        );
+
+        expect(result).toHaveLength(1);
+        const explore = result[0];
+        expect('errors' in explore).toBe(false);
+        // Should have no warnings (or empty warnings)
+        if ('warnings' in explore) {
+            expect(explore.warnings).toHaveLength(0);
+        }
+    });
+
+    it('should only warn for unresolved custom granularities, not defined ones', async () => {
+        const modelWithMixedGranularities: DbtModelNode & {
+            relation_name: string;
+        } = {
+            ...MODEL_WITH_CUSTOM_GRANULARITY,
+            columns: {
+                created_at: {
+                    name: 'created_at',
+                    data_type: DimensionType.TIMESTAMP,
+                    meta: {
+                        dimension: {
+                            type: DimensionType.TIMESTAMP,
+                            time_intervals: ['DAY', 'slt_week', 'unknown_one'],
+                        },
+                    },
+                },
+            },
+        };
+
+        const result = await convertExplores(
+            [modelWithMixedGranularities],
+            false,
+            SupportedDbtAdapter.POSTGRES,
+            [],
+            warehouseClientMock,
+            {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+                custom_granularities: customGranularities, // has slt_week but not unknown_one
+            },
+        );
+
+        expect(result).toHaveLength(1);
+        const explore = result[0];
+        expect('errors' in explore).toBe(false);
+        expect('warnings' in explore).toBe(true);
+        if ('warnings' in explore && explore.warnings) {
+            // Only unknown_one should produce a warning
+            expect(explore.warnings).toHaveLength(1);
+            expect(explore.warnings[0].message).toContain('unknown_one');
+            expect(explore.warnings[0].message).not.toContain('slt_week');
+        }
     });
 });

@@ -6,21 +6,22 @@ import {
     type TooltipComponentFormatterCallback,
 } from 'echarts';
 import { toNumber } from 'lodash';
-import { type ItemsMap, isField, isTableCalculation } from '../../types/field';
+import { isField, isTableCalculation, type ItemsMap } from '../../types/field';
 import { type ParametersValuesMap } from '../../types/parameters';
 import { type ResultRow } from '../../types/results';
 import {
-    type TooltipSortBy,
     hashFieldReference,
     TooltipSortByOptions,
+    type PivotReference,
+    type TooltipSortBy,
 } from '../../types/savedCharts';
 import { TimeFrames } from '../../types/timeFrames';
-import { formatItemValue } from '../../utils/formatting';
+import { formatDateWithPattern, formatItemValue } from '../../utils/formatting';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 import {
+    StackType,
     type EChartsSeries,
     type PivotValuesColumn,
-    StackType,
 } from '../types';
 import {
     formatCartesianTooltipRow,
@@ -113,43 +114,69 @@ function extractCellValue(cell: unknown): unknown {
  * @param pivotValuesColumnsMap - Map of pivot column names to their metadata (optional, for SQL pivot)
  * @returns The pivot column name if found, undefined otherwise
  */
-const findPivotColumnFromSeriesRef = (
+export const findPivotColumnFromSeriesRef = (
     ref: string,
-    params: TooltipFormatterParams[],
+    params: Pick<TooltipFormatterParams, 'seriesIndex'>[],
     series: EChartsSeries[] | undefined,
     pivotValuesColumnsMap: Record<string, PivotValuesColumn> | undefined,
+    hiddenSeriesPivotRefs?: PivotReference[],
 ): string | undefined => {
     if (!series) return undefined;
 
+    // Extract the pivot values context from the first hovered series that has a pivotReference.
+    // This tells us which group segment the user is hovering (e.g., "shipped").
+    let hoveredPivotValues: PivotReference['pivotValues'] | undefined;
     for (const { seriesIndex } of params) {
-        const seriesOption =
+        const s =
             typeof seriesIndex === 'number' ? series[seriesIndex] : undefined;
-
-        if (seriesOption?.pivotReference?.field === ref) {
-            // SQL pivot mode: look up in pivotValuesColumnsMap
-            if (pivotValuesColumnsMap) {
-                const pivotColumn = Object.entries(pivotValuesColumnsMap).find(
-                    ([, col]) =>
-                        col.referenceField === ref &&
-                        col.pivotValues.length ===
-                            (seriesOption.pivotReference?.pivotValues?.length ??
-                                0) &&
-                        col.pivotValues.every(
-                            (pv, i) =>
-                                pv.value ===
-                                seriesOption.pivotReference?.pivotValues?.[i]
-                                    ?.value,
-                        ),
-                );
-
-                if (pivotColumn) {
-                    return pivotColumn[0];
-                }
-            } else {
-                // Legacy pivot mode: use hashFieldReference directly
-                return hashFieldReference(seriesOption.pivotReference);
-            }
+        if (s?.pivotReference?.pivotValues?.length) {
+            hoveredPivotValues = s.pivotReference.pivotValues;
+            break;
         }
+    }
+
+    // Collect all pivot references to search through: visible series + hidden series refs
+    const pivotRefsToSearch: PivotReference[] = series
+        .map((s) => s.pivotReference)
+        .filter((pr): pr is PivotReference => !!pr);
+
+    if (hiddenSeriesPivotRefs) {
+        pivotRefsToSearch.push(...hiddenSeriesPivotRefs);
+    }
+
+    // Search all pivot references for one matching the requested ref AND whose
+    // pivot values match the hovered context. This allows hidden series (e.g., a
+    // table calculation with its chart series hidden) to be resolved in custom tooltips.
+    const hovered = hoveredPivotValues ?? [];
+    const matchingRef = pivotRefsToSearch.find((pivotRef) => {
+        if (pivotRef.field !== ref) return false;
+        const seriesPivotValues = pivotRef.pivotValues ?? [];
+        return (
+            seriesPivotValues.length === hovered.length &&
+            seriesPivotValues.every((pv, i) => pv.value === hovered[i]?.value)
+        );
+    });
+
+    if (!matchingRef) return undefined;
+
+    // SQL pivot mode: look up in pivotValuesColumnsMap
+    if (pivotValuesColumnsMap) {
+        const pivotColumn = Object.entries(pivotValuesColumnsMap).find(
+            ([, col]) =>
+                col.referenceField === ref &&
+                col.pivotValues.length ===
+                    (matchingRef.pivotValues?.length ?? 0) &&
+                col.pivotValues.every(
+                    (pv, i) => pv.value === matchingRef.pivotValues?.[i]?.value,
+                ),
+        );
+
+        if (pivotColumn) {
+            return pivotColumn[0];
+        }
+    } else {
+        // Legacy pivot mode: use hashFieldReference directly
+        return hashFieldReference(matchingRef);
     }
 
     return undefined;
@@ -463,11 +490,29 @@ export function createStack100TooltipFormatter(
     getDimensionName: GetDimensionNameFn,
     xAxisField: string,
     itemsMap?: ItemsMap,
+    xAxisDateFormat?: string,
 ) {
     return (params: TooltipParams) => {
         if (!Array.isArray(params)) return '';
 
-        const header = getHeader(params, itemsMap, xAxisField);
+        let header: string;
+        if (xAxisDateFormat) {
+            // Format from the raw data value to avoid timezone double-parsing.
+            const firstParam = params[0];
+            const rawValue =
+                (firstParam?.value as Record<string, unknown> | undefined)?.[
+                    xAxisField
+                ] ?? firstParam?.axisValue;
+            header =
+                rawValue != null
+                    ? formatDateWithPattern(
+                          rawValue as string | number,
+                          xAxisDateFormat,
+                      )
+                    : getHeader(params, itemsMap, xAxisField);
+        } else {
+            header = getHeader(params, itemsMap, xAxisField);
+        }
 
         const rowsHtml = params
             .map((param) => {
@@ -592,11 +637,13 @@ export const buildSqlRunnerCartesianTooltipFormatter =
         flipAxes,
         xFieldId,
         originalValues,
+        xAxisDateFormat,
     }: {
         stackValue: string | boolean | undefined;
         flipAxes: boolean | undefined;
         xFieldId: string | undefined;
         originalValues?: Map<string, Map<string, number>> | undefined;
+        xAxisDateFormat?: string;
     }): TooltipComponentFormatterCallback<
         TooltipFormatterParams | TooltipFormatterParams[]
     > =>
@@ -622,10 +669,30 @@ export const buildSqlRunnerCartesianTooltipFormatter =
                 },
                 xFieldId,
                 undefined, // No itemsMap available in SQL Runner
+                xAxisDateFormat,
             )(params as TooltipParam[]);
         }
 
-        const header = getHeader(params, undefined, xFieldId);
+        let header: string;
+        if (xAxisDateFormat && xFieldId) {
+            // Format from the raw data value to avoid timezone double-parsing.
+            // getHeader() returns an already-formatted string (e.g. "May 2024")
+            // which, when re-parsed with moment().utc(), can shift months.
+            const firstParam = params[0];
+            const rawValue =
+                (firstParam?.value as Record<string, unknown> | undefined)?.[
+                    xFieldId
+                ] ?? firstParam?.axisValue;
+            header =
+                rawValue != null
+                    ? formatDateWithPattern(
+                          rawValue as string | number,
+                          xAxisDateFormat,
+                      )
+                    : getHeader(params, undefined, xFieldId);
+        } else {
+            header = getHeader(params, undefined, xFieldId);
+        }
 
         // Build tooltip rows
         const rowsHtml = params
@@ -765,6 +832,7 @@ export const buildCartesianTooltipFormatter =
         xFieldId,
         originalValues,
         series,
+        hiddenSeriesPivotRefs,
         tooltipHtmlTemplate,
         tooltipSort,
         pivotValuesColumnsMap,
@@ -777,6 +845,8 @@ export const buildCartesianTooltipFormatter =
         xFieldId: string | undefined;
         originalValues?: Map<string, Map<string, number>> | undefined;
         series?: EChartsSeries[];
+        /** Pivot references from hidden series, used for resolving custom tooltip references */
+        hiddenSeriesPivotRefs?: PivotReference[];
         tooltipHtmlTemplate?: string;
         tooltipSort?: TooltipSortBy;
         pivotValuesColumnsMap?: Record<string, PivotValuesColumn>;
@@ -1108,12 +1178,14 @@ export const buildCartesianTooltipFormatter =
                         if (translatedKey) keysToTry.push(translatedKey);
 
                         // Also check if ref is a simple metric name that has been pivoted
+                        // Also resolves hidden series via hiddenSeriesPivotRefs
                         const pivotColumnFromSeries =
                             findPivotColumnFromSeriesRef(
                                 ref,
                                 params,
                                 series,
                                 pivotValuesColumnsMap,
+                                hiddenSeriesPivotRefs,
                             );
 
                         if (pivotColumnFromSeries)
@@ -1181,6 +1253,7 @@ export const buildCartesianTooltipFormatter =
                         }
                     }
                     // Fallback: check if ref is a simple metric name that has been pivoted
+                    // Also resolves hidden series via hiddenSeriesPivotRefs
                     if (val === undefined) {
                         const pivotColumnFromSeries =
                             findPivotColumnFromSeriesRef(
@@ -1188,6 +1261,7 @@ export const buildCartesianTooltipFormatter =
                                 params,
                                 series,
                                 pivotValuesColumnsMap,
+                                hiddenSeriesPivotRefs,
                             );
 
                         if (pivotColumnFromSeries) {

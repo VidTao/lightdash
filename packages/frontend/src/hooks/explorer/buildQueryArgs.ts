@@ -29,7 +29,7 @@ export function buildQueryArgs(options: {
     viewModeQueryArgs?:
         | { chartUuid: string; context?: QueryExecutionContext }
         | { chartUuid: string; chartVersionUuid: string };
-    dateZoomGranularity?: DateGranularity;
+    dateZoomGranularity?: DateGranularity | string;
     minimal: boolean;
     savedChart: Pick<SavedChartDAO, 'chartConfig' | 'pivotConfig'>;
 }): QueryResultsProps | null {
@@ -63,10 +63,16 @@ export function buildQueryArgs(options: {
             items,
         );
     }
+
+    const pivotDimensions = options.savedChart.pivotConfig?.columns;
+
     return {
         projectUuid,
         tableId: tableName,
-        query: computedMetricQuery,
+        query: {
+            ...computedMetricQuery,
+            pivotDimensions,
+        },
         ...(isEditMode ? {} : viewModeQueryArgs),
         dateZoomGranularity,
         invalidateCache: minimal,

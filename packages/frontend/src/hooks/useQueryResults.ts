@@ -1,27 +1,27 @@
 import {
+    assertUnreachable,
+    DEFAULT_RESULTS_PAGE_SIZE,
+    DownloadFileType,
+    FeatureFlags,
+    MAX_SAFE_INTEGER,
+    ParameterError,
+    QueryExecutionContext,
+    QueryHistoryStatus,
+    sleep,
     type ApiError,
     type ApiExecuteAsyncMetricQueryResults,
     type ApiGetAsyncQueryResults,
     type ApiJobScheduledResponse,
     type ApiSuccessEmpty,
-    assertUnreachable,
     type DateGranularity,
-    DEFAULT_RESULTS_PAGE_SIZE,
-    DownloadFileType,
     type DownloadOptions,
     type ExecuteAsyncMetricQueryRequestParams,
     type ExecuteAsyncSavedChartRequestParams,
-    FeatureFlags,
-    MAX_SAFE_INTEGER,
     type MetricQuery,
-    ParameterError,
     type ParametersValuesMap,
     type PivotConfiguration,
-    QueryExecutionContext,
-    QueryHistoryStatus,
     type ReadyQueryResultsPage,
     type ResultRow,
-    sleep,
 } from '@lightdash/common';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -39,7 +39,7 @@ export type QueryResultsProps = {
     csvLimit?: number | null; //giving null returns all results (no limit)
     chartUuid?: string;
     chartVersionUuid?: string;
-    dateZoomGranularity?: DateGranularity;
+    dateZoomGranularity?: DateGranularity | string;
     context?: QueryExecutionContext;
     invalidateCache?: boolean;
     parameters?: ParametersValuesMap;
@@ -183,7 +183,10 @@ export const executeQueryAndWaitForResults = async (
 
     const results = await pollForResults(data.projectUuid, query.queryUuid);
 
-    if (results.status === QueryHistoryStatus.ERROR) {
+    if (
+        results.status === QueryHistoryStatus.ERROR ||
+        results.status === QueryHistoryStatus.EXPIRED
+    ) {
         throw new Error(results.error || 'Error executing SQL query');
     }
 
@@ -411,7 +414,8 @@ export const useInfiniteQueryResults = (
             const clientFetchTimeMs = performance.now() - startTime;
 
             switch (status) {
-                case QueryHistoryStatus.ERROR: {
+                case QueryHistoryStatus.ERROR:
+                case QueryHistoryStatus.EXPIRED: {
                     backoffRef.current = 250;
                     throw <ApiError>{
                         status: 'error',
@@ -435,7 +439,9 @@ export const useInfiniteQueryResults = (
                         },
                     };
                 }
-                case QueryHistoryStatus.PENDING: {
+                case QueryHistoryStatus.PENDING:
+                case QueryHistoryStatus.QUEUED:
+                case QueryHistoryStatus.EXECUTING: {
                     // Invalidate page. Note we can't use refetch as it bypasses the "enabled" check: https://github.com/TanStack/query/issues/1965
                     void sleep(backoffRef.current).then(() =>
                         queryClient.invalidateQueries([

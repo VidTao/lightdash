@@ -157,6 +157,8 @@ export const getAxisTypeFromField = (item?: ItemsMap[string]): string => {
             case MetricType.COUNT:
             case MetricType.COUNT_DISTINCT:
             case MetricType.SUM:
+            case MetricType.SUM_DISTINCT:
+            case MetricType.AVERAGE_DISTINCT:
             case MetricType.MIN:
             case MetricType.MAX:
             case MetricType.PERCENT_OF_PREVIOUS:
@@ -318,6 +320,32 @@ export const getAxisDefaultMaxValue = ({
 
 const maybeGetAxisDefaultMaxValue = (allowFunction: boolean) =>
     allowFunction ? getAxisDefaultMaxValue : undefined;
+
+/**
+ * Returns an echarts axis-min function that ensures the axis extends down
+ * to include the given reference line value, without ever shrinking the
+ * axis range if the reference line is inside the auto-calculated bounds.
+ */
+const referenceLineMinBound = (refValue: number | string | undefined) => {
+    if (refValue === undefined) return undefined;
+    const numRef =
+        typeof refValue === 'number' ? refValue : parseFloat(refValue);
+    if (isNaN(numRef)) return undefined;
+    return ({ min }: { min: number }) => Math.min(min, numRef);
+};
+
+/**
+ * Returns an echarts axis-max function that ensures the axis extends up
+ * to include the given reference line value, without ever capping the
+ * axis range if the reference line is inside the auto-calculated bounds.
+ */
+const referenceLineMaxBound = (refValue: number | string | undefined) => {
+    if (refValue === undefined) return undefined;
+    const numRef =
+        typeof refValue === 'number' ? refValue : parseFloat(refValue);
+    if (isNaN(numRef)) return undefined;
+    return ({ max }: { max: number }) => Math.max(max, numRef);
+};
 
 const convertPivotValuesColumnsIntoMap = (
     valuesColumns?: PivotValuesColumn[],
@@ -497,6 +525,8 @@ const getMinAndMaxReferenceLines = (
                 case MetricType.COUNT:
                 case MetricType.COUNT_DISTINCT:
                 case MetricType.SUM:
+                case MetricType.SUM_DISTINCT:
+                case MetricType.AVERAGE_DISTINCT:
                 case MetricType.MEDIAN:
                 case MetricType.PERCENTILE:
                 case MetricType.MIN:
@@ -685,6 +715,55 @@ const formatStack100Value = (value: unknown): string => {
               round: 1,
           })}%`
         : `${value}%`;
+};
+
+/**
+ * Format the label based on showValue, showLabel, and showSeriesName options
+ * @param formattedValue - The formatted metric value
+ * @param labelName - The legend/pivot label name (e.g., "United States")
+ * @param metricFieldName - The metric field name (e.g., "Revenue")
+ * @param showValue - Whether to show the value (default: true)
+ * @param showLabel - Whether to show the legend/pivot name (default: false)
+ * @param showSeriesName - Whether to show the metric field name (default: false)
+ * @returns The formatted label string, e.g., "United States (Revenue): 17,000"
+ */
+const formatLabelWithOptions = (
+    formattedValue: string,
+    labelName: string | undefined,
+    metricFieldName: string | undefined,
+    showValue: boolean = true,
+    showLabel: boolean = false,
+    showSeriesName: boolean = false,
+): string => {
+    const nameParts: string[] = [];
+
+    if (showLabel && labelName) {
+        nameParts.push(labelName);
+    }
+
+    if (showSeriesName && metricFieldName && metricFieldName !== labelName) {
+        nameParts.push(`(${metricFieldName})`);
+    }
+
+    const nameStr = nameParts.join(' ');
+
+    const parts: string[] = [];
+
+    if (nameStr) {
+        parts.push(nameStr);
+    }
+
+    if (showValue) {
+        parts.push(formattedValue);
+    }
+
+    // If nothing to show, return empty string
+    if (parts.length === 0) {
+        return '';
+    }
+
+    // Join parts with ": " if both name and value are present
+    return parts.join(': ');
 };
 
 /**
@@ -877,11 +956,30 @@ const getPivotSeries = ({
 
                             // For 100% stacked bar charts on the primary axis, values are already percentages (0-100)
                             // Only apply stack100 formatting if this series is on yAxisIndex 0
-                            if (isStack100 && isPrimaryYAxis(series)) {
-                                return formatStack100Value(raw);
-                            }
+                            const formattedValue =
+                                isStack100 && isPrimaryYAxis(series)
+                                    ? formatStack100Value(raw)
+                                    : String(
+                                          seriesValueFormatter(
+                                              field,
+                                              raw,
+                                              parameters,
+                                          ) ?? '',
+                                      );
 
-                            return seriesValueFormatter(field, raw, parameters);
+                            const metricFieldName = getLabelFromField(
+                                itemsMap,
+                                series.encode.yRef.field,
+                            );
+
+                            return formatLabelWithOptions(
+                                formattedValue,
+                                pivotLabel,
+                                metricFieldName,
+                                series.label?.showValue ?? true,
+                                series.label?.showLabel ?? false,
+                                series.label?.showSeriesName ?? false,
+                            );
                         },
                     }),
             },
@@ -1044,14 +1142,29 @@ const getSimpleSeries = ({
 
                         // For 100% stacked charts on the primary axis, values are already percentages (0-100)
                         // Only apply stack100 formatting if this series is on yAxisIndex 0
-                        if (isStack100 && (series.yAxisIndex ?? 0) === 0) {
-                            return formatStack100Value(rawValue);
-                        }
+                        const formattedValue =
+                            isStack100 && (series.yAxisIndex ?? 0) === 0
+                                ? formatStack100Value(rawValue)
+                                : String(
+                                      seriesValueFormatter(
+                                          field,
+                                          rawValue,
+                                          parameters,
+                                      ) ?? '',
+                                  );
 
-                        return seriesValueFormatter(
-                            field,
-                            rawValue,
-                            parameters,
+                        const metricFieldName = getLabelFromField(
+                            itemsMap,
+                            series.encode.yRef.field,
+                        );
+
+                        return formatLabelWithOptions(
+                            formattedValue,
+                            param?.seriesName as string | undefined,
+                            metricFieldName,
+                            series.label?.showValue ?? true,
+                            series.label?.showLabel ?? false,
+                            series.label?.showSeriesName ?? false,
                         );
                     },
                 }),
@@ -1676,12 +1789,12 @@ const getEchartAxes = ({
         if (axisType === 'value') {
             const initialBottomAxisMin =
                 xAxisConfiguration?.[0]?.min ??
-                referenceLineMinX ??
+                referenceLineMinBound(referenceLineMinX) ??
                 maybeGetAxisDefaultMinValue(allowFirstAxisDefaultRange);
 
             const initialBottomAxisMax =
                 xAxisConfiguration?.[0]?.max ??
-                referenceLineMaxX ??
+                referenceLineMaxBound(referenceLineMaxX) ??
                 maybeGetAxisDefaultMaxValue(allowFirstAxisDefaultRange);
 
             // Apply offset to the min and max values of the axis
@@ -1769,14 +1882,14 @@ const getEchartAxes = ({
             ? shouldStack100 && !validCartesianConfig.layout.flipAxes
                 ? 100 // For 100% stacking without flipped axes, max is always 100
                 : yAxisConfiguration?.[0]?.max ||
-                  referenceLineMaxLeftY ||
+                  referenceLineMaxBound(referenceLineMaxLeftY) ||
                   maybeGetAxisDefaultMaxValue(allowFirstAxisDefaultRange)
             : undefined;
 
     const minYAxisValue =
         leftAxisType === 'value'
             ? yAxisConfiguration?.[0]?.min ||
-              referenceLineMinLeftY ||
+              referenceLineMinBound(referenceLineMinLeftY) ||
               maybeGetAxisDefaultMinValue(allowFirstAxisDefaultRange)
             : undefined;
 
@@ -1994,7 +2107,7 @@ const getEchartAxes = ({
                 min:
                     rightAxisType === 'value'
                         ? yAxisConfiguration?.[1]?.min ||
-                          referenceLineMinRightY ||
+                          referenceLineMinBound(referenceLineMinRightY) ||
                           maybeGetAxisDefaultMinValue(
                               allowSecondAxisDefaultRange,
                           )
@@ -2002,7 +2115,7 @@ const getEchartAxes = ({
                 max:
                     rightAxisType === 'value'
                         ? yAxisConfiguration?.[1]?.max ||
-                          referenceLineMaxRightY ||
+                          referenceLineMaxBound(referenceLineMaxRightY) ||
                           maybeGetAxisDefaultMaxValue(
                               allowSecondAxisDefaultRange,
                           )
@@ -2164,6 +2277,7 @@ const useEchartsCartesianConfig = (
         minimal,
         parameters,
         isTouchDevice,
+        colorPalette,
     } = useVisualizationContext();
 
     const theme = useMantineTheme();
@@ -2263,6 +2377,18 @@ const useEchartsCartesianConfig = (
         parameters,
     ]);
 
+    // Pivot references from hidden series, used for resolving custom tooltip references
+    // to fields that are on the Y axis but have their chart series hidden.
+    const hiddenSeriesPivotRefs = useMemo(() => {
+        const allConfigSeries =
+            validCartesianConfig?.eChartsConfig?.series ?? [];
+        return allConfigSeries
+            .filter(
+                (s) => s.hidden && isPivotReferenceWithValues(s.encode.yRef),
+            )
+            .map((s) => s.encode.yRef);
+    }, [validCartesianConfig?.eChartsConfig?.series]);
+
     const resultsAndMinsAndMaxes = useMemo(
         () => getResultValueArray(rows, true, true),
         [rows],
@@ -2294,6 +2420,15 @@ const useEchartsCartesianConfig = (
         if (!itemsMap) return;
 
         const isHorizontal = Boolean(validCartesianConfig?.layout.flipAxes);
+        const isColorByCategory = Boolean(
+            validCartesianConfig?.layout?.colorByCategory,
+        );
+        const categoryColorOverrides =
+            validCartesianConfig?.layout?.categoryColorOverrides;
+        // xField is always the dimension (category) field regardless of flipAxes.
+        // flipAxes only swaps which axis renders which field via `encode`,
+        // it does NOT swap xField/yField in the layout.
+        const categoryFieldId = validCartesianConfig?.layout?.xField;
 
         // Calculate dynamic border radius based on chart characteristics
         const barSeries = series.filter(
@@ -2344,7 +2479,7 @@ const useEchartsCartesianConfig = (
 
                 // Apply bar styling for bar charts
                 if (serie.type === CartesianSeriesType.BAR) {
-                    return {
+                    const barConfig = {
                         ...baseConfig,
                         ...getBarStyle(),
                         // Non-stacked bars get border radius on all bars
@@ -2359,6 +2494,41 @@ const useEchartsCartesianConfig = (
                             },
                         }),
                     };
+
+                    // Color by category: each bar gets a unique color
+                    if (isColorByCategory) {
+                        return {
+                            ...barConfig,
+                            colorBy: 'data' as const,
+                            itemStyle: {
+                                ...barConfig.itemStyle,
+                                color: (params: {
+                                    dataIndex: number;
+                                    name: string;
+                                    data: Record<string, unknown>;
+                                }) => {
+                                    const categoryValue = categoryFieldId
+                                        ? String(
+                                              params.data[categoryFieldId] ??
+                                                  '',
+                                          )
+                                        : '';
+                                    if (
+                                        categoryColorOverrides?.[categoryValue]
+                                    ) {
+                                        return categoryColorOverrides[
+                                            categoryValue
+                                        ];
+                                    }
+                                    return colorPalette[
+                                        params.dataIndex % colorPalette.length
+                                    ];
+                                },
+                            },
+                        };
+                    }
+
+                    return barConfig;
                 }
 
                 return baseConfig;
@@ -2406,10 +2576,14 @@ const useEchartsCartesianConfig = (
         validCartesianConfig?.layout.flipAxes,
         validCartesianConfig?.layout?.stack,
         validCartesianConfig?.layout.connectNulls,
+        validCartesianConfig?.layout?.colorByCategory,
+        validCartesianConfig?.layout?.categoryColorOverrides,
+        validCartesianConfig?.layout?.xField,
         series,
         rows,
         validCartesianConfigLegend,
         getSeriesColor,
+        colorPalette,
         theme.colors.background,
     ]);
     const sortedResults = useMemo(() => {
@@ -2713,6 +2887,7 @@ const useEchartsCartesianConfig = (
                 xFieldId: validCartesianConfig?.layout?.xField,
                 originalValues,
                 series,
+                hiddenSeriesPivotRefs,
                 tooltipHtmlTemplate: tooltipConfig,
                 tooltipSort: tooltipSortConfig,
                 pivotValuesColumnsMap,
@@ -2731,6 +2906,7 @@ const useEchartsCartesianConfig = (
         originalValues,
         parameters,
         series,
+        hiddenSeriesPivotRefs,
         dataToRender,
         isTouchDevice,
     ]);

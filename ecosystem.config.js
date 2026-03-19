@@ -32,6 +32,13 @@ const localEnv = dotenv.config({ path: localEnvPath }).parsed || {};
 // Merge: local overrides base
 const env = { ...baseEnv, ...localEnv };
 
+// Add venv/bin to PATH for dbt access
+const venvBinPath = path.join(__dirname, 'venv', 'bin');
+const envWithPath = {
+    ...env,
+    PATH: `${venvBinPath}:${process.env.PATH}`,
+};
+
 module.exports = {
     apps: [
         // ─────────────────────────────────────────────────────────────────
@@ -44,7 +51,7 @@ module.exports = {
             node_args: '--import tsx --inspect=0.0.0.0:9229',
             cwd: path.join(__dirname, 'packages/backend'),
             env: {
-                ...env,
+                ...envWithPath,
                 LIGHTDASH_MODE: 'development',
                 HEADLESS: 'true',
                 NODE_ENV: 'development',
@@ -67,7 +74,7 @@ module.exports = {
             node_args: '--import tsx',
             cwd: path.join(__dirname, 'packages/backend'),
             env: {
-                ...env,
+                ...envWithPath,
                 NODE_ENV: 'development',
                 SENTRY_SPOTLIGHT: 'http://localhost:8969/stream',
                 // Override PORT to avoid conflict with API (which uses 8080)
@@ -124,6 +131,25 @@ module.exports = {
             args: '--build --watch --preserveWatchOutput tsconfig.json',
             interpreter: 'none',
             cwd: path.join(__dirname, 'packages/warehouses'),
+            watch: false,
+            autorestart: false,
+            kill_timeout: 3000,
+            merge_logs: true,
+            time: true,
+        },
+
+        // ─────────────────────────────────────────────────────────────────
+        // SDK Test App (port 3030)
+        // ─────────────────────────────────────────────────────────────────
+        {
+            name: 'lightdash-sdk-test',
+            script: 'node_modules/.bin/vite',
+            args: '--port 3030',
+            interpreter: 'none',
+            cwd: path.join(__dirname, 'packages/sdk-test-app'),
+            env: {
+                NODE_ENV: 'development',
+            },
             watch: false,
             autorestart: false,
             kill_timeout: 3000,

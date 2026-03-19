@@ -1,9 +1,12 @@
 import {
+    Badge,
     Button,
     Card,
     Loader,
     Modal,
     MultiSelect,
+    NumberInput,
+    Paper,
     PasswordInput,
     Pill,
     PillsInput,
@@ -28,6 +31,10 @@ import styles from './styles/mantine-overrides/tooltip.module.css';
 declare module '@mantine-8/core' {
     export interface ButtonProps {
         variant?: ButtonVariant | 'compact-outline' | 'dark';
+    }
+
+    export interface PaperProps {
+        variant?: 'dotted';
     }
 
     export interface LoaderProps {
@@ -65,6 +72,11 @@ const subtleInputStyles = (theme: MantineTheme) => ({
     },
 });
 
+const paperDottedStyles = (theme: MantineTheme) => ({
+    border: `1px dashed ${theme.colors.ldGray[3]}`,
+    background: 'inherit',
+});
+
 export const getMantine8ThemeOverride = (
     colorScheme: ColorScheme,
     overrides?: Partial<MantineThemeOverride>,
@@ -96,10 +108,23 @@ export const getMantine8ThemeOverride = (
 
         components: {
             ...legacyComponentsTheme,
+            Badge: Badge.extend({
+                defaultProps: {
+                    radius: 'sm',
+                },
+                styles: {
+                    root: {
+                        textTransform: 'none',
+                        fontWeight: 400,
+                    },
+                },
+            }),
             Card: Card.extend({
-                styles: (theme) => ({
+                styles: (theme, props) => ({
                     root: {
                         borderColor: theme.colors.ldGray[2],
+                        ...(props.variant === 'dotted' &&
+                            paperDottedStyles(theme)),
                     },
                 }),
             }),
@@ -154,6 +179,7 @@ export const getMantine8ThemeOverride = (
                 }),
                 defaultProps: {
                     radius: 'md',
+                    variant: 'dark',
                 },
             }),
             ScrollArea: ScrollArea.extend({
@@ -186,18 +212,20 @@ export const getMantine8ThemeOverride = (
                     shadow: 'sm',
                 },
             },
-            Paper: {
+            Paper: Paper.extend({
                 defaultProps: {
                     radius: 'md',
                     shadow: 'subtle',
                     withBorder: true,
-                    styles: (theme: MantineTheme) => ({
-                        root: {
-                            borderColor: theme.colors.ldGray[2],
-                        },
-                    }),
                 },
-            },
+                styles: (theme, props) => ({
+                    root: {
+                        borderColor: `var(--mantine-color-ldGray-2)`,
+                        ...(props.variant === 'dotted' &&
+                            paperDottedStyles(theme)),
+                    },
+                }),
+            }),
             Loader: Loader.extend({
                 defaultProps: {
                     loaders: { ...Loader.defaultLoaders, dots: DotsLoader },
@@ -218,6 +246,12 @@ export const getMantine8ThemeOverride = (
                     if (props.variant === 'subtle')
                         return subtleInputStyles(theme);
                     return {};
+                },
+            }),
+
+            NumberInput: NumberInput.extend({
+                defaultProps: {
+                    radius: 'md',
                 },
             }),
 

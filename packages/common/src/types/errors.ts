@@ -98,6 +98,20 @@ export class ParameterError extends LightdashError {
     }
 }
 
+export class PayloadTooLargeError extends LightdashError {
+    constructor(
+        message: string = 'Request payload exceeds the maximum allowed size',
+        data: Record<string, AnyType> = {},
+    ) {
+        super({
+            message,
+            name: 'PayloadTooLargeError',
+            statusCode: 413,
+            data,
+        });
+    }
+}
+
 export class NonCompiledModelError extends LightdashError {
     constructor(message: string, data: { [key: string]: AnyType } = {}) {
         super({
@@ -414,6 +428,20 @@ export class MsTeamsError extends LightdashError {
     }
 }
 
+export class GoogleChatError extends LightdashError {
+    constructor(
+        message: string = 'Google Chat API error occurred',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'GoogleChatError',
+            statusCode: 400,
+            data,
+        });
+    }
+}
+
 export class UnexpectedGoogleSheetsError extends LightdashError {
     constructor(
         message = 'Unexpected error in Google sheets client',
@@ -548,6 +576,20 @@ export class ResultsExpiredError extends LightdashError {
     }
 }
 
+export class ExpiredQueryError extends LightdashError {
+    constructor(
+        message = 'Your query expired while waiting in the queue. Please try again.',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'ExpiredQueryError',
+            statusCode: 408,
+            data,
+        });
+    }
+}
+
 export class TimeoutError extends LightdashError {
     constructor(message: string) {
         super({
@@ -611,6 +653,20 @@ export class SnowflakeTokenError extends LightdashError {
         super({
             message,
             name: 'SnowflakeTokenError',
+            statusCode: 401,
+            data: {},
+        });
+    }
+}
+
+/* This specific error will be used in the frontend
+to show a "reauthenticate" button in the UI
+*/
+export class DatabricksTokenError extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'DatabricksTokenError',
             statusCode: 401,
             data: {},
         });

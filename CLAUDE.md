@@ -13,10 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-**Monorepo Structure** (pnpm workspaces):
+### Monorepo Structure (pnpm workspaces)
 
 -   `packages/common/` - Shared utilities, types, and business logic
--   `packages/backend/` - Node.js/Express API server with database layer
+-   `packages/backend/` - Node.js/Express API server, scheduler worker, and all backend services
 -   `packages/backend/src/ee/` - Enterprise Edition (Source Available license - DO NOT COPY)
 -   `packages/backend/src/bratrax/` - **Bratrax custom extension module** (our own implementations)
 -   `packages/frontend/` - React web application with Vite build system
@@ -24,11 +24,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 -   `packages/cli/` - Command-line interface for dbt project management
 -   `packages/e2e/` - Cypress end-to-end tests
 
-**Key Technologies:**
+### Key Technologies
 
 -   Backend: Express.js, Knex.js ORM, PostgreSQL, TSOA (OpenAPI generation)
 -   Frontend: React 19, Mantine v8 UI, Emotion styling, TanStack Query
 -   Build: pnpm workspaces, TypeScript project references, Vite
+
+### Runtime Services
+
+The backend, scheduler worker, and headless browser run as separate services that may be on different pods/containers. They do not share a local filesystem. When working with files that are produced by one service and consumed by another, consider how that file will be accessible across service boundaries:
+
+-   **Dynamic/generated files** (screenshots, PDFs, CSVs): Upload to S3 via `FileStorageClient` and retrieve by S3 key. See `packages/backend/src/clients/FileStorage/FileStorageClient.ts`.
+-   **Static files** (templates, assets): Commit to the repo and use a `postbuild` step in `package.json` to copy them into the build output so they're available in the container image.
+
+| Service | Purpose | Key Files |
+|---------|---------|-----------|
+| **Backend API** | Express.js REST server, handles all HTTP endpoints | `packages/backend/src/` |
+| **Scheduler Worker** | Graphile Worker — processes background jobs (emails, Slack, exports) | `SchedulerWorker.ts`, `SchedulerTask.ts` |
+| **Headless Browser** | Separate Chromium container, takes screenshots/PDFs via CDP | `docker/Dockerfile.headless-browser`, `UnfurlService.ts` |
+| **PostgreSQL** | All application state + Graphile Worker job queue | Knex migrations in `src/database/migrations/` |
+| **S3 / MinIO** | Object storage for screenshots, PDFs, CSVs, result caching | `FileStorageClient.ts`, `S3Client.ts` |
+| **NATS** | Optional message queue for async query processing | `NatsClient.ts` |
 
 ## Common Development Commands
 
@@ -61,6 +77,13 @@ Generate OpenAPI specs from TSOA controllers, needs to be run when controllers c
 pnpm generate-api
 ```
 
+Chart-as-code JSON schema is generated from backend OpenAPI:
+
+```bash
+pnpm generate:chart-as-code-schema
+pnpm check:chart-as-code-schema
+```
+
 **Database Migrations:**
 
 ```bash
@@ -91,7 +114,9 @@ pnpm -F backend rollback-last
 -   Express.js with session-based authentication
 -   Database migrations in `src/database/migrations/`
 -   Controllers use TSOA decorators for API generation
--   Background jobs with node-cron scheduler
+-   Background jobs via Graphile Worker (PostgreSQL-based job queue, not node-cron)
+-   Scheduler enabled/disabled via `SCHEDULER_ENABLED` env var
+-   File storage through `FileStorageClient` → S3/MinIO (never local filesystem for cross-service sharing)
 
 **Frontend (`packages/frontend/`):**
 
@@ -105,6 +130,32 @@ pnpm -F backend rollback-last
 -   Shared types and utilities used across packages
 -   Authorization logic with CASL
 -   Published as `@lightdash/common`
+
+## Authorization & Custom Roles
+
+**When adding a new permission scope**, you must update all the relevant ability layers:
+
+1. **`packages/common/src/authorization/types.ts`** - Add the new CASL subject name to `CaslSubjectNames`
+2. **`packages/common/src/authorization/scopes.ts`** - Define the scope (name, description, group, conditions)
+3. **`packages/common/src/authorization/projectMemberAbility.ts`** - Add to the appropriate system role function (e.g., `developer`, `admin`)
+4. **`packages/common/src/authorization/organizationMemberAbility.ts`** - Add to org-level roles if needed (note: org-level abilities are additive and **cannot** be restricted by project-level custom roles)
+5. **`packages/common/src/authorization/roleToScopeMapping.ts`** - Add to the appropriate system role in `BASE_ROLE_SCOPES` (must stay in sync with `projectMemberAbility.ts`)
+6. **`packages/common/src/authorization/serviceAccountAbility.ts`** - Add to `ORG_ADMIN` (or other service account scopes) if service accounts need this permission. **Forgetting this breaks CI/CD pipelines.**
+
+**Key files:**
+
+-   `projectMemberAbility.ts` - System role abilities at project level
+-   `organizationMemberAbility.ts` - System role abilities at org level
+-   `serviceAccountAbility.ts` - Service account abilities (enterprise, used for CI/CD)
+-   `roleToScopeMapping.ts` - Maps system roles to scopes (used by custom roles system and parity tests)
+-   `scopeAbilityBuilder.ts` - Builds CASL abilities from scope lists (custom roles path)
+-   `index.ts` - Main ability builder that chooses between system role vs custom role path
+
+**Important behavior:**
+
+-   CASL abilities are **additive** - org-level permissions cannot be revoked by project-level custom roles
+-   If a permission should be restrictable via custom roles, do NOT add it to org-level developer/editor abilities
+-   The parity test (`roleToScopeParity.test.ts`) ensures `projectMemberAbility.ts` and `roleToScopeMapping.ts` stay in sync
 
 ## TypeScript Project References
 
@@ -122,6 +173,19 @@ pnpm -F backend rollback-last
 -   `/.eslintrc.js` - Global linting rules
 -   `/package.json` - Root scripts and dependency management
 -   `.env.development.local` - Local development environment variables
+
+## dbt YAML Validation Schemas
+
+There are **two** JSON schemas that define valid Lightdash metadata in dbt YAML files. They must stay in sync:
+
+| Schema | Path | Used by |
+|--------|------|---------|
+| `lightdashMetadata.json` | `packages/common/src/dbt/schemas/lightdashMetadata.json` | Compile-time validation (`exploreCompiler`) |
+| `lightdash-dbt-2.0.json` | `packages/common/src/schemas/json/lightdash-dbt-2.0.json` | CLI `lightdash generate` (`DbtSchemaEditor`) |
+
+**When adding or modifying field types (metric types, dimension types, additional dimension types), you MUST update both schemas.** The `lightdash-dbt-2.0.json` schema has two copies of the metric enum — one under `$defs/modelMeta` (model-level metrics) and one under `$defs/columnMeta` (column-level metrics). Both must be updated.
+
+The canonical source of truth for field types is `packages/common/src/types/field.ts` (e.g., `MetricType` enum).
 
 ## Testing Memories
 
@@ -316,6 +380,35 @@ packages/backend/src/bratrax/
 -   Bratrax directory (`src/bratrax/`) is untouched by upstream (they don't know about it)
 -   Core MIT code merges normally
 -   Only conflict: `src/index.ts` import line - trivial to resolve
+
+## Slugs — Not Unique Identifiers
+
+**WARNING: Slugs are NOT guaranteed to be unique.** Do not treat them as reliable identifiers for lookups, deduplication, or foreign key relationships. Always use UUIDs for uniqueness guarantees.
+
+Slugs are human-readable URL identifiers for charts, dashboards, and spaces (e.g., `weekly-sales-report`). They are generated from the entity name via `generateSlug()` (`packages/common/src/utils/slugs.ts`), and uniqueness is enforced at creation time by `generateUniqueSlug*` functions (`packages/backend/src/utils/SlugUtils.ts`). However, **multiple code paths bypass these uniqueness checks**, resulting in duplicate slugs in production.
+
+**How slugs get duplicated:**
+
+1. **Content-as-code (`lightdash upload`)**: The `CoderService` uses `forceSlug: true` when creating charts and dashboards, which skips the `generateUniqueSlug` call entirely and inserts the slug from the YAML file as-is. If two YAML files with the same slug are uploaded, or a slug already exists in the target project, duplicates are created.
+
+2. **Promotion**: The `PromoteService` also uses `forceSlug: true` when creating content in the upstream project. Promoting the same content from multiple downstream projects, or re-promoting after manual creation in upstream, can create duplicates.
+
+3. **Lossy slug generation**: `generateSlug()` strips all non-alphanumeric characters to hyphens, so different names produce identical slugs. Examples:
+   - `"Sales Report (2024)"` and `"Sales Report 2024"` → `sales-report-2024`
+   - `"Q1 / Q2 Summary"` and `"Q1 - Q2 Summary"` → `q1-q2-summary`
+
+   The uniqueness check at creation time handles this by appending `-1`, `-2`, etc., but `forceSlug: true` paths bypass this.
+
+4. **Ltree path conversion is also lossy**: `getLtreePathFromSlug` converts hyphens to underscores, so `"my-space"` and `"my_space"` map to the same ltree path. This can cause space resolution collisions.
+
+**No database-level uniqueness constraint** exists for slugs on `saved_queries`, `dashboards`, or `spaces` tables. Only `saved_sql` has a `UNIQUE(project_uuid, slug)` DB constraint. All other uniqueness enforcement is application-level only.
+
+**What this means in practice:**
+
+- **API resolution picks first match**: `getByIdOrSlug()` queries use `LIMIT 1` — when duplicates exist, the result is non-deterministic. No error is thrown.
+- **Promotion fails on duplicates**: `PromoteService` throws an explicit error (`"There are multiple charts with the same identifier {slug}"`) when it finds duplicate slugs in the upstream project.
+- **Never use slugs as unique keys** in new code. Use UUIDs for any operation that requires uniqueness. Slugs are for URL display only.
+- **A REPL script exists** to fix duplicates: `packages/backend/src/ee/repl/scripts/fixDuplicateSlugs.ts`
 
 ## Development Troubleshooting
 

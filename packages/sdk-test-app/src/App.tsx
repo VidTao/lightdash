@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SavedChart } from '../../common/src';
 
-// NOTE: add an embed url here for persistence
-const EMBED_URL = '';
+const EMBED_URL = import.meta.env.VITE_EMBED_URL || '';
 
 const mono = `'SF Mono', 'Fira Code', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace`;
 const sans = `'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
@@ -144,13 +143,15 @@ const contentStyle: React.CSSProperties = {
 const chartContainerStyle: React.CSSProperties = {
     width: '100%',
     height: '500px',
+    minHeight: '200px',
     border: '1px solid #e5e5e5',
     borderRadius: '8px',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fafafa',
-    overflow: 'hidden',
+    overflow: 'auto',
+    resize: 'vertical',
 };
 
 const singleChartContainerStyle: React.CSSProperties = {

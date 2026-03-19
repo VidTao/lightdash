@@ -42,8 +42,14 @@ export class FeatureFlagModel {
             [FeatureFlags.Maps]: this.getMapsEnabled.bind(this),
             [FeatureFlags.ShowExecutionTime]:
                 this.getShowExecutionTimeEnabled.bind(this),
-            [FeatureFlags.NestedSpacesPermissions]:
-                this.getNestedSpacesPermissionsEnabled.bind(this),
+            [FeatureFlags.SavedMetricsTree]:
+                this.getSavedMetricsTreeEnabled.bind(this),
+            [FeatureFlags.DefaultUserSpaces]:
+                this.getDefaultUserSpacesEnabled.bind(this),
+            [FeatureFlags.GoogleChatEnabled]:
+                this.getGoogleChatEnabled.bind(this),
+            [FeatureFlags.UserImpersonation]:
+                this.getUserImpersonationEnabled.bind(this),
         };
     }
 
@@ -123,8 +129,9 @@ export class FeatureFlagModel {
                           throwOnTimeout: false,
                           timeoutMilliseconds: 500,
                       },
+                      true,
                   )
-                : false);
+                : true);
         return {
             id: featureFlagId,
             enabled,
@@ -216,12 +223,90 @@ export class FeatureFlagModel {
         };
     }
 
-    private async getNestedSpacesPermissionsEnabled({
+    private async getSavedMetricsTreeEnabled({
+        user,
         featureFlagId,
     }: FeatureFlagLogicArgs) {
+        const enabled =
+            this.lightdashConfig.savedMetricsTree.enabled ??
+            (user
+                ? await isFeatureFlagEnabled(FeatureFlags.SavedMetricsTree, {
+                      userUuid: user.userUuid,
+                      organizationUuid: user.organizationUuid,
+                  })
+                : false);
         return {
             id: featureFlagId,
-            enabled: this.lightdashConfig.nestedSpacesPermissions.enabled,
+            enabled,
+        };
+    }
+
+    private async getDefaultUserSpacesEnabled({
+        user,
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        const enabled =
+            this.lightdashConfig.defaultUserSpaces.enabled ??
+            (user
+                ? await isFeatureFlagEnabled(
+                      FeatureFlags.DefaultUserSpaces,
+                      {
+                          userUuid: user.userUuid,
+                          organizationUuid: user.organizationUuid,
+                          organizationName: user.organizationName,
+                      },
+                      {
+                          throwOnTimeout: false,
+                          timeoutMilliseconds: 500,
+                      },
+                  )
+                : false);
+        return {
+            id: featureFlagId,
+            enabled,
+        };
+    }
+
+    private async getGoogleChatEnabled({
+        user,
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        const enabled =
+            this.lightdashConfig.googleChat.enabled ||
+            (user
+                ? await isFeatureFlagEnabled(
+                      FeatureFlags.GoogleChatEnabled,
+                      {
+                          userUuid: user.userUuid,
+                          organizationUuid: user.organizationUuid,
+                      },
+                      {
+                          throwOnTimeout: false,
+                          timeoutMilliseconds: 500,
+                      },
+                  )
+                : false);
+        return {
+            id: featureFlagId,
+            enabled,
+        };
+    }
+
+    private async getUserImpersonationEnabled({
+        user,
+        featureFlagId,
+    }: FeatureFlagLogicArgs) {
+        const enabled =
+            this.lightdashConfig.userImpersonation.enabled ??
+            (user
+                ? await isFeatureFlagEnabled(FeatureFlags.UserImpersonation, {
+                      userUuid: user.userUuid,
+                      organizationUuid: user.organizationUuid,
+                  })
+                : false);
+        return {
+            id: featureFlagId,
+            enabled,
         };
     }
 }

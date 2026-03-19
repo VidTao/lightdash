@@ -64,26 +64,35 @@ export enum FeatureFlags {
     UnusedContentDashboard = 'unused-content-dashboard',
 
     /**
-     * Enable period-over-period comparisons option
-     */
-    PeriodOverPeriod = 'pop',
-
-    /**
      * Enable viewing and editing YAML source files in the Explore UI
      */
     EditYamlInUi = 'edit-yaml-in-ui',
 
     /**
-     * Enable nested spaces to define their own permissions as well as extending
-     * their parent permissions. When disabled (default), all nested spaces
-     * inherit permissions from their root space.
+     * Enable saved metrics tree in metrics catalog
      */
-    NestedSpacesPermissions = 'nested-spaces-permissions',
+    SavedMetricsTree = 'saved-metrics-tree',
 
     /**
-     * Enable tree/list mode switcher in Metrics Catalog
+     * Enable default personal spaces for project members
      */
-    MetricsCatalogTreeModeSwitcher = 'metrics-catalog-tree-mode-switcher',
+    DefaultUserSpaces = 'default-user-spaces',
+
+    /**
+     * Enable Google Chat as a scheduled delivery destination
+     */
+    GoogleChatEnabled = 'google-chat-enabled',
+
+    /**
+     * Enable admin user impersonation. When disabled, impersonation
+     * actions are blocked and active sessions are cleared.
+     */
+    UserImpersonation = 'user-impersonation',
+
+    /**
+     * Enable custom group bins for string dimensions
+     */
+    CustomGroupBins = 'custom-group-bins',
 }
 
 export type FeatureFlag = {

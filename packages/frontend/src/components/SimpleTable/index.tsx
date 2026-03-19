@@ -1,13 +1,11 @@
 import { Box, Button, Flex, Text } from '@mantine/core';
 import { noop } from '@mantine/utils';
 import { IconAlertCircle, IconRefresh, IconTable } from '@tabler/icons-react';
-import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type FC } from 'react';
 import {
     isChunkLoadError,
     triggerChunkErrorReload,
 } from '../../features/chunkErrorHandler';
-import { isTableVisualizationConfig } from '../LightdashVisualization/types';
-import { useVisualizationContext } from '../LightdashVisualization/useVisualizationContext';
 import LoadingChart from '../common/LoadingChart';
 import PivotTable from '../common/PivotTable';
 import SuboptimalState from '../common/SuboptimalState/SuboptimalState';
@@ -17,6 +15,8 @@ import {
     type CellContextMenuProps,
     type HeaderProps,
 } from '../common/Table/types';
+import { isTableVisualizationConfig } from '../LightdashVisualization/types';
+import { useVisualizationContext } from '../LightdashVisualization/useVisualizationContext';
 import CellContextMenu from './CellContextMenu';
 import DashboardCellContextMenu from './DashboardCellContextMenu';
 import DashboardHeaderContextMenu from './DashboardHeaderContextMenu';
@@ -48,6 +48,7 @@ const SimpleTable: FC<SimpleTableProps> = ({
         visualizationConfig,
         resultsData,
         isLoading,
+        isEditMode,
     } = useVisualizationContext();
 
     const hasSignaledScreenshotReady = useRef(false);
@@ -55,10 +56,10 @@ const SimpleTable: FC<SimpleTableProps> = ({
     const shouldPaginateResults = useMemo(() => {
         return Boolean(
             !resultsData ||
-                !isTableVisualizationConfig(visualizationConfig) ||
-                // When subtotals are disable and there is no pivot table data, we don't need to load all the rows
-                (!visualizationConfig.chartConfig.showSubtotals &&
-                    !visualizationConfig.chartConfig.pivotTableData?.data),
+            !isTableVisualizationConfig(visualizationConfig) ||
+            // When subtotals are disable and there is no pivot table data, we don't need to load all the rows
+            (!visualizationConfig.chartConfig.showSubtotals &&
+                !visualizationConfig.chartConfig.pivotTableData?.data),
         );
     }, [resultsData, visualizationConfig]);
 
@@ -183,10 +184,15 @@ const SimpleTable: FC<SimpleTableProps> = ({
         resultsData?.setFetchAll(true);
     }, [shouldPaginateResults, resultsData]);
 
+    const tableColumns = useMemo(() => {
+        return isTableVisualizationConfig(visualizationConfig)
+            ? visualizationConfig.chartConfig.columns
+            : [];
+    }, [visualizationConfig]);
+
     if (!isTableVisualizationConfig(visualizationConfig)) return null;
 
     const {
-        columns,
         conditionalFormattings,
         minMaxMap,
         hideRowNumbers,
@@ -195,7 +201,15 @@ const SimpleTable: FC<SimpleTableProps> = ({
         getField,
         showResultsTotal,
         showSubtotals,
+        updateColumnProperty,
     } = visualizationConfig.chartConfig;
+
+    const onColumnWidthChange =
+        !isDashboard && isEditMode !== false
+            ? (fieldId: string, width: number) => {
+                  updateColumnProperty(fieldId, { width });
+              }
+            : undefined;
 
     if (pivotTableData.error) {
         const isWorkerFetchError = isChunkLoadError(pivotTableData.error);
@@ -260,6 +274,7 @@ const SimpleTable: FC<SimpleTableProps> = ({
                             columnProperties={
                                 visualizationConfig.chartConfig.columnProperties
                             }
+                            onColumnWidthChange={onColumnWidthChange}
                             {...rest}
                         />
                         {showResultsTotal && (
@@ -291,13 +306,14 @@ const SimpleTable: FC<SimpleTableProps> = ({
                 loadingState={() => <LoadingChart />}
                 emptyState={isDashboard ? DashboardEmptyState : undefined}
                 fetchMoreRows={resultsData?.fetchMoreRows || noop}
-                columns={columns}
+                columns={tableColumns}
                 columnOrder={columnOrder}
                 hideRowNumbers={hideRowNumbers}
                 showColumnCalculation={showColumnCalculation}
                 showSubtotals={showSubtotals}
                 conditionalFormattings={conditionalFormattings}
                 minMaxMap={minMaxMap}
+                onColumnWidthChange={onColumnWidthChange}
                 columnProperties={
                     visualizationConfig.chartConfig.columnProperties
                 }

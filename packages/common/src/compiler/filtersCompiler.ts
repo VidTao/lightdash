@@ -4,19 +4,19 @@ import { CompileError } from '../types/errors';
 import {
     CustomFormatType,
     DimensionType,
-    MetricType,
-    TableCalculationType,
     isCompiledCustomSqlDimension,
     isMetric,
+    MetricType,
+    TableCalculationType,
     type CompiledCustomSqlDimension,
     type CompiledField,
     type TableCalculation,
 } from '../types/field';
 import {
     FilterOperator,
-    UnitOfTime,
     isFilterTarget,
     isMetricFilterTarget,
+    UnitOfTime,
     unitOfTimeFormat,
     type DateFilterRule,
     type FilterRule,
@@ -27,7 +27,32 @@ import { convertToBooleanValue } from '../utils/booleanConverter';
 import { formatDate } from '../utils/formatting';
 import { getItemId } from '../utils/item';
 import { getMomentDateWithCustomStartOfWeek } from '../utils/time';
-import { type WeekDay } from '../utils/timeFrames';
+import { WeekDay } from '../utils/timeFrames';
+
+/**
+ * Returns the default week start day for a given warehouse adapter.
+ * This ensures JavaScript-side week boundary calculations match the warehouse.
+ *
+ * References:
+ * - PostgreSQL: https://www.postgresql.org/docs/current/functions-datetime.html (ISO 8601 weeks start on Monday)
+ * - Snowflake: https://docs.snowflake.com/en/sql-reference/functions-date-time (WEEK_START=0 defaults to Monday)
+ * - Redshift: https://docs.aws.amazon.com/redshift/latest/dg/r_DATE_TRUNC.html (truncates week to Monday)
+ * - Databricks: https://docs.databricks.com/aws/en/sql/language-manual/functions/date_trunc (WEEK truncates to Monday)
+ * - Trino: https://trino.io/docs/current/functions/datetime.html (ISO 8601 weeks start on Monday)
+ * - BigQuery: https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/date_functions (WEEK is equivalent to WEEK(SUNDAY))
+ * - ClickHouse: https://clickhouse.com/docs/sql-reference/functions/date-time-functions (toStartOfWeek default mode=0 is Sunday)
+ */
+const getDefaultStartOfWeek = (
+    adapterType: SupportedDbtAdapter | WarehouseTypes,
+): WeekDay => {
+    switch (adapterType) {
+        case SupportedDbtAdapter.BIGQUERY:
+        case SupportedDbtAdapter.CLICKHOUSE:
+            return WeekDay.SUNDAY;
+        default:
+            return WeekDay.MONDAY;
+    }
+};
 
 // NOTE: This function requires a complete date as input.
 // It produces a timezoneless string which is implied to be in UTC.
@@ -74,20 +99,33 @@ export const renderStringFilterSql = (
     dimensionSql: string,
     filter: FilterRule<FilterOperator, unknown>,
     stringQuoteChar: string,
+    caseSensitive: boolean = true,
 ): string => {
     const nonEmptyFilterValues = filter.values?.filter((v) => v !== '');
+
+    // Apply UPPER() to both dimension and values when case insensitive (caseSensitive = false)
+    const wrapDimension = (sql: string) =>
+        !caseSensitive ? `UPPER(${sql})` : sql;
+    const wrapValue = (value: string) =>
+        !caseSensitive ? value.toUpperCase() : value;
 
     switch (filter.operator) {
         case FilterOperator.EQUALS:
             return filter.values && filter.values.length > 0
-                ? `(${dimensionSql}) IN (${filter.values
-                      .map((v) => `${stringQuoteChar}${v}${stringQuoteChar}`)
+                ? `(${wrapDimension(dimensionSql)}) IN (${filter.values
+                      .map(
+                          (v) =>
+                              `${stringQuoteChar}${wrapValue(v)}${stringQuoteChar}`,
+                      )
                       .join(',')})`
                 : 'true';
         case FilterOperator.NOT_EQUALS:
             return filter.values && filter.values.length > 0
-                ? `((${dimensionSql}) NOT IN (${filter.values
-                      .map((v) => `${stringQuoteChar}${v}${stringQuoteChar}`)
+                ? `((${wrapDimension(dimensionSql)}) NOT IN (${filter.values
+                      .map(
+                          (v) =>
+                              `${stringQuoteChar}${wrapValue(v)}${stringQuoteChar}`,
+                      )
                       .join(',')}) OR (${dimensionSql}) IS NULL)`
                 : 'true';
         case FilterOperator.INCLUDE:
@@ -105,7 +143,7 @@ export const renderStringFilterSql = (
                 const notIncludeQuery = nonEmptyFilterValues.map(
                     (v) => `LOWER(${dimensionSql}) NOT LIKE LOWER('%${v}%')`,
                 );
-                return notIncludeQuery.join('\n  AND\n  ');
+                return `(${notIncludeQuery.join('\n  AND\n  ')} OR (${dimensionSql}) IS NULL)`;
             }
             return 'true';
         case FilterOperator.NULL:
@@ -113,15 +151,17 @@ export const renderStringFilterSql = (
         case FilterOperator.NOT_NULL:
             return `(${dimensionSql}) IS NOT NULL`;
         case FilterOperator.STARTS_WITH:
-            const startWithQuery = nonEmptyFilterValues?.map(
-                (v) =>
-                    `(${dimensionSql}) LIKE ${stringQuoteChar}${v}%${stringQuoteChar}`,
+            const startWithQuery = nonEmptyFilterValues?.map((v) =>
+                !caseSensitive
+                    ? `UPPER(${dimensionSql}) LIKE ${stringQuoteChar}${wrapValue(v)}%${stringQuoteChar}`
+                    : `(${dimensionSql}) LIKE ${stringQuoteChar}${v}%${stringQuoteChar}`,
             );
             return startWithQuery?.join('\n  OR\n  ') || 'true';
         case FilterOperator.ENDS_WITH:
-            const endsWithQuery = nonEmptyFilterValues?.map(
-                (v) =>
-                    `(${dimensionSql}) LIKE ${stringQuoteChar}%${v}${stringQuoteChar}`,
+            const endsWithQuery = nonEmptyFilterValues?.map((v) =>
+                !caseSensitive
+                    ? `UPPER(${dimensionSql}) LIKE ${stringQuoteChar}%${wrapValue(v)}${stringQuoteChar}`
+                    : `(${dimensionSql}) LIKE ${stringQuoteChar}%${v}${stringQuoteChar}`,
             );
             return endsWithQuery?.join('\n  OR\n  ') || 'true';
         default:
@@ -220,6 +260,11 @@ export const renderDateFilterSql = (
     dateFormatter: (date: Date) => string = formatDate,
     startOfWeek: WeekDay | null | undefined = undefined,
 ): string => {
+    // When startOfWeek is not explicitly configured, use the warehouse's default
+    // to ensure JS-side week boundaries match the warehouse's DATE_TRUNC behavior.
+    const effectiveStartOfWeek =
+        startOfWeek ?? getDefaultStartOfWeek(adapterType);
+
     const castValue = (value: string): string => {
         switch (adapterType) {
             case SupportedDbtAdapter.TRINO:
@@ -272,19 +317,19 @@ export const renderDateFilterSql = (
 
             if (completed) {
                 const completedDate = moment(
-                    getMomentDateWithCustomStartOfWeek(startOfWeek)
+                    getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                         .startOf(unitOfTime)
                         .format(unitOfTimeFormat[unitOfTime]),
                 ).toDate();
                 const untilDate = dateFormatter(
-                    getMomentDateWithCustomStartOfWeek(startOfWeek)
+                    getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                         .startOf(unitOfTime)
                         .toDate(),
                 );
                 return `${not}((${dimensionSql}) >= ${castValue(
                     dateFormatter(
                         getMomentDateWithCustomStartOfWeek(
-                            startOfWeek,
+                            effectiveStartOfWeek,
                             completedDate,
                         )
                             .subtract(filter.values?.[0], unitOfTime)
@@ -293,11 +338,13 @@ export const renderDateFilterSql = (
                 )} AND (${dimensionSql}) < ${castValue(untilDate)})`;
             }
             const untilDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek).toDate(),
+                getMomentDateWithCustomStartOfWeek(
+                    effectiveStartOfWeek,
+                ).toDate(),
             );
             return `${not}((${dimensionSql}) >= ${castValue(
                 dateFormatter(
-                    getMomentDateWithCustomStartOfWeek(startOfWeek)
+                    getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                         .subtract(filter.values?.[0], unitOfTime)
                         .toDate(),
                 ),
@@ -310,12 +357,15 @@ export const renderDateFilterSql = (
 
             if (completed) {
                 const fromDate = moment(
-                    getMomentDateWithCustomStartOfWeek(startOfWeek)
+                    getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                         .add(1, unitOfTime)
                         .startOf(unitOfTime),
                 ).toDate();
                 const toDate = dateFormatter(
-                    getMomentDateWithCustomStartOfWeek(startOfWeek, fromDate)
+                    getMomentDateWithCustomStartOfWeek(
+                        effectiveStartOfWeek,
+                        fromDate,
+                    )
                         .add(filter.values?.[0], unitOfTime)
                         .toDate(),
                 );
@@ -324,10 +374,12 @@ export const renderDateFilterSql = (
                 )} AND (${dimensionSql}) < ${castValue(toDate)})`;
             }
             const fromDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek).toDate(),
+                getMomentDateWithCustomStartOfWeek(
+                    effectiveStartOfWeek,
+                ).toDate(),
             );
             const toDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek)
+                getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                     .add(filter.values?.[0], unitOfTime)
                     .toDate(),
             );
@@ -340,14 +392,14 @@ export const renderDateFilterSql = (
                 filter.settings?.unitOfTime || UnitOfTime.days;
 
             const fromDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek)
+                getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                     .tz(timezone)
                     .startOf(unitOfTime)
                     .utc()
                     .toDate(),
             );
             const untilDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek)
+                getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                     .tz(timezone)
                     .endOf(unitOfTime)
                     .utc()
@@ -364,14 +416,14 @@ export const renderDateFilterSql = (
                 filter.settings?.unitOfTime || UnitOfTime.days;
 
             const fromDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek)
+                getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                     .tz(timezone)
                     .startOf(unitOfTime)
                     .utc()
                     .toDate(),
             );
             const untilDate = dateFormatter(
-                getMomentDateWithCustomStartOfWeek(startOfWeek)
+                getMomentDateWithCustomStartOfWeek(effectiveStartOfWeek)
                     .tz(timezone)
                     .endOf(unitOfTime)
                     .utc()
@@ -457,6 +509,7 @@ export const renderTableCalculationFilterRuleSql = (
                 fieldSql,
                 escapedFilterRule,
                 stringQuoteChar,
+                true, // Table calculations default to case sensitive
             );
         case TableCalculationType.DATE:
         case TableCalculationType.TIMESTAMP:
@@ -487,6 +540,7 @@ export const renderTableCalculationFilterRuleSql = (
                 fieldSql,
                 escapedFilterRule,
                 stringQuoteChar,
+                true, // Table calculations default to case sensitive
             );
     }
 };
@@ -500,6 +554,7 @@ export const renderFilterRuleSql = (
     startOfWeek: WeekDay | null | undefined,
     adapterType: SupportedDbtAdapter,
     timezone: string = 'UTC',
+    caseSensitive: boolean = true,
 ): string => {
     if (filterRule.disabled) {
         return `1=1`; // When filter is disabled, we want to return all rows
@@ -516,6 +571,7 @@ export const renderFilterRuleSql = (
                 fieldSql,
                 escapedFilterRule,
                 stringQuoteChar,
+                caseSensitive,
             );
         }
         case DimensionType.NUMBER:
@@ -526,6 +582,8 @@ export const renderFilterRuleSql = (
         case MetricType.COUNT:
         case MetricType.COUNT_DISTINCT:
         case MetricType.SUM:
+        case MetricType.SUM_DISTINCT:
+        case MetricType.AVERAGE_DISTINCT:
         case MetricType.MIN:
         case MetricType.MAX:
         case MetricType.PERCENT_OF_PREVIOUS:
@@ -578,6 +636,7 @@ export const renderFilterRuleSqlFromField = (
     startOfWeek: WeekDay | null | undefined,
     adapterType: SupportedDbtAdapter,
     timezone: string = 'UTC',
+    exploreCaseSensitive: boolean = true,
 ): string => {
     const fieldType = isCompiledCustomSqlDimension(field)
         ? field.dimensionType
@@ -585,6 +644,18 @@ export const renderFilterRuleSqlFromField = (
     const fieldSql = isMetric(field)
         ? `${fieldQuoteChar}${getItemId(field)}${fieldQuoteChar}`
         : field.compiledSql;
+
+    // Determine if this filter should be case sensitive
+    // Priority: field-level setting > explore-level setting > default true
+    let caseSensitive: boolean;
+    if (isMetric(field)) {
+        caseSensitive = true;
+    } else if ('caseSensitive' in field && field.caseSensitive !== undefined) {
+        caseSensitive = field.caseSensitive;
+    } else {
+        caseSensitive = exploreCaseSensitive;
+    }
+
     return renderFilterRuleSql(
         filterRule,
         fieldType,
@@ -594,5 +665,6 @@ export const renderFilterRuleSqlFromField = (
         startOfWeek,
         adapterType,
         timezone,
+        caseSensitive,
     );
 };

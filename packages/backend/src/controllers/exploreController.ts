@@ -12,6 +12,7 @@ import {
 } from '@lightdash/common';
 import {
     Body,
+    Deprecated,
     Get,
     Middlewares,
     OperationId,
@@ -84,6 +85,8 @@ export class ExploreController extends BaseController {
                 req.account!,
                 projectUuid,
                 req.query.filtered === 'true',
+                true,
+                req.query.includePreAggregates === 'true',
             );
 
         return {
@@ -167,6 +170,7 @@ export class ExploreController extends BaseController {
         deprecatedDownloadCsvRoute,
     ])
     @SuccessResponse('200', 'Success')
+    @Deprecated()
     @Post('{exploreId}/downloadCsv')
     @OperationId('DownloadCsvFromExplore')
     async DownloadCsvFromExplore(

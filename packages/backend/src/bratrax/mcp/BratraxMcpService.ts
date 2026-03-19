@@ -167,6 +167,11 @@ export class BratraxMcpService extends BaseService {
         return server;
     }
 
+    /** Alias for createRequestServer() — matches upstream McpService API */
+    public createServer(): McpServer {
+        return this.createRequestServer();
+    }
+
     /** @deprecated Use createRequestServer() for stateless HTTP */
     public getServer(): McpServer {
         return this.mcpServer;
@@ -364,6 +369,7 @@ export class BratraxMcpService extends BaseService {
                     .filter((e) =>
                         doesExploreMatchRequiredAttributes(
                             e.tables[e.baseTable].requiredAttributes,
+                            e.tables[e.baseTable].anyAttributes,
                             userAttrs,
                         ),
                     )

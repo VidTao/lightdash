@@ -5,8 +5,7 @@ import {
     FeatureFlags,
     isSeriesWithMixedChartTypes,
 } from '@lightdash/common';
-import { Menu } from '@mantine-8/core';
-import { Button, Group } from '@mantine/core';
+import { Button, Group, Menu } from '@mantine-8/core';
 import {
     IconChartArea,
     IconChartAreaLine,
@@ -19,6 +18,7 @@ import {
     IconCode,
     IconFilter,
     IconGauge,
+    IconGitMerge,
     IconMap,
     IconSquareNumber1,
     IconTable,
@@ -26,7 +26,6 @@ import {
 import { memo, useMemo, type FC, type ReactNode } from 'react';
 import { useServerFeatureFlag } from '../../../hooks/useServerOrClientFeatureFlag';
 import { BetaBadge } from '../../common/BetaBadge';
-import { COLLAPSABLE_CARD_BUTTON_PROPS } from '../../common/CollapsableCard/constants';
 import MantineIcon from '../../common/MantineIcon';
 import {
     isBigNumberVisualizationConfig,
@@ -36,6 +35,7 @@ import {
     isGaugeVisualizationConfig,
     isMapVisualizationConfig,
     isPieVisualizationConfig,
+    isSankeyVisualizationConfig,
     isTableVisualizationConfig,
     isTreemapVisualizationConfig,
 } from '../../LightdashVisualization/types';
@@ -195,6 +195,11 @@ const VisualizationCardOptions: FC = memo(() => {
                     text: 'Custom',
                     icon: <MantineIcon icon={IconCode} color="ldGray" />,
                 };
+            case ChartType.SANKEY:
+                return {
+                    text: 'Sankey (Beta)',
+                    icon: <MantineIcon icon={IconGitMerge} color="ldGray" />,
+                };
             default: {
                 return assertUnreachable(
                     visualizationConfig,
@@ -221,10 +226,11 @@ const VisualizationCardOptions: FC = memo(() => {
         >
             <Menu.Target>
                 <Button
-                    {...COLLAPSABLE_CARD_BUTTON_PROPS}
+                    variant="default"
+                    size="xs"
                     disabled={disabled}
-                    leftIcon={selectedChartType.icon}
-                    rightIcon={
+                    leftSection={selectedChartType.icon}
+                    rightSection={
                         <MantineIcon icon={IconChevronDown} color="ldGray" />
                     }
                     data-testid="VisualizationCardOptions"
@@ -419,6 +425,26 @@ const VisualizationCardOptions: FC = memo(() => {
                     Gauge
                 </Menu.Item>
 
+                <Menu.Item
+                    disabled={disabled}
+                    color={
+                        isSankeyVisualizationConfig(visualizationConfig)
+                            ? 'blue'
+                            : undefined
+                    }
+                    leftSection={<MantineIcon icon={IconGitMerge} />}
+                    onClick={() => {
+                        setStacking(undefined);
+                        setCartesianType(undefined);
+                        setChartType(ChartType.SANKEY);
+                    }}
+                >
+                    <Group gap="xs">
+                        Sankey
+                        <BetaBadge />
+                    </Group>
+                </Menu.Item>
+
                 {mapsFeatureFlag?.enabled && (
                     <Menu.Item
                         disabled={disabled}
@@ -434,7 +460,7 @@ const VisualizationCardOptions: FC = memo(() => {
                             setChartType(ChartType.MAP);
                         }}
                     >
-                        <Group spacing="xs">
+                        <Group gap="xs">
                             Map
                             <BetaBadge />
                         </Group>
