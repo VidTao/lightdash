@@ -1,0 +1,15 @@
+version: 2
+models:
+  - name: drasko_merge_test2
+    description: SQL model for Drasko merge test 2
+    meta:
+      label: Drasko merge test 2
+    columns:
+      - name: allocation_performance_active_budget
+        meta:
+          dimension:
+            type: number
+      - name: allocation_performance_allocation_id
+        meta:
+          dimension:
+            type: string
