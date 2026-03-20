@@ -1,4 +1,3 @@
-
 {{
   config(
     materialized='table',
@@ -6,9 +5,9 @@
     tags=['created-by-lightdash']
   )
 }}
-  
+
 WITH campaign_leads_agg AS (
-  SELECT 
+  SELECT
     lead_date AS date,
     client_id,
     attributed_campaign_id AS campaign_id,
@@ -16,17 +15,14 @@ WITH campaign_leads_agg AS (
     COUNT(CASE WHEN in_sold_unsold = TRUE AND revenue > 0 THEN 1 END) AS leads_sold,
     COUNT(CASE WHEN in_sold_unsold = TRUE AND revenue = 0 THEN 1 END) AS leads_retainer_absorbed,
     COUNT(CASE WHEN in_valid_invalid = TRUE AND in_sold_unsold = FALSE THEN 1 END) AS leads_invalid,
-    SUM(revenue) AS lead_revenue,
-    STRING_AGG(DISTINCT buyer_bid, '; ') AS buyer_bids,
-    STRING_AGG(DISTINCT buyer_name, '; ') AS buyer_names,
-    STRING_AGG(DISTINCT delivery_name, '; ') AS delivery_names
+    SUM(revenue) AS lead_revenue
   FROM `bratrax-without-flattening`.`cod`.`vw_lead_attribution_complete`
   WHERE final_attribution_status IN ('matched_to_campaign', 'attributed_no_campaign_match')
     AND attributed_campaign_id IS NOT NULL
   GROUP BY 1, 2, 3
 )
 
-SELECT 
+SELECT
   cdm.date,
   cdm.client_id,
   cdm.campaign_id,
@@ -35,11 +31,6 @@ SELECT
   pc.allocation_id,
   pc.status AS campaign_status,
   pc.campaign_type,
-
-  -- Buyer info
-  cla.buyer_bids,
-  cla.buyer_names,
-  cla.delivery_names,
 
   -- Ad platform metrics
   cdm.spend AS daily_spend,
@@ -55,14 +46,11 @@ SELECT
   COALESCE(cla.lead_revenue, 0.0) AS lead_revenue
 
 FROM `bratrax-without-flattening`.`cod`.`campaign_daily_metrics` cdm
-
 LEFT JOIN `bratrax-without-flattening`.`cod`.`platform_campaigns` pc
   ON cdm.campaign_id = pc.campaign_id
   AND cdm.client_id = pc.client_id
-
 LEFT JOIN campaign_leads_agg cla
   ON cdm.campaign_id = cla.campaign_id
   AND cdm.date = cla.date
   AND cdm.client_id = cla.client_id
-
 WHERE cdm.date >= '2026-02-01'
