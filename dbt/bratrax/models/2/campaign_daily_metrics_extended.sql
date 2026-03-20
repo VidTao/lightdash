@@ -17,13 +17,13 @@ WITH campaign_leads_agg AS (
     COUNT(CASE WHEN in_sold_unsold = TRUE AND revenue = 0 THEN 1 END) AS leads_retainer_absorbed,
     COUNT(CASE WHEN in_valid_invalid = TRUE AND in_sold_unsold = FALSE THEN 1 END) AS leads_invalid,
     SUM(revenue) AS lead_revenue,
-    STRING_AGG(DISTINCT buyer_bid, '; ') AS buyer_bids,
-    STRING_AGG(DISTINCT buyer_name, '; ') AS buyer_names,
-    STRING_AGG(DISTINCT delivery_name, '; ') AS delivery_names
+    buyer_bid,
+    buyer_name,
+    delivery_name
   FROM `bratrax-without-flattening`.`cod`.`vw_lead_attribution_complete`
   WHERE final_attribution_status IN ('matched_to_campaign', 'attributed_no_campaign_match')
     AND attributed_campaign_id IS NOT NULL
-  GROUP BY 1, 2, 3
+  GROUP BY 1, 2, 3, buyer_bid, buyer_name, delivery_name
 )
 
 SELECT 
@@ -37,9 +37,9 @@ SELECT
   pc.campaign_type,
 
   -- Buyer info
-  cla.buyer_bids,
-  cla.buyer_names,
-  cla.delivery_names,
+  cla.buyer_bid,
+  cla.buyer_name,
+  cla.delivery_name,
 
   -- Ad platform metrics
   cdm.spend AS daily_spend,
